@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- ============================================
+       1. FAVICON + WEB APP MANIFEST
+       ============================================ -->
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="/assets/icons/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/assets/icons/favicon-16x16.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/assets/icons/apple-touch-icon.png">
+  <link rel="manifest" href="/site.webmanifest">
+  <meta name="theme-color" content="#0f172a">
+
+  <!-- ============================================
+       2. PAGE TITLE + SEO
+       ============================================ -->
+  <title>Callidus Co. — Coming Soon</title>
+  <meta name="description" content="Callidus Co. is launching soon. Stay tuned for something extraordinary.">
+
+  <!-- ============================================
+       3. iMESSAGE / OPEN GRAPH PREVIEW
+       ============================================ -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://callidusco.com/">
+  <meta property="og:title" content="Callidus Co. — Coming Soon">
+  <meta property="og:description" content="Something extraordinary is on its way. Stay tuned.">
+  <meta property="og:image" content="https://callidusco.com/assets/images/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+
+  <!-- Twitter Card (also used by iMessage as fallback) -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Callidus Co. — Coming Soon">
+  <meta name="twitter:description" content="Something extraordinary is on its way. Stay tuned.">
+  <meta name="twitter:image" content="https://callidusco.com/assets/images/og-image.png">
+
+  <style>
+    *, *::before, *::after {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      height: 100%;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .coming-soon {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      overflow: hidden;
+      color: #ffffff;
+      text-align: center;
+    }
+
+    .coming-soon__bg {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      background: url('/assets/images/bg.jpg') center/cover no-repeat;
+    }
+
+    .coming-soon__bg::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(
+        160deg,
+        rgba(15, 23, 42, 0.72) 0%,
+        rgba(15, 23, 42, 0.50) 50%,
+        rgba(15, 23, 42, 0.65) 100%
+      );
+    }
+
+    .coming-soon__content {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2rem;
+      padding: 2rem;
+      max-width: 600px;
+    }
+
+    .coming-soon__logo {
+      width: 144px;
+      height: auto;
+      filter: brightness(0) invert(1);
+      opacity: 0.95;
+      animation: fadeInDown 1s ease-out;
+    }
+
+    .coming-soon__brand {
+      font-size: 1rem;
+      font-weight: 600;
+      letter-spacing: 0.35em;
+      text-transform: uppercase;
+      opacity: 0.7;
+      animation: fadeIn 1.2s ease-out 0.2s both;
+    }
+
+    .coming-soon__headline {
+      font-size: clamp(2rem, 5vw, 3.5rem);
+      font-weight: 300;
+      line-height: 1.2;
+      letter-spacing: -0.02em;
+      animation: fadeIn 1.2s ease-out 0.4s both;
+    }
+
+    .coming-soon__headline strong {
+      font-weight: 700;
+    }
+
+    .coming-soon__tagline {
+      font-size: 1.1rem;
+      line-height: 1.6;
+      opacity: 0.6;
+      max-width: 440px;
+      animation: fadeIn 1.2s ease-out 0.6s both;
+    }
+
+    .coming-soon__divider {
+      width: 48px;
+      height: 2px;
+      background: rgba(255, 255, 255, 0.25);
+      border: none;
+      animation: fadeIn 1.2s ease-out 0.8s both;
+    }
+
+    .coming-soon__footer {
+      font-size: 0.8rem;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      opacity: 0.35;
+      animation: fadeIn 1.2s ease-out 1s both;
+    }
+
+    @keyframes fadeInDown {
+      from { opacity: 0; transform: translateY(-20px); }
+      to   { opacity: 0.95; transform: translateY(0); }
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to   { opacity: 1; }
+    }
+
+    @media (max-width: 480px) {
+      .coming-soon__logo { width: 108px; }
+      .coming-soon__content { gap: 1.5rem; }
+    }
+  </style>
+</head>
+<body>
+
+  <main class="coming-soon">
+    <div class="coming-soon__bg"></div>
+
+    <div class="coming-soon__content">
+      <img
+        src="/assets/images/logo.png"
+        alt="Callidus Co. logo"
+        class="coming-soon__logo"
+      >
+      <span class="coming-soon__brand">Callidus Co.</span>
+      <p class="coming-soon__tagline">
+        We're crafting an experience worth waiting for. Stay tuned.
+      </p>
+      <hr class="coming-soon__divider">
+      <p class="coming-soon__footer">callidusco.com</p>
+    </div>
+  </main>
+
+</body>
+</html>
