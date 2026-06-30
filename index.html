@@ -12,7 +12,7 @@
   <link rel="icon" type="image/png" sizes="16x16" href="/assets/icons/favicon-16x16.png">
   <link rel="apple-touch-icon" sizes="180x180" href="/assets/icons/apple-touch-icon.png">
   <link rel="manifest" href="/site.webmanifest">
-  <meta name="theme-color" content="#0f172a">
+  <meta name="theme-color" content="#0a192f">
 
   <!-- ============================================
        2. PAGE TITLE + SEO
@@ -51,6 +51,7 @@
     }
 
     .coming-soon {
+      --text: #ffffff;
       position: relative;
       display: flex;
       flex-direction: column;
@@ -58,27 +59,23 @@
       justify-content: center;
       min-height: 100vh;
       overflow: hidden;
-      color: #ffffff;
+      color: var(--text);
       text-align: center;
     }
 
     .coming-soon__bg {
+      --overlay: transparent;
       position: absolute;
       inset: 0;
       z-index: 0;
-      background: url('/assets/images/bg.jpg') center/cover no-repeat;
+      background: #0a192f center/cover no-repeat;
     }
 
     .coming-soon__bg::after {
       content: '';
       position: absolute;
       inset: 0;
-      background: linear-gradient(
-        160deg,
-        rgba(15, 23, 42, 0.72) 0%,
-        rgba(15, 23, 42, 0.50) 50%,
-        rgba(15, 23, 42, 0.65) 100%
-      );
+      background: var(--overlay);
     }
 
     .coming-soon__content {
@@ -180,6 +177,10 @@
       <p class="coming-soon__footer">callidusco.com</p>
     </div>
   </main>
+
+  <!-- Dynamic content from Supabase (falls back to the static defaults above) -->
+  <script src="/assets/js/config.js"></script>
+  <script src="/assets/js/site.js"></script>
 
 </body>
 </html>
