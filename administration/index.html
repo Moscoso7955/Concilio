@@ -223,7 +223,7 @@
           <div class="img-field__controls">
             <button class="btn btn--ghost" type="button" data-upload="bgUrl">Upload background…</button>
             <input type="file" class="file-input" accept="image/*" data-for="bgUrl">
-            <div class="hint" id="hint_bgUrl">Large landscape image, ~1920px wide.</div>
+            <div class="hint" id="hint_bgUrl">Optional. Sits on top of the background color. ~1920px wide.</div>
           </div>
         </div>
       </div>
@@ -233,6 +233,13 @@
     <div class="card">
       <div class="card__title">Colors</div>
       <div class="row">
+        <div class="field">
+          <label>Background color</label>
+          <div class="color-row">
+            <input type="color" id="f_bgColor_picker">
+            <input type="text" id="f_bgColor" placeholder="#0a192f">
+          </div>
+        </div>
         <div class="field">
           <label>Text color</label>
           <div class="color-row">
@@ -390,6 +397,7 @@
       p.addEventListener("input", () => { t.value = p.value; });
       t.addEventListener("input", () => { if (/^#[0-9a-fA-F]{6}$/.test(t.value)) p.value = t.value; });
     }
+    bindColor("f_bgColor", "f_bgColor_picker");
     bindColor("f_textColor", "f_textColor_picker");
     bindColor("f_overlayColor", "f_overlayColor_picker");
     bindColor("f_themeColor", "f_themeColor_picker");
@@ -429,6 +437,7 @@
       setPreview("prev_bg", imageState.bgUrl);
       setPreview("prev_og", imageState.ogImageUrl);
 
+      setColor("f_bgColor", "f_bgColor_picker", c.bgColor, "#0a192f");
       setColor("f_textColor", "f_textColor_picker", c.textColor, "#ffffff");
       setColor("f_overlayColor", "f_overlayColor_picker", c.overlayColor, "#0f172a");
       setColor("f_themeColor", "f_themeColor_picker", c.themeColor, "#0f172a");
@@ -484,6 +493,7 @@
         logoUrl: imageState.logoUrl,
         bgUrl: imageState.bgUrl,
         ogImageUrl: imageState.ogImageUrl,
+        bgColor: $("f_bgColor").value.trim(),
         textColor: $("f_textColor").value.trim(),
         overlayColor: $("f_overlayColor").value.trim(),
         themeColor: $("f_themeColor").value.trim(),

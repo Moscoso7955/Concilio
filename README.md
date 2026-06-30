@@ -48,7 +48,8 @@ Stored as a single JSON object in `callidus_settings.content`:
 | `footer`         | Footer text                               |
 | `showLogo`       | Show/hide the logo                        |
 | `logoUrl`        | Logo image URL                            |
-| `bgUrl`          | Background image URL                      |
+| `bgColor`        | Solid background color (hex)              |
+| `bgUrl`          | Optional background image (over the color)|
 | `textColor`      | Text color (hex)                          |
 | `overlayColor`   | Overlay color over the background (hex)   |
 | `overlayOpacity` | Overlay darkness (0–1)                    |
@@ -111,11 +112,12 @@ The frontend and edge function code are complete. To connect a Supabase project:
      "footer": "callidusco.com",
      "showLogo": true,
      "logoUrl": "/assets/images/logo.png",
-     "bgUrl": "/assets/images/bg.jpg",
+     "bgColor": "#0a192f",
+     "bgUrl": "",
      "textColor": "#ffffff",
      "overlayColor": "#0f172a",
-     "overlayOpacity": 0.6,
-     "themeColor": "#0f172a",
+     "overlayOpacity": 0,
+     "themeColor": "#0a192f",
      "seoTitle": "Callidus Co. — Coming Soon",
      "seoDescription": "Callidus Co. is launching soon. Stay tuned for something extraordinary.",
      "ogImageUrl": "https://callidusco.com/assets/images/og-image.png"

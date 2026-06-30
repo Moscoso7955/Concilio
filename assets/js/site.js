@@ -51,10 +51,11 @@
       }
     }
 
-    // --- Background image ---
+    // --- Background (solid color and/or image) ---
     var bg = document.querySelector(".coming-soon__bg");
-    if (bg && c.bgUrl) {
-      bg.style.backgroundImage = "url('" + c.bgUrl + "')";
+    if (bg) {
+      if (c.bgColor) bg.style.backgroundColor = c.bgColor;
+      if (c.bgUrl) bg.style.backgroundImage = "url('" + c.bgUrl + "')";
     }
 
     // --- Colors ---
