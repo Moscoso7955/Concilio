@@ -51,6 +51,7 @@
     }
 
     .coming-soon {
+      --text: #ffffff;
       position: relative;
       display: flex;
       flex-direction: column;
@@ -58,11 +59,12 @@
       justify-content: center;
       min-height: 100vh;
       overflow: hidden;
-      color: #ffffff;
+      color: var(--text);
       text-align: center;
     }
 
     .coming-soon__bg {
+      --overlay: rgba(15, 23, 42, 0.6);
       position: absolute;
       inset: 0;
       z-index: 0;
@@ -73,12 +75,7 @@
       content: '';
       position: absolute;
       inset: 0;
-      background: linear-gradient(
-        160deg,
-        rgba(15, 23, 42, 0.72) 0%,
-        rgba(15, 23, 42, 0.50) 50%,
-        rgba(15, 23, 42, 0.65) 100%
-      );
+      background: var(--overlay);
     }
 
     .coming-soon__content {
@@ -180,6 +177,10 @@
       <p class="coming-soon__footer">callidusco.com</p>
     </div>
   </main>
+
+  <!-- Dynamic content from Supabase (falls back to the static defaults above) -->
+  <script src="/assets/js/config.js"></script>
+  <script src="/assets/js/site.js"></script>
 
 </body>
 </html>

@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Callidus Co. — Site Administration</title>
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg: #0f172a;
+      --panel: #1e293b;
+      --panel-2: #273449;
+      --border: #334155;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --accent: #6366f1;
+      --accent-hover: #4f46e5;
+      --danger: #ef4444;
+      --ok: #22c55e;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      -webkit-font-smoothing: antialiased;
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+
+    /* ---------- Login ---------- */
+    .login {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 1.5rem;
+    }
+    .login__card {
+      width: 100%;
+      max-width: 380px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 2rem;
+      text-align: center;
+    }
+    .login__title { font-size: 1.25rem; font-weight: 700; margin-bottom: 0.25rem; }
+    .login__sub { color: var(--muted); font-size: 0.9rem; margin-bottom: 1.5rem; }
+
+    /* ---------- App layout ---------- */
+    .app { display: none; max-width: 880px; margin: 0 auto; padding: 1.5rem 1.25rem 5rem; }
+    .topbar {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap;
+    }
+    .topbar__title { font-size: 1.25rem; font-weight: 700; }
+    .topbar__title span { color: var(--muted); font-weight: 400; }
+    .topbar__actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 1.25rem 1.25rem 1.5rem;
+      margin-bottom: 1.25rem;
+    }
+    .card__title { font-size: 1rem; font-weight: 600; margin-bottom: 1rem; }
+
+    .field { margin-bottom: 1rem; }
+    .field:last-child { margin-bottom: 0; }
+    label { display: block; font-size: 0.82rem; color: var(--muted); margin-bottom: 0.35rem; }
+
+    input[type="text"], input[type="password"], input[type="url"], textarea, input[type="number"] {
+      width: 100%;
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      color: var(--text);
+      padding: 0.6rem 0.7rem;
+      font-size: 0.95rem;
+      font-family: inherit;
+    }
+    input:focus, textarea:focus { outline: none; border-color: var(--accent); }
+    textarea { resize: vertical; min-height: 72px; }
+
+    .row { display: flex; gap: 0.75rem; flex-wrap: wrap; }
+    .row > .field { flex: 1; min-width: 150px; }
+
+    input[type="color"] {
+      width: 48px; height: 38px; padding: 0; border: 1px solid var(--border);
+      border-radius: 8px; background: var(--panel-2); cursor: pointer;
+    }
+    .color-row { display: flex; align-items: center; gap: 0.6rem; }
+    .color-row input[type="text"] { max-width: 130px; }
+
+    input[type="range"] { width: 100%; accent-color: var(--accent); }
+
+    .toggle { display: flex; align-items: center; gap: 0.6rem; cursor: pointer; }
+    .toggle input { width: 18px; height: 18px; accent-color: var(--accent); }
+
+    .btn {
+      border: none; border-radius: 9px; padding: 0.6rem 1.1rem;
+      font-size: 0.9rem; font-weight: 600; cursor: pointer; font-family: inherit;
+      background: var(--accent); color: #fff; transition: background 0.15s;
+    }
+    .btn:hover { background: var(--accent-hover); }
+    .btn:disabled { opacity: 0.55; cursor: not-allowed; }
+    .btn--ghost { background: transparent; border: 1px solid var(--border); color: var(--text); }
+    .btn--ghost:hover { background: var(--panel-2); }
+    .btn--full { width: 100%; }
+
+    .img-field { display: flex; gap: 1rem; align-items: center; }
+    .img-preview {
+      width: 88px; height: 88px; flex-shrink: 0; border-radius: 10px;
+      border: 1px solid var(--border); background: var(--panel-2) center/contain no-repeat;
+      background-size: cover;
+    }
+    .img-field__controls { flex: 1; min-width: 0; }
+    .hint { font-size: 0.78rem; color: var(--muted); margin-top: 0.35rem; }
+
+    .savebar {
+      position: fixed; left: 0; right: 0; bottom: 0;
+      background: rgba(15,23,42,0.92); backdrop-filter: blur(8px);
+      border-top: 1px solid var(--border);
+      padding: 0.85rem 1.25rem;
+    }
+    .savebar__inner {
+      max-width: 880px; margin: 0 auto;
+      display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+    }
+
+    .status { font-size: 0.85rem; min-height: 1.2em; }
+    .status--ok { color: var(--ok); }
+    .status--err { color: var(--danger); }
+
+    .file-input { display: none; }
+    a.preview-link { color: var(--accent); font-size: 0.85rem; text-decoration: none; }
+    a.preview-link:hover { text-decoration: underline; }
+
+    .banner {
+      background: rgba(99,102,241,0.12); border: 1px solid var(--accent);
+      color: var(--text); border-radius: 10px; padding: 0.75rem 0.9rem;
+      font-size: 0.85rem; margin-bottom: 1.25rem;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ================= LOGIN ================= -->
+  <section class="login" id="loginView">
+    <div class="login__card">
+      <div class="login__title">Callidus Co.</div>
+      <div class="login__sub">Site Administration</div>
+      <form id="loginForm">
+        <div class="field">
+          <input type="password" id="loginPassword" placeholder="Password" autocomplete="current-password" required>
+        </div>
+        <button class="btn btn--full" type="submit" id="loginBtn">Sign in</button>
+      </form>
+      <div class="status status--err" id="loginStatus" style="margin-top:0.75rem;"></div>
+    </div>
+  </section>
+
+  <!-- ================= APP ================= -->
+  <main class="app" id="appView">
+    <div class="topbar">
+      <div class="topbar__title">Callidus Co. <span>/ Administration</span></div>
+      <div class="topbar__actions">
+        <a class="btn btn--ghost" href="/" target="_blank" rel="noopener">View site ↗</a>
+        <button class="btn btn--ghost" id="logoutBtn">Sign out</button>
+      </div>
+    </div>
+
+    <div class="banner" id="configBanner" style="display:none;">
+      ⚠️ Backend not configured yet. Connection keys are still placeholders, so saving is disabled.
+    </div>
+
+    <!-- Text copy -->
+    <div class="card">
+      <div class="card__title">Text</div>
+      <div class="field">
+        <label for="f_brand">Brand name</label>
+        <input type="text" id="f_brand" placeholder="Callidus Co.">
+      </div>
+      <div class="field">
+        <label for="f_tagline">Tagline</label>
+        <textarea id="f_tagline" placeholder="We're crafting an experience worth waiting for."></textarea>
+      </div>
+      <div class="field">
+        <label for="f_footer">Footer text</label>
+        <input type="text" id="f_footer" placeholder="callidusco.com">
+      </div>
+    </div>
+
+    <!-- Images -->
+    <div class="card">
+      <div class="card__title">Images</div>
+
+      <div class="field">
+        <label class="toggle"><input type="checkbox" id="f_showLogo"> Show logo</label>
+      </div>
+
+      <div class="field">
+        <label>Logo</label>
+        <div class="img-field">
+          <div class="img-preview" id="prev_logo"></div>
+          <div class="img-field__controls">
+            <button class="btn btn--ghost" type="button" data-upload="logoUrl">Upload logo…</button>
+            <input type="file" class="file-input" accept="image/*" data-for="logoUrl">
+            <div class="hint" id="hint_logoUrl">PNG with transparency works best.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Background image</label>
+        <div class="img-field">
+          <div class="img-preview" id="prev_bg"></div>
+          <div class="img-field__controls">
+            <button class="btn btn--ghost" type="button" data-upload="bgUrl">Upload background…</button>
+            <input type="file" class="file-input" accept="image/*" data-for="bgUrl">
+            <div class="hint" id="hint_bgUrl">Large landscape image, ~1920px wide.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Colors -->
+    <div class="card">
+      <div class="card__title">Colors</div>
+      <div class="row">
+        <div class="field">
+          <label>Text color</label>
+          <div class="color-row">
+            <input type="color" id="f_textColor_picker">
+            <input type="text" id="f_textColor" placeholder="#ffffff">
+          </div>
+        </div>
+        <div class="field">
+          <label>Overlay color</label>
+          <div class="color-row">
+            <input type="color" id="f_overlayColor_picker">
+            <input type="text" id="f_overlayColor" placeholder="#0f172a">
+          </div>
+        </div>
+        <div class="field">
+          <label>Theme color (browser UI)</label>
+          <div class="color-row">
+            <input type="color" id="f_themeColor_picker">
+            <input type="text" id="f_themeColor" placeholder="#0f172a">
+          </div>
+        </div>
+      </div>
+      <div class="field">
+        <label>Overlay darkness — <span id="overlayOpacityVal">0.60</span></label>
+        <input type="range" id="f_overlayOpacity" min="0" max="1" step="0.05">
+        <div class="hint">How much the dark overlay dims the background image.</div>
+      </div>
+    </div>
+
+    <!-- SEO -->
+    <div class="card">
+      <div class="card__title">SEO &amp; link preview</div>
+      <div class="field">
+        <label for="f_seoTitle">Page title</label>
+        <input type="text" id="f_seoTitle" placeholder="Callidus Co. — Coming Soon">
+      </div>
+      <div class="field">
+        <label for="f_seoDescription">Meta description</label>
+        <textarea id="f_seoDescription" placeholder="Callidus Co. is launching soon."></textarea>
+      </div>
+      <div class="field">
+        <label>Link preview image (Open Graph)</label>
+        <div class="img-field">
+          <div class="img-preview" id="prev_og"></div>
+          <div class="img-field__controls">
+            <button class="btn btn--ghost" type="button" data-upload="ogImageUrl">Upload preview image…</button>
+            <input type="file" class="file-input" accept="image/*" data-for="ogImageUrl">
+            <div class="hint">Shown when the link is shared. 1200×630px recommended.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Security -->
+    <div class="card">
+      <div class="card__title">Change password</div>
+      <div class="row">
+        <div class="field">
+          <label for="f_newPassword">New password</label>
+          <input type="password" id="f_newPassword" autocomplete="new-password" placeholder="••••••••">
+        </div>
+        <div class="field">
+          <label for="f_newPassword2">Confirm new password</label>
+          <input type="password" id="f_newPassword2" autocomplete="new-password" placeholder="••••••••">
+        </div>
+      </div>
+      <button class="btn btn--ghost" type="button" id="changePwBtn">Update password</button>
+      <div class="status" id="pwStatus" style="margin-top:0.6rem;"></div>
+    </div>
+  </main>
+
+  <!-- ================= SAVE BAR ================= -->
+  <div class="savebar" id="saveBar" style="display:none;">
+    <div class="savebar__inner">
+      <div class="status" id="saveStatus"></div>
+      <button class="btn" id="saveBtn">Save changes</button>
+    </div>
+  </div>
+
+  <script src="/assets/js/config.js"></script>
+  <script type="module">
+    import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
+
+    const cfg = window.CALLIDUS_CONFIG;
+    const configured = cfg && cfg.SUPABASE_URL && cfg.SUPABASE_URL.indexOf("__") !== 0;
+    const FN_URL = configured ? cfg.SUPABASE_URL + "/functions/v1/" + cfg.FUNCTION : null;
+    const supabase = configured ? createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY) : null;
+
+    let password = sessionStorage.getItem("callidus_pw") || "";
+
+    const $ = (id) => document.getElementById(id);
+    const loginView = $("loginView");
+    const appView = $("appView");
+    const saveBar = $("saveBar");
+
+    // Track uploaded image URLs (not bound to plain inputs)
+    const imageState = { logoUrl: "", bgUrl: "", ogUrl: "", ogImageUrl: "" };
+
+    async function callFn(action, payload = {}) {
+      if (!configured) throw new Error("Backend not configured.");
+      const res = await fetch(FN_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: cfg.SUPABASE_ANON_KEY,
+          Authorization: "Bearer " + cfg.SUPABASE_ANON_KEY
+        },
+        body: JSON.stringify({ action, password, ...payload })
+      });
+      let data = {};
+      try { data = await res.json(); } catch (_) {}
+      if (!res.ok || data.ok === false) {
+        throw new Error(data.error || ("Request failed (" + res.status + ")"));
+      }
+      return data;
+    }
+
+    /* ---------- Login ---------- */
+    $("loginForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const status = $("loginStatus");
+      status.textContent = "";
+      const btn = $("loginBtn");
+      btn.disabled = true; btn.textContent = "Signing in…";
+      password = $("loginPassword").value;
+      try {
+        if (configured) await callFn("verify");
+        sessionStorage.setItem("callidus_pw", password);
+        await enterApp();
+      } catch (err) {
+        status.textContent = err.message || "Incorrect password.";
+        password = "";
+      } finally {
+        btn.disabled = false; btn.textContent = "Sign in";
+      }
+    });
+
+    $("logoutBtn").addEventListener("click", () => {
+      sessionStorage.removeItem("callidus_pw");
+      password = "";
+      location.reload();
+    });
+
+    async function enterApp() {
+      loginView.style.display = "none";
+      appView.style.display = "block";
+      saveBar.style.display = "block";
+      if (!configured) $("configBanner").style.display = "block";
+      await loadSettings();
+    }
+
+    /* ---------- Color picker syncing ---------- */
+    function bindColor(textId, pickerId) {
+      const t = $(textId), p = $(pickerId);
+      p.addEventListener("input", () => { t.value = p.value; });
+      t.addEventListener("input", () => { if (/^#[0-9a-fA-F]{6}$/.test(t.value)) p.value = t.value; });
+    }
+    bindColor("f_textColor", "f_textColor_picker");
+    bindColor("f_overlayColor", "f_overlayColor_picker");
+    bindColor("f_themeColor", "f_themeColor_picker");
+
+    $("f_overlayOpacity").addEventListener("input", (e) => {
+      $("overlayOpacityVal").textContent = Number(e.target.value).toFixed(2);
+    });
+
+    /* ---------- Load current settings ---------- */
+    function setColor(textId, pickerId, val, fallback) {
+      const v = val || fallback;
+      $(textId).value = v;
+      if (/^#[0-9a-fA-F]{6}$/.test(v)) $(pickerId).value = v;
+    }
+
+    async function loadSettings() {
+      let c = {};
+      if (configured) {
+        try {
+          const url = cfg.SUPABASE_URL + "/rest/v1/" + cfg.TABLE + "?id=eq.1&select=content";
+          const res = await fetch(url, {
+            headers: { apikey: cfg.SUPABASE_ANON_KEY, Authorization: "Bearer " + cfg.SUPABASE_ANON_KEY }
+          });
+          const rows = await res.json();
+          if (rows && rows.length) c = rows[0].content || {};
+        } catch (_) {}
+      }
+      $("f_brand").value = c.brand || "";
+      $("f_tagline").value = c.tagline || "";
+      $("f_footer").value = c.footer || "";
+      $("f_showLogo").checked = c.showLogo !== false;
+
+      imageState.logoUrl = c.logoUrl || "";
+      imageState.bgUrl = c.bgUrl || "";
+      imageState.ogImageUrl = c.ogImageUrl || "";
+      setPreview("prev_logo", imageState.logoUrl);
+      setPreview("prev_bg", imageState.bgUrl);
+      setPreview("prev_og", imageState.ogImageUrl);
+
+      setColor("f_textColor", "f_textColor_picker", c.textColor, "#ffffff");
+      setColor("f_overlayColor", "f_overlayColor_picker", c.overlayColor, "#0f172a");
+      setColor("f_themeColor", "f_themeColor_picker", c.themeColor, "#0f172a");
+      const op = c.overlayOpacity != null ? c.overlayOpacity : 0.6;
+      $("f_overlayOpacity").value = op;
+      $("overlayOpacityVal").textContent = Number(op).toFixed(2);
+
+      $("f_seoTitle").value = c.seoTitle || "";
+      $("f_seoDescription").value = c.seoDescription || "";
+    }
+
+    function setPreview(id, url) {
+      const el = $(id);
+      el.style.backgroundImage = url ? "url('" + url + "')" : "";
+    }
+
+    /* ---------- Image uploads ---------- */
+    document.querySelectorAll("[data-upload]").forEach((btn) => {
+      const field = btn.getAttribute("data-upload");
+      const input = document.querySelector('input[data-for="' + field + '"]');
+      btn.addEventListener("click", () => input.click());
+      input.addEventListener("change", async () => {
+        const file = input.files[0];
+        if (!file) return;
+        const hint = $("hint_" + field);
+        const prevId = field === "logoUrl" ? "prev_logo" : field === "bgUrl" ? "prev_bg" : "prev_og";
+        try {
+          if (hint) hint.textContent = "Uploading…";
+          const ext = (file.name.split(".").pop() || "img").toLowerCase().replace(/[^a-z0-9]/g, "");
+          const path = field + "/" + Date.now() + "-" + Math.random().toString(36).slice(2, 8) + "." + ext;
+          const signed = await callFn("sign-upload", { path });
+          const { error } = await supabase.storage
+            .from(signed.bucket)
+            .uploadToSignedUrl(signed.path, signed.token, file);
+          if (error) throw error;
+          const publicUrl = cfg.SUPABASE_URL + "/storage/v1/object/public/" + signed.bucket + "/" + signed.path;
+          imageState[field] = publicUrl;
+          setPreview(prevId, publicUrl);
+          if (hint) hint.textContent = "Uploaded ✓ (remember to Save)";
+        } catch (err) {
+          if (hint) hint.textContent = "Upload failed: " + (err.message || err);
+        }
+      });
+    });
+
+    /* ---------- Save ---------- */
+    function collect() {
+      return {
+        brand: $("f_brand").value.trim(),
+        tagline: $("f_tagline").value.trim(),
+        footer: $("f_footer").value.trim(),
+        showLogo: $("f_showLogo").checked,
+        logoUrl: imageState.logoUrl,
+        bgUrl: imageState.bgUrl,
+        ogImageUrl: imageState.ogImageUrl,
+        textColor: $("f_textColor").value.trim(),
+        overlayColor: $("f_overlayColor").value.trim(),
+        themeColor: $("f_themeColor").value.trim(),
+        overlayOpacity: Number($("f_overlayOpacity").value),
+        seoTitle: $("f_seoTitle").value.trim(),
+        seoDescription: $("f_seoDescription").value.trim()
+      };
+    }
+
+    $("saveBtn").addEventListener("click", async () => {
+      const status = $("saveStatus");
+      const btn = $("saveBtn");
+      status.className = "status";
+      status.textContent = "";
+      btn.disabled = true; btn.textContent = "Saving…";
+      try {
+        await callFn("save", { content: collect() });
+        status.className = "status status--ok";
+        status.textContent = "Saved ✓";
+      } catch (err) {
+        status.className = "status status--err";
+        status.textContent = err.message || "Save failed.";
+      } finally {
+        btn.disabled = false; btn.textContent = "Save changes";
+      }
+    });
+
+    /* ---------- Change password ---------- */
+    $("changePwBtn").addEventListener("click", async () => {
+      const status = $("pwStatus");
+      status.className = "status";
+      const a = $("f_newPassword").value, b = $("f_newPassword2").value;
+      if (a.length < 6) { status.className = "status status--err"; status.textContent = "Use at least 6 characters."; return; }
+      if (a !== b) { status.className = "status status--err"; status.textContent = "Passwords don't match."; return; }
+      try {
+        await callFn("change-password", { newPassword: a });
+        password = a;
+        sessionStorage.setItem("callidus_pw", a);
+        $("f_newPassword").value = ""; $("f_newPassword2").value = "";
+        status.className = "status status--ok";
+        status.textContent = "Password updated ✓";
+      } catch (err) {
+        status.className = "status status--err";
+        status.textContent = err.message || "Update failed.";
+      }
+    });
+
+    /* ---------- Auto-resume session ---------- */
+    (async function init() {
+      if (!configured) { await enterApp(); return; }
+      if (password) {
+        try { await callFn("verify"); await enterApp(); }
+        catch (_) { sessionStorage.removeItem("callidus_pw"); password = ""; }
+      }
+    })();
+  </script>
+</body>
+</html>
