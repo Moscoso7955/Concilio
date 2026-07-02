@@ -1,145 +1,96 @@
-# Callidus Co. Coming Soon
+# Callidus Co.
 
-Static coming-soon page for Callidus Co. with a no-code admin panel for editing
-the page content (text, images, colors, SEO) without touching code.
+The public site (`callidusco.com`) plus a login-gated **Owner Portal** at
+`/administration` — a reporting terminal where owners view financials, share
+memos, and (for admins) edit the public site content.
 
 ## Live Site
 
-- https://callidusco.com
-- https://www.callidusco.com
-- Admin panel: https://callidusco.com/administration (password-gated)
+- https://callidusco.com — public site
+- https://callidusco.com/administration — Owner Portal (magic-link login)
 
 ## How it works
 
-The public page is plain static HTML/CSS hosted on Vercel (no build step). On
-load it fetches a single settings row from Supabase and applies it to the page.
-If Supabase is unreachable or not yet configured, the page falls back to the
-static defaults baked into `index.html`, so it never breaks.
+Everything is static HTML/CSS/JS on Vercel (no build step) talking directly to
+**Supabase** (Postgres + Auth + Storage). Access is enforced by **Row-Level
+Security** in the database, so the frontend can use the public anon key safely —
+users can only read/write what their role allows.
 
-All editing happens in the admin panel at `/administration`. Saving, password
-changes, and image uploads go through a Supabase Edge Function that performs
-every write with the service role behind a shared-password check — the public
-(anon) key can only read, never write.
+- **Public page** (`index.html`) reads the `site_content` row and renders it,
+  falling back to static defaults if the backend is unreachable.
+- **Owner Portal** (`administration/index.html`) uses **passwordless magic-link
+  email** auth. Only emails on the `allowed_owners` allowlist can sign in.
 
 ```
-index.html ──reads──► Supabase REST (callidus_settings, public read)
-administration/ ──writes──► Edge Function (callidus-admin) ──► DB + Storage (service role)
+index.html ──anon read──► site_content (public read policy)
+administration/ ──magic-link auth──► Supabase Auth ──► RLS-guarded tables
 ```
+
+## Portal features
+
+| Tab            | Who        | What                                                        |
+| -------------- | ---------- | ----------------------------------------------------------- |
+| Financials     | all owners | Monthly revenue/expenses/net; admins add rows or import CSV |
+| Memo Board     | all owners | Post/read memos; admins can pin; authors/admins can delete  |
+| Site Content   | admins     | Edit the public page (brand, tagline, colors, SEO)          |
+| Owners         | admins     | Manage the sign-in allowlist and roles                      |
+
+## Roles
+
+- **admin** — full access (financials write, pin memos, edit site, manage owners)
+- **owner** — read financials, post memos
+
+Roles live in `profiles.role`, seeded from `allowed_owners` when a user first
+signs in.
+
+## Data model
+
+- `allowed_owners(email, role)` — sign-in allowlist
+- `profiles(id→auth.users, email, full_name, role)` — auto-created on signup
+- `financials(period, revenue, expenses, net, notes)` — monthly snapshots
+- `memos(author, title, body, pinned, …)` — memo board
+- `site_content(id=1, content jsonb)` — public site CMS
+
+Full schema + RLS is in [`supabase/migrations/0001_full_backend.sql`](supabase/migrations/0001_full_backend.sql).
 
 ## Project structure
 
-- `index.html` — public page markup, styles, and static defaults.
-- `assets/js/config.js` — public Supabase connection config (URL + anon key).
-- `assets/js/site.js` — fetches settings and renders them on the public page.
-- `administration/index.html` — the admin editor (text, images, colors, SEO,
-  change password).
-- `supabase/functions/callidus-admin/index.ts` — edge function (all privileged
-  writes; shared-password auth).
-- `vercel.json` — `cleanUrls` so `/administration` resolves without `.html`.
+- `index.html` — public page + static defaults.
+- `assets/js/config.js` — public Supabase URL + anon key.
+- `assets/js/site.js` — renders `site_content` on the public page.
+- `administration/index.html` — the Owner Portal (auth + all tabs).
+- `supabase/migrations/0001_full_backend.sql` — the backend schema.
+- `vercel.json` — `cleanUrls` so `/administration` resolves.
 
-## Editable content
+## Backend setup (one-time, in the CallidusCo Supabase project)
 
-Stored as a single JSON object in `callidus_settings.content`:
+1. **Create the Supabase project** in the `CallidusCo` org.
 
-| Field            | Meaning                                   |
-| ---------------- | ----------------------------------------- |
-| `brand`          | Brand mark text                           |
-| `tagline`        | Tagline paragraph                         |
-| `footer`         | Footer text                               |
-| `showLogo`       | Show/hide the logo                        |
-| `logoUrl`        | Logo image URL                            |
-| `bgColor`        | Solid background color (hex)              |
-| `bgUrl`          | Optional background image (over the color)|
-| `textColor`      | Text color (hex)                          |
-| `overlayColor`   | Overlay color over the background (hex)   |
-| `overlayOpacity` | Overlay darkness (0–1)                    |
-| `themeColor`     | Browser UI theme color (hex)             |
-| `seoTitle`       | Page `<title>` + OG/Twitter title         |
-| `seoDescription` | Meta description + OG/Twitter description |
-| `ogImageUrl`     | Link-preview (Open Graph) image URL       |
+2. **Run the migration** — paste `supabase/migrations/0001_full_backend.sql`
+   into the Supabase SQL editor (or apply via MCP/CLI). It creates all tables,
+   RLS policies, the signup trigger, the storage bucket, and seeds
+   `christian@callidusco.com` as the first **admin**. Add/adjust owners later
+   from the portal's **Owners** tab.
 
-> Note: SEO/OG values update live in the browser via JS. Social crawlers that
-> don't run JS will see the static defaults in `index.html`. If crawler-accurate
-> dynamic previews are ever needed, render `index.html` server-side instead.
+3. **Configure Auth** (Dashboard → Authentication):
+   - Enable the **Email** provider with **magic links** (email OTP).
+   - **Site URL:** `https://callidusco.com`
+   - **Redirect URLs:** add `https://callidusco.com/administration` (and
+     `http://localhost:3000/administration` if testing locally).
+   - Leave "Confirm email" on; the allowlist trigger blocks any email that
+     isn't pre-approved, so public signups can stay enabled safely.
 
-## Backend setup (one-time wiring)
+4. **(Recommended) Custom SMTP** — Supabase's built-in email is rate-limited and
+   not meant for production. Configure SMTP (e.g. Resend/Postmark) under
+   Authentication → Emails so magic links deliver reliably from your domain.
 
-The frontend and edge function code are complete. To connect a Supabase project:
+5. **Fill in `assets/js/config.js`** — replace `__SUPABASE_URL__` and
+   `__SUPABASE_ANON_KEY__` with the project's URL and anon (publishable) key.
 
-1. **Create a Supabase project** (in the `CallidusCo` org).
-
-2. **Run the schema migration** (SQL editor or `apply_migration`):
-
-   ```sql
-   create table if not exists callidus_settings (
-     id int primary key default 1,
-     content jsonb not null default '{}'::jsonb,
-     updated_at timestamptz not null default now(),
-     constraint single_row check (id = 1)
-   );
-   create table if not exists callidus_auth (
-     id int primary key default 1,
-     password_hash text not null,
-     updated_at timestamptz not null default now(),
-     constraint single_row_auth check (id = 1)
-   );
-
-   alter table callidus_settings enable row level security;
-   alter table callidus_auth enable row level security;
-
-   -- Public can read settings; nobody can write via the API (writes go
-   -- through the edge function using the service role).
-   create policy "public read settings" on callidus_settings
-     for select to anon, authenticated using (true);
-   -- callidus_auth has RLS enabled and NO policies => no anon/authenticated access.
-   ```
-
-3. **Create a public storage bucket** named `callidus-assets`:
-
-   ```sql
-   insert into storage.buckets (id, name, public)
-   values ('callidus-assets', 'callidus-assets', true)
-   on conflict (id) do nothing;
-   ```
-
-4. **Seed the settings row and admin password.** Replace the hash with the
-   SHA-256 (hex) of your chosen password:
-
-   ```sql
-   insert into callidus_settings (id, content) values (1, '{
-     "brand": "Callidus Co.",
-     "tagline": "We'\''re crafting an experience worth waiting for. Stay tuned.",
-     "footer": "callidusco.com",
-     "showLogo": true,
-     "logoUrl": "/assets/images/logo.png",
-     "bgColor": "#0a192f",
-     "bgUrl": "",
-     "textColor": "#ffffff",
-     "overlayColor": "#0f172a",
-     "overlayOpacity": 0,
-     "themeColor": "#0a192f",
-     "seoTitle": "Callidus Co. — Coming Soon",
-     "seoDescription": "Callidus Co. is launching soon. Stay tuned for something extraordinary.",
-     "ogImageUrl": "https://callidusco.com/assets/images/og-image.png"
-   }'::jsonb)
-   on conflict (id) do nothing;
-
-   insert into callidus_auth (id, password_hash)
-   values (1, '<sha256-hex-of-your-password>')
-   on conflict (id) do nothing;
-   ```
-
-5. **Deploy the edge function** `callidus-admin` from
-   `supabase/functions/callidus-admin/index.ts`. It uses the built-in
-   `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` env vars — no extra secrets.
-
-6. **Fill in `assets/js/config.js`** with the project URL and anon key
-   (replace the `__SUPABASE_URL__` / `__SUPABASE_ANON_KEY__` placeholders).
-
-7. **Commit, push, and deploy.** The admin panel is then live at
-   `/administration`. Sign in with your password and change it from the panel.
+6. **Commit + push** so Vercel deploys. Then visit `/administration`, sign in
+   with `christian@callidusco.com`, and invite the other owners.
 
 ## Deployment
 
-Hosted on Vercel. The production project deploys from the connected GitHub
-repository on pushes to its production branch.
+Hosted on Vercel; production deploys from the repo's `main` branch. This portal
+work lives on `claude/repo-vercel-visibility-ti61mq` until it's ready to merge.

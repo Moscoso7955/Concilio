@@ -4,319 +4,260 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="robots" content="noindex, nofollow">
-  <title>Callidus Co. — Site Administration</title>
+  <title>Callidus Co. — Owner Portal</title>
   <link rel="icon" href="/favicon.ico" sizes="any">
   <style>
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-
     :root {
-      --bg: #0f172a;
-      --panel: #1e293b;
-      --panel-2: #273449;
-      --border: #334155;
-      --text: #e2e8f0;
-      --muted: #94a3b8;
-      --accent: #6366f1;
-      --accent-hover: #4f46e5;
-      --danger: #ef4444;
-      --ok: #22c55e;
+      --bg: #0a192f; --panel: #112240; --panel-2: #1c2f52; --border: #24406e;
+      --text: #e2e8f0; --muted: #94a3b8; --accent: #6366f1; --accent-hover: #4f46e5;
+      --danger: #ef4444; --ok: #22c55e; --amber: #f59e0b;
     }
-
     body {
       font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      -webkit-font-smoothing: antialiased;
-      line-height: 1.5;
-      min-height: 100vh;
+      background: var(--bg); color: var(--text); -webkit-font-smoothing: antialiased;
+      line-height: 1.5; min-height: 100vh;
     }
+    .hidden { display: none !important; }
 
-    /* ---------- Login ---------- */
-    .login {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 100vh;
+    /* ---------- Centered card (login / notices) ---------- */
+    .center { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 1.5rem; }
+    .card {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
       padding: 1.5rem;
     }
-    .login__card {
-      width: 100%;
-      max-width: 380px;
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      padding: 2rem;
-      text-align: center;
-    }
-    .login__title { font-size: 1.25rem; font-weight: 700; margin-bottom: 0.25rem; }
-    .login__sub { color: var(--muted); font-size: 0.9rem; margin-bottom: 1.5rem; }
+    .auth-card { width: 100%; max-width: 400px; text-align: center; }
+    .auth-card h1 { font-size: 1.3rem; margin-bottom: 0.2rem; }
+    .auth-card p.sub { color: var(--muted); font-size: 0.9rem; margin-bottom: 1.4rem; }
 
-    /* ---------- App layout ---------- */
-    .app { display: none; max-width: 880px; margin: 0 auto; padding: 1.5rem 1.25rem 5rem; }
-    .topbar {
-      display: flex; align-items: center; justify-content: space-between;
-      gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap;
-    }
-    .topbar__title { font-size: 1.25rem; font-weight: 700; }
-    .topbar__title span { color: var(--muted); font-weight: 400; }
-    .topbar__actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
-
-    .card {
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      padding: 1.25rem 1.25rem 1.5rem;
-      margin-bottom: 1.25rem;
-    }
-    .card__title { font-size: 1rem; font-weight: 600; margin-bottom: 1rem; }
-
-    .field { margin-bottom: 1rem; }
-    .field:last-child { margin-bottom: 0; }
     label { display: block; font-size: 0.82rem; color: var(--muted); margin-bottom: 0.35rem; }
-
-    input[type="text"], input[type="password"], input[type="url"], textarea, input[type="number"] {
-      width: 100%;
-      background: var(--panel-2);
-      border: 1px solid var(--border);
-      border-radius: 9px;
-      color: var(--text);
-      padding: 0.6rem 0.7rem;
-      font-size: 0.95rem;
-      font-family: inherit;
+    input[type="text"], input[type="email"], input[type="number"], input[type="month"],
+    input[type="url"], textarea, select {
+      width: 100%; background: var(--panel-2); border: 1px solid var(--border);
+      border-radius: 9px; color: var(--text); padding: 0.6rem 0.7rem; font-size: 0.95rem; font-family: inherit;
     }
-    input:focus, textarea:focus { outline: none; border-color: var(--accent); }
-    textarea { resize: vertical; min-height: 72px; }
-
-    .row { display: flex; gap: 0.75rem; flex-wrap: wrap; }
-    .row > .field { flex: 1; min-width: 150px; }
-
-    input[type="color"] {
-      width: 48px; height: 38px; padding: 0; border: 1px solid var(--border);
-      border-radius: 8px; background: var(--panel-2); cursor: pointer;
-    }
-    .color-row { display: flex; align-items: center; gap: 0.6rem; }
-    .color-row input[type="text"] { max-width: 130px; }
-
-    input[type="range"] { width: 100%; accent-color: var(--accent); }
-
-    .toggle { display: flex; align-items: center; gap: 0.6rem; cursor: pointer; }
-    .toggle input { width: 18px; height: 18px; accent-color: var(--accent); }
+    input:focus, textarea:focus, select:focus { outline: none; border-color: var(--accent); }
+    textarea { resize: vertical; min-height: 70px; }
 
     .btn {
-      border: none; border-radius: 9px; padding: 0.6rem 1.1rem;
-      font-size: 0.9rem; font-weight: 600; cursor: pointer; font-family: inherit;
-      background: var(--accent); color: #fff; transition: background 0.15s;
+      border: none; border-radius: 9px; padding: 0.6rem 1.1rem; font-size: 0.9rem; font-weight: 600;
+      cursor: pointer; font-family: inherit; background: var(--accent); color: #fff; transition: background 0.15s;
     }
     .btn:hover { background: var(--accent-hover); }
     .btn:disabled { opacity: 0.55; cursor: not-allowed; }
     .btn--ghost { background: transparent; border: 1px solid var(--border); color: var(--text); }
     .btn--ghost:hover { background: var(--panel-2); }
+    .btn--sm { padding: 0.35rem 0.6rem; font-size: 0.8rem; }
+    .btn--danger { background: transparent; border: 1px solid var(--danger); color: #fca5a5; }
     .btn--full { width: 100%; }
 
-    .img-field { display: flex; gap: 1rem; align-items: center; }
-    .img-preview {
-      width: 88px; height: 88px; flex-shrink: 0; border-radius: 10px;
-      border: 1px solid var(--border); background: var(--panel-2) center/contain no-repeat;
-      background-size: cover;
-    }
-    .img-field__controls { flex: 1; min-width: 0; }
-    .hint { font-size: 0.78rem; color: var(--muted); margin-top: 0.35rem; }
+    .status { font-size: 0.85rem; min-height: 1.2em; margin-top: 0.6rem; }
+    .status--ok { color: var(--ok); } .status--err { color: var(--danger); }
 
-    .savebar {
-      position: fixed; left: 0; right: 0; bottom: 0;
-      background: rgba(15,23,42,0.92); backdrop-filter: blur(8px);
-      border-top: 1px solid var(--border);
-      padding: 0.85rem 1.25rem;
-    }
-    .savebar__inner {
-      max-width: 880px; margin: 0 auto;
-      display: flex; align-items: center; justify-content: space-between; gap: 1rem;
-    }
+    /* ---------- App shell ---------- */
+    .shell { max-width: 960px; margin: 0 auto; padding: 1.25rem 1.25rem 4rem; }
+    .topbar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; }
+    .brandmark { font-weight: 700; font-size: 1.15rem; }
+    .brandmark span { color: var(--muted); font-weight: 400; }
+    .whoami { display: flex; align-items: center; gap: 0.6rem; font-size: 0.85rem; color: var(--muted); }
+    .badge { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.06em; padding: 0.15rem 0.45rem;
+      border-radius: 999px; background: var(--panel-2); border: 1px solid var(--border); color: var(--text); }
+    .badge--admin { color: #c7d2fe; border-color: var(--accent); }
 
-    .status { font-size: 0.85rem; min-height: 1.2em; }
-    .status--ok { color: var(--ok); }
-    .status--err { color: var(--danger); }
+    .tabs { display: flex; gap: 0.25rem; border-bottom: 1px solid var(--border); margin-bottom: 1.25rem; flex-wrap: wrap; }
+    .tab {
+      background: none; border: none; color: var(--muted); font: inherit; font-weight: 600;
+      padding: 0.6rem 0.9rem; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px;
+    }
+    .tab:hover { color: var(--text); }
+    .tab.active { color: #fff; border-bottom-color: var(--accent); }
 
+    .section-card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 1.25rem; margin-bottom: 1.25rem; }
+    .section-card h2 { font-size: 1rem; margin-bottom: 1rem; }
+    .row { display: flex; gap: 0.75rem; flex-wrap: wrap; }
+    .row > * { flex: 1; min-width: 140px; }
+    .field { margin-bottom: 1rem; }
+
+    /* ---------- Financial summary cards ---------- */
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 0.9rem; margin-bottom: 1.25rem; }
+    .stat { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 1rem 1.1rem; }
+    .stat .k { font-size: 0.78rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+    .stat .v { font-size: 1.6rem; font-weight: 700; margin-top: 0.25rem; }
+    .v.pos { color: var(--ok); } .v.neg { color: var(--danger); }
+
+    /* ---------- Tables ---------- */
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    th, td { text-align: left; padding: 0.6rem 0.7rem; border-bottom: 1px solid var(--border); white-space: nowrap; }
+    th { color: var(--muted); font-weight: 600; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; }
+    td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+    /* ---------- Memos ---------- */
+    .memo { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 1rem 1.1rem; margin-bottom: 0.9rem; }
+    .memo.pinned { border-color: var(--amber); }
+    .memo__head { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; }
+    .memo__title { font-weight: 700; }
+    .memo__meta { font-size: 0.78rem; color: var(--muted); margin-top: 0.15rem; }
+    .memo__body { margin-top: 0.5rem; white-space: pre-wrap; }
+    .memo__actions { display: flex; gap: 0.4rem; }
+    .pin-dot { color: var(--amber); }
+
+    .img-preview { width: 80px; height: 80px; border-radius: 10px; border: 1px solid var(--border);
+      background: var(--panel-2) center/cover no-repeat; flex: 0 0 auto; }
+    .color-row { display: flex; align-items: center; gap: 0.5rem; }
+    input[type="color"] { width: 42px; height: 36px; padding: 0; border: 1px solid var(--border); border-radius: 8px; background: var(--panel-2); }
+    .muted { color: var(--muted); font-size: 0.85rem; }
     .file-input { display: none; }
-    a.preview-link { color: var(--accent); font-size: 0.85rem; text-decoration: none; }
-    a.preview-link:hover { text-decoration: underline; }
-
-    .banner {
-      background: rgba(99,102,241,0.12); border: 1px solid var(--accent);
-      color: var(--text); border-radius: 10px; padding: 0.75rem 0.9rem;
-      font-size: 0.85rem; margin-bottom: 1.25rem;
-    }
   </style>
 </head>
 <body>
 
-  <!-- ================= LOGIN ================= -->
-  <section class="login" id="loginView">
-    <div class="login__card">
-      <div class="login__title">Callidus Co.</div>
-      <div class="login__sub">Site Administration</div>
+  <!-- Not configured -->
+  <div class="center hidden" id="notConfigured">
+    <div class="card auth-card">
+      <h1>Owner Portal</h1>
+      <p class="sub">Backend not connected yet</p>
+      <p class="muted">The Supabase project hasn't been wired up. Once the CallidusCo project is
+      created and the keys are added to <code>config.js</code>, sign-in will be enabled here.</p>
+    </div>
+  </div>
+
+  <!-- Login -->
+  <div class="center hidden" id="loginView">
+    <div class="card auth-card">
+      <h1>Callidus Co.</h1>
+      <p class="sub">Owner Portal — sign in</p>
       <form id="loginForm">
-        <div class="field">
-          <input type="password" id="loginPassword" placeholder="Password" autocomplete="current-password" required>
+        <div class="field" style="text-align:left;">
+          <label for="email">Email</label>
+          <input type="email" id="email" placeholder="you@company.com" autocomplete="email" required>
         </div>
-        <button class="btn btn--full" type="submit" id="loginBtn">Sign in</button>
+        <button class="btn btn--full" type="submit" id="loginBtn">Email me a magic link</button>
       </form>
-      <div class="status status--err" id="loginStatus" style="margin-top:0.75rem;"></div>
+      <div class="status" id="loginStatus"></div>
     </div>
-  </section>
+  </div>
 
-  <!-- ================= APP ================= -->
-  <main class="app" id="appView">
+  <!-- Check email -->
+  <div class="center hidden" id="checkEmail">
+    <div class="card auth-card">
+      <h1>Check your inbox 📬</h1>
+      <p class="sub">We sent a sign-in link to <strong id="sentTo"></strong></p>
+      <p class="muted">Click the link on this device to sign in. You can close this tab.</p>
+      <button class="btn btn--ghost btn--full" style="margin-top:1.2rem;" id="backToLogin">Use a different email</button>
+    </div>
+  </div>
+
+  <!-- App -->
+  <div class="shell hidden" id="appView">
     <div class="topbar">
-      <div class="topbar__title">Callidus Co. <span>/ Administration</span></div>
-      <div class="topbar__actions">
-        <a class="btn btn--ghost" href="/" target="_blank" rel="noopener">View site ↗</a>
-        <button class="btn btn--ghost" id="logoutBtn">Sign out</button>
+      <div class="brandmark">Callidus Co. <span>/ Owner Portal</span></div>
+      <div class="whoami">
+        <span id="userEmail"></span>
+        <span class="badge" id="roleBadge">owner</span>
+        <button class="btn btn--ghost btn--sm" id="signOutBtn">Sign out</button>
       </div>
     </div>
 
-    <div class="banner" id="configBanner" style="display:none;">
-      ⚠️ Backend not configured yet. Connection keys are still placeholders, so saving is disabled.
+    <div class="tabs">
+      <button class="tab active" data-tab="financials">Financials</button>
+      <button class="tab" data-tab="memos">Memo Board</button>
+      <button class="tab admin-only hidden" data-tab="site">Site Content</button>
+      <button class="tab admin-only hidden" data-tab="owners">Owners</button>
     </div>
 
-    <!-- Text copy -->
-    <div class="card">
-      <div class="card__title">Text</div>
-      <div class="field">
-        <label for="f_brand">Brand name</label>
-        <input type="text" id="f_brand" placeholder="Callidus Co.">
-      </div>
-      <div class="field">
-        <label for="f_tagline">Tagline</label>
-        <textarea id="f_tagline" placeholder="We're crafting an experience worth waiting for."></textarea>
-      </div>
-      <div class="field">
-        <label for="f_footer">Footer text</label>
-        <input type="text" id="f_footer" placeholder="callidusco.com">
-      </div>
-    </div>
+    <!-- Financials -->
+    <section class="tab-panel" data-panel="financials">
+      <div class="stats" id="finStats"></div>
 
-    <!-- Images -->
-    <div class="card">
-      <div class="card__title">Images</div>
-
-      <div class="field">
-        <label class="toggle"><input type="checkbox" id="f_showLogo"> Show logo</label>
+      <div class="section-card admin-only hidden">
+        <h2>Add / update a month</h2>
+        <div class="row">
+          <div><label>Month</label><input type="month" id="fin_period"></div>
+          <div><label>Revenue</label><input type="number" step="0.01" id="fin_revenue" placeholder="0.00"></div>
+          <div><label>Expenses</label><input type="number" step="0.01" id="fin_expenses" placeholder="0.00"></div>
+        </div>
+        <div class="field" style="margin-top:0.75rem;"><label>Notes</label><input type="text" id="fin_notes" placeholder="Optional"></div>
+        <div class="row" style="align-items:center;">
+          <button class="btn" id="finSaveBtn" style="flex:0 0 auto;">Save month</button>
+          <button class="btn btn--ghost" id="finCsvBtn" style="flex:0 0 auto;">Import CSV…</button>
+          <input type="file" class="file-input" id="finCsvInput" accept=".csv,text/csv">
+          <span class="muted" id="finFormStatus"></span>
+        </div>
+        <p class="muted" style="margin-top:0.5rem;">CSV columns: <code>period,revenue,expenses,notes</code> (period as YYYY-MM).</p>
       </div>
 
-      <div class="field">
-        <label>Logo</label>
-        <div class="img-field">
-          <div class="img-preview" id="prev_logo"></div>
-          <div class="img-field__controls">
-            <button class="btn btn--ghost" type="button" data-upload="logoUrl">Upload logo…</button>
-            <input type="file" class="file-input" accept="image/*" data-for="logoUrl">
-            <div class="hint" id="hint_logoUrl">PNG with transparency works best.</div>
-          </div>
+      <div class="section-card">
+        <h2>Monthly figures</h2>
+        <div class="table-wrap">
+          <table id="finTable">
+            <thead><tr>
+              <th>Month</th><th class="num">Revenue</th><th class="num">Expenses</th><th class="num">Net</th><th>Notes</th><th class="admin-only hidden"></th>
+            </tr></thead>
+            <tbody id="finBody"></tbody>
+          </table>
         </div>
+        <p class="muted" id="finEmpty">No figures yet.</p>
       </div>
+    </section>
 
-      <div class="field">
-        <label>Background image</label>
-        <div class="img-field">
-          <div class="img-preview" id="prev_bg"></div>
-          <div class="img-field__controls">
-            <button class="btn btn--ghost" type="button" data-upload="bgUrl">Upload background…</button>
-            <input type="file" class="file-input" accept="image/*" data-for="bgUrl">
-            <div class="hint" id="hint_bgUrl">Optional. Sits on top of the background color. ~1920px wide.</div>
-          </div>
+    <!-- Memos -->
+    <section class="tab-panel hidden" data-panel="memos">
+      <div class="section-card">
+        <h2>Post a memo</h2>
+        <div class="field"><label>Title</label><input type="text" id="memo_title" placeholder="Short headline"></div>
+        <div class="field"><label>Message</label><textarea id="memo_body" placeholder="Write a note for the team…"></textarea></div>
+        <div class="row" style="align-items:center;">
+          <label class="admin-only hidden" style="flex:0 0 auto; display:flex; align-items:center; gap:0.4rem; margin:0;">
+            <input type="checkbox" id="memo_pinned" style="width:auto;"> Pin
+          </label>
+          <button class="btn" id="memoPostBtn" style="flex:0 0 auto;">Post memo</button>
+          <span class="muted" id="memoStatus"></span>
         </div>
       </div>
-    </div>
+      <div id="memoList"></div>
+      <p class="muted" id="memoEmpty">No memos yet.</p>
+    </section>
 
-    <!-- Colors -->
-    <div class="card">
-      <div class="card__title">Colors</div>
-      <div class="row">
-        <div class="field">
-          <label>Background color</label>
-          <div class="color-row">
-            <input type="color" id="f_bgColor_picker">
-            <input type="text" id="f_bgColor" placeholder="#0a192f">
-          </div>
+    <!-- Site Content (admin) -->
+    <section class="tab-panel hidden" data-panel="site">
+      <div class="section-card">
+        <h2>Public site content</h2>
+        <div class="field"><label>Brand</label><input type="text" id="s_brand"></div>
+        <div class="field"><label>Tagline</label><textarea id="s_tagline"></textarea></div>
+        <div class="field"><label>Footer</label><input type="text" id="s_footer"></div>
+        <div class="row">
+          <div><label>Background color</label><div class="color-row"><input type="color" id="s_bgColor_p"><input type="text" id="s_bgColor"></div></div>
+          <div><label>Text color</label><div class="color-row"><input type="color" id="s_textColor_p"><input type="text" id="s_textColor"></div></div>
         </div>
-        <div class="field">
-          <label>Text color</label>
-          <div class="color-row">
-            <input type="color" id="f_textColor_picker">
-            <input type="text" id="f_textColor" placeholder="#ffffff">
-          </div>
-        </div>
-        <div class="field">
-          <label>Overlay color</label>
-          <div class="color-row">
-            <input type="color" id="f_overlayColor_picker">
-            <input type="text" id="f_overlayColor" placeholder="#0f172a">
-          </div>
-        </div>
-        <div class="field">
-          <label>Theme color (browser UI)</label>
-          <div class="color-row">
-            <input type="color" id="f_themeColor_picker">
-            <input type="text" id="f_themeColor" placeholder="#0f172a">
-          </div>
+        <div class="field" style="margin-top:1rem;"><label>SEO title</label><input type="text" id="s_seoTitle"></div>
+        <div class="field"><label>SEO description</label><textarea id="s_seoDescription"></textarea></div>
+        <div class="row" style="align-items:center;">
+          <button class="btn" id="siteSaveBtn" style="flex:0 0 auto;">Save site content</button>
+          <span class="muted" id="siteStatus"></span>
         </div>
       </div>
-      <div class="field">
-        <label>Overlay darkness — <span id="overlayOpacityVal">0.60</span></label>
-        <input type="range" id="f_overlayOpacity" min="0" max="1" step="0.05">
-        <div class="hint">How much the dark overlay dims the background image.</div>
-      </div>
-    </div>
+    </section>
 
-    <!-- SEO -->
-    <div class="card">
-      <div class="card__title">SEO &amp; link preview</div>
-      <div class="field">
-        <label for="f_seoTitle">Page title</label>
-        <input type="text" id="f_seoTitle" placeholder="Callidus Co. — Coming Soon">
+    <!-- Owners (admin) -->
+    <section class="tab-panel hidden" data-panel="owners">
+      <div class="section-card">
+        <h2>Invite an owner</h2>
+        <p class="muted" style="margin-bottom:0.75rem;">Add an email to the allowlist. They can then sign in with a magic link.</p>
+        <div class="row" style="align-items:center;">
+          <div style="flex:1;"><input type="email" id="owner_email" placeholder="owner@company.com"></div>
+          <div style="flex:0 0 auto;"><select id="owner_role"><option value="owner">Owner</option><option value="admin">Admin</option></select></div>
+          <button class="btn" id="ownerAddBtn" style="flex:0 0 auto;">Add</button>
+        </div>
+        <span class="muted" id="ownerStatus"></span>
       </div>
-      <div class="field">
-        <label for="f_seoDescription">Meta description</label>
-        <textarea id="f_seoDescription" placeholder="Callidus Co. is launching soon."></textarea>
-      </div>
-      <div class="field">
-        <label>Link preview image (Open Graph)</label>
-        <div class="img-field">
-          <div class="img-preview" id="prev_og"></div>
-          <div class="img-field__controls">
-            <button class="btn btn--ghost" type="button" data-upload="ogImageUrl">Upload preview image…</button>
-            <input type="file" class="file-input" accept="image/*" data-for="ogImageUrl">
-            <div class="hint">Shown when the link is shared. 1200×630px recommended.</div>
-          </div>
+      <div class="section-card">
+        <h2>Allowlist</h2>
+        <div class="table-wrap">
+          <table><thead><tr><th>Email</th><th>Role</th><th></th></tr></thead><tbody id="ownerBody"></tbody></table>
         </div>
       </div>
-    </div>
-
-    <!-- Security -->
-    <div class="card">
-      <div class="card__title">Change password</div>
-      <div class="row">
-        <div class="field">
-          <label for="f_newPassword">New password</label>
-          <input type="password" id="f_newPassword" autocomplete="new-password" placeholder="••••••••">
-        </div>
-        <div class="field">
-          <label for="f_newPassword2">Confirm new password</label>
-          <input type="password" id="f_newPassword2" autocomplete="new-password" placeholder="••••••••">
-        </div>
-      </div>
-      <button class="btn btn--ghost" type="button" id="changePwBtn">Update password</button>
-      <div class="status" id="pwStatus" style="margin-top:0.6rem;"></div>
-    </div>
-  </main>
-
-  <!-- ================= SAVE BAR ================= -->
-  <div class="savebar" id="saveBar" style="display:none;">
-    <div class="savebar__inner">
-      <div class="status" id="saveStatus"></div>
-      <button class="btn" id="saveBtn">Save changes</button>
-    </div>
+    </section>
   </div>
 
   <script src="/assets/js/config.js"></script>
@@ -325,230 +266,288 @@
 
     const cfg = window.CALLIDUS_CONFIG;
     const configured = cfg && cfg.SUPABASE_URL && cfg.SUPABASE_URL.indexOf("__") !== 0;
-    const FN_URL = configured ? cfg.SUPABASE_URL + "/functions/v1/" + cfg.FUNCTION : null;
-    const supabase = configured ? createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY) : null;
-
-    let password = sessionStorage.getItem("callidus_pw") || "";
-
     const $ = (id) => document.getElementById(id);
-    const loginView = $("loginView");
-    const appView = $("appView");
-    const saveBar = $("saveBar");
+    const show = (el, on = true) => el.classList.toggle("hidden", !on);
+    const money = (n) => "$" + Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const monthLabel = (d) => new Date(d + "T00:00:00").toLocaleDateString(undefined, { year: "numeric", month: "short" });
 
-    // Track uploaded image URLs (not bound to plain inputs)
-    const imageState = { logoUrl: "", bgUrl: "", ogUrl: "", ogImageUrl: "" };
+    if (!configured) { show($("notConfigured"), true); throw new Error("not configured"); }
 
-    async function callFn(action, payload = {}) {
-      if (!configured) throw new Error("Backend not configured.");
-      const res = await fetch(FN_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: cfg.SUPABASE_ANON_KEY,
-          Authorization: "Bearer " + cfg.SUPABASE_ANON_KEY
-        },
-        body: JSON.stringify({ action, password, ...payload })
-      });
-      let data = {};
-      try { data = await res.json(); } catch (_) {}
-      if (!res.ok || data.ok === false) {
-        throw new Error(data.error || ("Request failed (" + res.status + ")"));
-      }
-      return data;
-    }
+    const supabase = createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY, {
+      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
+    });
 
-    /* ---------- Login ---------- */
+    let profile = null;
+    const isAdmin = () => profile && profile.role === "admin";
+
+    /* ---------------- Auth ---------------- */
     $("loginForm").addEventListener("submit", async (e) => {
       e.preventDefault();
-      const status = $("loginStatus");
-      status.textContent = "";
-      const btn = $("loginBtn");
-      btn.disabled = true; btn.textContent = "Signing in…";
-      password = $("loginPassword").value;
-      try {
-        if (configured) await callFn("verify");
-        sessionStorage.setItem("callidus_pw", password);
-        await enterApp();
-      } catch (err) {
-        status.textContent = err.message || "Incorrect password.";
-        password = "";
-      } finally {
-        btn.disabled = false; btn.textContent = "Sign in";
+      const email = $("email").value.trim();
+      const st = $("loginStatus"); st.className = "status"; st.textContent = "";
+      const btn = $("loginBtn"); btn.disabled = true; btn.textContent = "Sending…";
+      const { error } = await supabase.auth.signInWithOtp({
+        email, options: { emailRedirectTo: location.origin + "/administration" }
+      });
+      btn.disabled = false; btn.textContent = "Email me a magic link";
+      if (error) { st.className = "status status--err"; st.textContent = error.message; return; }
+      $("sentTo").textContent = email;
+      show($("loginView"), false); show($("checkEmail"), true);
+    });
+    $("backToLogin").addEventListener("click", () => { show($("checkEmail"), false); show($("loginView"), true); });
+    $("signOutBtn").addEventListener("click", async () => { await supabase.auth.signOut(); location.reload(); });
+
+    supabase.auth.onAuthStateChange((_event, session) => { route(session); });
+
+    async function route(session) {
+      if (!session) {
+        show($("appView"), false); show($("checkEmail"), false); show($("loginView"), true);
+        return;
       }
-    });
-
-    $("logoutBtn").addEventListener("click", () => {
-      sessionStorage.removeItem("callidus_pw");
-      password = "";
-      location.reload();
-    });
-
-    async function enterApp() {
-      loginView.style.display = "none";
-      appView.style.display = "block";
-      saveBar.style.display = "block";
-      if (!configured) $("configBanner").style.display = "block";
-      await loadSettings();
-    }
-
-    /* ---------- Color picker syncing ---------- */
-    function bindColor(textId, pickerId) {
-      const t = $(textId), p = $(pickerId);
-      p.addEventListener("input", () => { t.value = p.value; });
-      t.addEventListener("input", () => { if (/^#[0-9a-fA-F]{6}$/.test(t.value)) p.value = t.value; });
-    }
-    bindColor("f_bgColor", "f_bgColor_picker");
-    bindColor("f_textColor", "f_textColor_picker");
-    bindColor("f_overlayColor", "f_overlayColor_picker");
-    bindColor("f_themeColor", "f_themeColor_picker");
-
-    $("f_overlayOpacity").addEventListener("input", (e) => {
-      $("overlayOpacityVal").textContent = Number(e.target.value).toFixed(2);
-    });
-
-    /* ---------- Load current settings ---------- */
-    function setColor(textId, pickerId, val, fallback) {
-      const v = val || fallback;
-      $(textId).value = v;
-      if (/^#[0-9a-fA-F]{6}$/.test(v)) $(pickerId).value = v;
-    }
-
-    async function loadSettings() {
-      let c = {};
-      if (configured) {
-        try {
-          const url = cfg.SUPABASE_URL + "/rest/v1/" + cfg.TABLE + "?id=eq.1&select=content";
-          const res = await fetch(url, {
-            headers: { apikey: cfg.SUPABASE_ANON_KEY, Authorization: "Bearer " + cfg.SUPABASE_ANON_KEY }
-          });
-          const rows = await res.json();
-          if (rows && rows.length) c = rows[0].content || {};
-        } catch (_) {}
+      // Load profile (created by the signup trigger for allowlisted emails)
+      const { data, error } = await supabase.from("profiles").select("*").eq("id", session.user.id).single();
+      if (error || !data) {
+        // Allowlisted trigger should have made this; if missing, treat as unauthorized.
+        show($("loginView"), false); show($("checkEmail"), false);
+        const st = $("loginStatus"); st.className = "status status--err";
+        st.textContent = "This account isn't authorized for portal access.";
+        show($("loginView"), true);
+        await supabase.auth.signOut();
+        return;
       }
-      $("f_brand").value = c.brand || "";
-      $("f_tagline").value = c.tagline || "";
-      $("f_footer").value = c.footer || "";
-      $("f_showLogo").checked = c.showLogo !== false;
-
-      imageState.logoUrl = c.logoUrl || "";
-      imageState.bgUrl = c.bgUrl || "";
-      imageState.ogImageUrl = c.ogImageUrl || "";
-      setPreview("prev_logo", imageState.logoUrl);
-      setPreview("prev_bg", imageState.bgUrl);
-      setPreview("prev_og", imageState.ogImageUrl);
-
-      setColor("f_bgColor", "f_bgColor_picker", c.bgColor, "#0a192f");
-      setColor("f_textColor", "f_textColor_picker", c.textColor, "#ffffff");
-      setColor("f_overlayColor", "f_overlayColor_picker", c.overlayColor, "#0f172a");
-      setColor("f_themeColor", "f_themeColor_picker", c.themeColor, "#0f172a");
-      const op = c.overlayOpacity != null ? c.overlayOpacity : 0.6;
-      $("f_overlayOpacity").value = op;
-      $("overlayOpacityVal").textContent = Number(op).toFixed(2);
-
-      $("f_seoTitle").value = c.seoTitle || "";
-      $("f_seoDescription").value = c.seoDescription || "";
+      profile = data;
+      enterApp(session);
     }
 
-    function setPreview(id, url) {
-      const el = $(id);
-      el.style.backgroundImage = url ? "url('" + url + "')" : "";
+    function enterApp(session) {
+      show($("loginView"), false); show($("checkEmail"), false); show($("appView"), true);
+      $("userEmail").textContent = session.user.email;
+      const rb = $("roleBadge"); rb.textContent = profile.role; rb.classList.toggle("badge--admin", isAdmin());
+      document.querySelectorAll(".admin-only").forEach((el) => show(el, isAdmin()));
+      loadFinancials(); loadMemos();
+      if (isAdmin()) { loadSite(); loadOwners(); }
     }
 
-    /* ---------- Image uploads ---------- */
-    document.querySelectorAll("[data-upload]").forEach((btn) => {
-      const field = btn.getAttribute("data-upload");
-      const input = document.querySelector('input[data-for="' + field + '"]');
-      btn.addEventListener("click", () => input.click());
-      input.addEventListener("change", async () => {
-        const file = input.files[0];
-        if (!file) return;
-        const hint = $("hint_" + field);
-        const prevId = field === "logoUrl" ? "prev_logo" : field === "bgUrl" ? "prev_bg" : "prev_og";
-        try {
-          if (hint) hint.textContent = "Uploading…";
-          const ext = (file.name.split(".").pop() || "img").toLowerCase().replace(/[^a-z0-9]/g, "");
-          const path = field + "/" + Date.now() + "-" + Math.random().toString(36).slice(2, 8) + "." + ext;
-          const signed = await callFn("sign-upload", { path });
-          const { error } = await supabase.storage
-            .from(signed.bucket)
-            .uploadToSignedUrl(signed.path, signed.token, file);
-          if (error) throw error;
-          const publicUrl = cfg.SUPABASE_URL + "/storage/v1/object/public/" + signed.bucket + "/" + signed.path;
-          imageState[field] = publicUrl;
-          setPreview(prevId, publicUrl);
-          if (hint) hint.textContent = "Uploaded ✓ (remember to Save)";
-        } catch (err) {
-          if (hint) hint.textContent = "Upload failed: " + (err.message || err);
-        }
+    /* ---------------- Tabs ---------------- */
+    document.querySelectorAll(".tab").forEach((t) => {
+      t.addEventListener("click", () => {
+        document.querySelectorAll(".tab").forEach((x) => x.classList.remove("active"));
+        t.classList.add("active");
+        const name = t.dataset.tab;
+        document.querySelectorAll(".tab-panel").forEach((p) => show(p, p.dataset.panel === name));
       });
     });
 
-    /* ---------- Save ---------- */
-    function collect() {
-      return {
-        brand: $("f_brand").value.trim(),
-        tagline: $("f_tagline").value.trim(),
-        footer: $("f_footer").value.trim(),
-        showLogo: $("f_showLogo").checked,
-        logoUrl: imageState.logoUrl,
-        bgUrl: imageState.bgUrl,
-        ogImageUrl: imageState.ogImageUrl,
-        bgColor: $("f_bgColor").value.trim(),
-        textColor: $("f_textColor").value.trim(),
-        overlayColor: $("f_overlayColor").value.trim(),
-        themeColor: $("f_themeColor").value.trim(),
-        overlayOpacity: Number($("f_overlayOpacity").value),
-        seoTitle: $("f_seoTitle").value.trim(),
-        seoDescription: $("f_seoDescription").value.trim()
-      };
+    /* ---------------- Financials ---------------- */
+    async function loadFinancials() {
+      const { data, error } = await supabase.from("financials").select("*").order("period", { ascending: false });
+      const rows = (!error && data) || [];
+      // summary from latest month
+      const stats = $("finStats"); stats.innerHTML = "";
+      if (rows.length) {
+        const latest = rows[0];
+        const cards = [
+          ["Latest month", monthLabel(latest.period), ""],
+          ["Revenue", money(latest.revenue), "pos"],
+          ["Expenses", money(latest.expenses), "neg"],
+          ["Net", money(latest.net), latest.net >= 0 ? "pos" : "neg"]
+        ];
+        stats.innerHTML = cards.map(([k, v, c]) =>
+          `<div class="stat"><div class="k">${k}</div><div class="v ${c}">${v}</div></div>`).join("");
+      }
+      const body = $("finBody"); body.innerHTML = "";
+      show($("finEmpty"), rows.length === 0);
+      for (const r of rows) {
+        const tr = document.createElement("tr");
+        tr.innerHTML =
+          `<td>${monthLabel(r.period)}</td>
+           <td class="num">${money(r.revenue)}</td>
+           <td class="num">${money(r.expenses)}</td>
+           <td class="num">${money(r.net)}</td>
+           <td>${r.notes ? escapeHtml(r.notes) : ""}</td>` +
+          (isAdmin() ? `<td class="num"><button class="btn btn--danger btn--sm" data-del="${r.id}">Delete</button></td>` : "");
+        body.appendChild(tr);
+      }
+      if (isAdmin()) body.querySelectorAll("[data-del]").forEach((b) =>
+        b.addEventListener("click", () => deleteFinancial(b.dataset.del)));
     }
 
-    $("saveBtn").addEventListener("click", async () => {
-      const status = $("saveStatus");
-      const btn = $("saveBtn");
-      status.className = "status";
-      status.textContent = "";
-      btn.disabled = true; btn.textContent = "Saving…";
-      try {
-        await callFn("save", { content: collect() });
-        status.className = "status status--ok";
-        status.textContent = "Saved ✓";
-      } catch (err) {
-        status.className = "status status--err";
-        status.textContent = err.message || "Save failed.";
-      } finally {
-        btn.disabled = false; btn.textContent = "Save changes";
-      }
+    $("finSaveBtn")?.addEventListener("click", async () => {
+      const st = $("finFormStatus"); st.textContent = "";
+      const m = $("fin_period").value; // YYYY-MM
+      if (!m) { st.textContent = "Pick a month."; return; }
+      const row = {
+        period: m + "-01",
+        revenue: Number($("fin_revenue").value || 0),
+        expenses: Number($("fin_expenses").value || 0),
+        notes: $("fin_notes").value.trim() || null
+      };
+      const { error } = await supabase.from("financials").upsert(row, { onConflict: "period" });
+      if (error) { st.textContent = error.message; return; }
+      $("fin_revenue").value = ""; $("fin_expenses").value = ""; $("fin_notes").value = "";
+      st.textContent = "Saved ✓"; loadFinancials();
     });
 
-    /* ---------- Change password ---------- */
-    $("changePwBtn").addEventListener("click", async () => {
-      const status = $("pwStatus");
-      status.className = "status";
-      const a = $("f_newPassword").value, b = $("f_newPassword2").value;
-      if (a.length < 6) { status.className = "status status--err"; status.textContent = "Use at least 6 characters."; return; }
-      if (a !== b) { status.className = "status status--err"; status.textContent = "Passwords don't match."; return; }
-      try {
-        await callFn("change-password", { newPassword: a });
-        password = a;
-        sessionStorage.setItem("callidus_pw", a);
-        $("f_newPassword").value = ""; $("f_newPassword2").value = "";
-        status.className = "status status--ok";
-        status.textContent = "Password updated ✓";
-      } catch (err) {
-        status.className = "status status--err";
-        status.textContent = err.message || "Update failed.";
-      }
+    $("finCsvBtn")?.addEventListener("click", () => $("finCsvInput").click());
+    $("finCsvInput")?.addEventListener("change", async () => {
+      const file = $("finCsvInput").files[0]; if (!file) return;
+      const st = $("finFormStatus"); st.textContent = "Parsing…";
+      const text = await file.text();
+      const rows = parseFinancialCsv(text);
+      if (!rows.length) { st.textContent = "No valid rows found."; return; }
+      const { error } = await supabase.from("financials").upsert(rows, { onConflict: "period" });
+      st.textContent = error ? error.message : `Imported ${rows.length} row(s) ✓`;
+      if (!error) loadFinancials();
+      $("finCsvInput").value = "";
     });
 
-    /* ---------- Auto-resume session ---------- */
-    (async function init() {
-      if (!configured) { await enterApp(); return; }
-      if (password) {
-        try { await callFn("verify"); await enterApp(); }
-        catch (_) { sessionStorage.removeItem("callidus_pw"); password = ""; }
+    function parseFinancialCsv(text) {
+      const lines = text.split(/\r?\n/).filter((l) => l.trim());
+      if (!lines.length) return [];
+      const head = lines[0].split(",").map((h) => h.trim().toLowerCase());
+      const idx = (name) => head.indexOf(name);
+      const pI = idx("period"), rI = idx("revenue"), eI = idx("expenses"), nI = idx("notes");
+      if (pI < 0) return [];
+      const out = [];
+      for (let i = 1; i < lines.length; i++) {
+        const c = lines[i].split(",");
+        let p = (c[pI] || "").trim();
+        if (/^\d{4}-\d{2}$/.test(p)) p += "-01";
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(p)) continue;
+        out.push({
+          period: p,
+          revenue: Number((c[rI] || "0").replace(/[^0-9.\-]/g, "")) || 0,
+          expenses: Number((c[eI] || "0").replace(/[^0-9.\-]/g, "")) || 0,
+          notes: nI >= 0 ? (c[nI] || "").trim() || null : null
+        });
       }
-    })();
+      return out;
+    }
+
+    async function deleteFinancial(id) {
+      if (!confirm("Delete this month's figures?")) return;
+      const { error } = await supabase.from("financials").delete().eq("id", id);
+      if (!error) loadFinancials();
+    }
+
+    /* ---------------- Memos ---------------- */
+    async function loadMemos() {
+      const { data, error } = await supabase.from("memos").select("*")
+        .order("pinned", { ascending: false }).order("created_at", { ascending: false });
+      const rows = (!error && data) || [];
+      const list = $("memoList"); list.innerHTML = "";
+      show($("memoEmpty"), rows.length === 0);
+      const me = profile.id;
+      for (const m of rows) {
+        const canEdit = isAdmin() || m.author_id === me;
+        const div = document.createElement("div");
+        div.className = "memo" + (m.pinned ? " pinned" : "");
+        div.innerHTML =
+          `<div class="memo__head">
+             <div>
+               <div class="memo__title">${m.pinned ? '<span class="pin-dot">📌 </span>' : ""}${escapeHtml(m.title)}</div>
+               <div class="memo__meta">${escapeHtml(m.author_name || "")} · ${new Date(m.created_at).toLocaleString()}</div>
+             </div>
+             <div class="memo__actions">
+               ${isAdmin() ? `<button class="btn btn--ghost btn--sm" data-pin="${m.id}" data-on="${m.pinned}">${m.pinned ? "Unpin" : "Pin"}</button>` : ""}
+               ${canEdit ? `<button class="btn btn--danger btn--sm" data-delmemo="${m.id}">Delete</button>` : ""}
+             </div>
+           </div>
+           <div class="memo__body">${escapeHtml(m.body)}</div>`;
+        list.appendChild(div);
+      }
+      list.querySelectorAll("[data-pin]").forEach((b) => b.addEventListener("click", () =>
+        togglePin(b.dataset.pin, b.dataset.on === "true")));
+      list.querySelectorAll("[data-delmemo]").forEach((b) => b.addEventListener("click", () =>
+        deleteMemo(b.dataset.delmemo)));
+    }
+
+    $("memoPostBtn").addEventListener("click", async () => {
+      const st = $("memoStatus"); st.textContent = "";
+      const title = $("memo_title").value.trim();
+      if (!title) { st.textContent = "Add a title."; return; }
+      const row = {
+        author_id: profile.id, author_name: profile.full_name || profile.email,
+        title, body: $("memo_body").value.trim(),
+        pinned: isAdmin() ? $("memo_pinned").checked : false
+      };
+      const { error } = await supabase.from("memos").insert(row);
+      if (error) { st.textContent = error.message; return; }
+      $("memo_title").value = ""; $("memo_body").value = ""; if ($("memo_pinned")) $("memo_pinned").checked = false;
+      st.textContent = "Posted ✓"; loadMemos();
+    });
+
+    async function togglePin(id, on) {
+      await supabase.from("memos").update({ pinned: !on }).eq("id", id); loadMemos();
+    }
+    async function deleteMemo(id) {
+      if (!confirm("Delete this memo?")) return;
+      await supabase.from("memos").delete().eq("id", id); loadMemos();
+    }
+
+    /* ---------------- Site content (admin) ---------------- */
+    function bindColor(t, p) {
+      const T = $(t), P = $(p);
+      P.addEventListener("input", () => T.value = P.value);
+      T.addEventListener("input", () => { if (/^#[0-9a-fA-F]{6}$/.test(T.value)) P.value = T.value; });
+    }
+    bindColor("s_bgColor", "s_bgColor_p"); bindColor("s_textColor", "s_textColor_p");
+
+    async function loadSite() {
+      const { data } = await supabase.from("site_content").select("content").eq("id", 1).single();
+      const c = (data && data.content) || {};
+      $("s_brand").value = c.brand || ""; $("s_tagline").value = c.tagline || "";
+      $("s_footer").value = c.footer || "";
+      const bg = c.bgColor || "#0a192f"; $("s_bgColor").value = bg; if (/^#[0-9a-fA-F]{6}$/.test(bg)) $("s_bgColor_p").value = bg;
+      const tc = c.textColor || "#ffffff"; $("s_textColor").value = tc; if (/^#[0-9a-fA-F]{6}$/.test(tc)) $("s_textColor_p").value = tc;
+      $("s_seoTitle").value = c.seoTitle || ""; $("s_seoDescription").value = c.seoDescription || "";
+      $("siteSaveBtn")._current = c;
+    }
+    $("siteSaveBtn").addEventListener("click", async () => {
+      const st = $("siteStatus"); st.textContent = "";
+      const content = Object.assign({}, $("siteSaveBtn")._current || {}, {
+        brand: $("s_brand").value.trim(), tagline: $("s_tagline").value.trim(),
+        footer: $("s_footer").value.trim(), bgColor: $("s_bgColor").value.trim(),
+        textColor: $("s_textColor").value.trim(), seoTitle: $("s_seoTitle").value.trim(),
+        seoDescription: $("s_seoDescription").value.trim()
+      });
+      const { error } = await supabase.from("site_content").update({ content, updated_at: new Date().toISOString() }).eq("id", 1);
+      st.textContent = error ? error.message : "Saved ✓";
+      if (!error) $("siteSaveBtn")._current = content;
+    });
+
+    /* ---------------- Owners (admin) ---------------- */
+    async function loadOwners() {
+      const { data } = await supabase.from("allowed_owners").select("*").order("created_at", { ascending: true });
+      const body = $("ownerBody"); body.innerHTML = "";
+      for (const o of (data || [])) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td>${escapeHtml(o.email)}</td><td>${o.role}</td>
+          <td class="num"><button class="btn btn--danger btn--sm" data-rmowner="${o.email}">Remove</button></td>`;
+        body.appendChild(tr);
+      }
+      body.querySelectorAll("[data-rmowner]").forEach((b) => b.addEventListener("click", () => removeOwner(b.dataset.rmowner)));
+    }
+    $("ownerAddBtn").addEventListener("click", async () => {
+      const st = $("ownerStatus"); st.textContent = "";
+      const email = $("owner_email").value.trim().toLowerCase();
+      if (!email) { st.textContent = "Enter an email."; return; }
+      const { error } = await supabase.from("allowed_owners").upsert({ email, role: $("owner_role").value }, { onConflict: "email" });
+      if (error) { st.textContent = error.message; return; }
+      $("owner_email").value = ""; st.textContent = "Added ✓"; loadOwners();
+    });
+    async function removeOwner(email) {
+      if (!confirm("Remove " + email + " from the allowlist?")) return;
+      await supabase.from("allowed_owners").delete().eq("email", email); loadOwners();
+    }
+
+    /* ---------------- utils ---------------- */
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    }
+
+    // Kick off
+    (async () => { const { data } = await supabase.auth.getSession(); route(data.session); })();
   </script>
 </body>
 </html>
