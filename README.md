@@ -32,8 +32,10 @@ administration/ ──magic-link auth──► Supabase Auth ──► RLS-guard
 | -------------- | ---------- | ----------------------------------------------------------- |
 | Financials     | all owners | Monthly revenue/expenses/net; admins add rows or import CSV |
 | Memo Board     | all owners | Post/read memos; admins can pin; authors/admins can delete  |
+| Documents      | all owners | Private document hub; admins upload, owners download via signed links |
+| Invoices       | all owners | AI-extracted overhead bills (manual + bulk + email-in); admins write |
 | Site Content   | admins     | Edit the public page (brand, tagline, colors, SEO)          |
-| Owners         | admins     | Manage the sign-in allowlist and roles                      |
+| Ownership      | admins     | Interactive ownership/relationship graph; the details pane grants portal access (allowlist) per person |
 
 ## Roles
 
@@ -50,8 +52,46 @@ signs in.
 - `financials(period, revenue, expenses, net, notes)` — monthly snapshots
 - `memos(author, title, body, pinned, …)` — memo board
 - `site_content(id=1, content jsonb)` — public site CMS
+- `documents(title, description, category, file_path, …)` — document hub (private bucket)
 
-Full schema + RLS is in [`supabase/migrations/0001_full_backend.sql`](supabase/migrations/0001_full_backend.sql).
+- `invoices`, `gl_codes`, `tenants`, `ai_usage` — the AI invoicing module
+
+- `ownership_entities`, `ownership_edges` — the ownership/relationship graph
+
+Migrations live in [`supabase/migrations/`](supabase/migrations/) — apply them in
+order (`0001` → `0002` → `0003` → `0004`).
+
+## AI Invoicing — edge functions & email-in setup
+
+The invoicing module needs two Edge Functions and an Anthropic key. All extraction
+runs server-side (the key never reaches the browser); the model is `claude-opus-4-8`.
+
+1. **Set edge-function secrets** (Supabase → Edge Functions → Secrets, or CLI):
+   - `ANTHROPIC_API_KEY` — required for AI extraction.
+   - `RESEND_WEBHOOK_SECRET` (`whsec_…`) — required for email-in.
+   - (`SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` are injected automatically.)
+
+2. **Deploy the functions** from `supabase/functions/`:
+   - `invoices-extract` — **verify_jwt = true** (called by signed-in admins).
+   - `email-inbound` — **verify_jwt = false** (Resend calls it; it verifies the
+     Svix signature itself and fails closed if the secret is unset).
+
+3. **Email-in (Resend):**
+   - Add and verify an **inbound domain** in Resend (MX/DNS records) — this must
+     be done before any mail is received.
+   - Route `bills-<token>@<your-domain>` to a Resend inbound webhook pointing at
+     the deployed `email-inbound` function URL. The `<token>` matches
+     `tenants.inbound_token` (seeded as `callidus`).
+   - Forwarded bills are AI-parsed and filed with **needs review** = true; approve
+     them from the Invoices tab (requires vendor + amount + GL code).
+   - Note: Resend's inbound payload field names can vary — if filing misbehaves,
+     check the attachment/recipient field names in `email-inbound/index.ts`.
+
+Invoicing built-in safeguards (each learned in production): list queries never pull
+file blobs; dates serialized as ISO; blob-store failures fall back to capped data
+URLs; the webhook fails closed and always 200s with dedupe; inline email images are
+filtered out; duplicate detection runs server-side at create; approval is validated
+in the database.
 
 ## Project structure
 
@@ -74,11 +114,13 @@ Full schema + RLS is in [`supabase/migrations/0001_full_backend.sql`](supabase/m
 
 3. **Configure Auth** (Dashboard → Authentication):
    - Enable the **Email** provider with **magic links** (email OTP).
+   - Enable the **Google** provider and paste the OAuth **Client ID + Secret**
+     from Google Cloud (see the browser checklist below).
    - **Site URL:** `https://callidusco.com`
    - **Redirect URLs:** add `https://callidusco.com/administration` (and
      `http://localhost:3000/administration` if testing locally).
-   - Leave "Confirm email" on; the allowlist trigger blocks any email that
-     isn't pre-approved, so public signups can stay enabled safely.
+   - The allowlist signup trigger blocks any email that isn't pre-approved — for
+     **both** magic-link and Google — so only invited people can ever sign in.
 
 4. **(Recommended) Custom SMTP** — Supabase's built-in email is rate-limited and
    not meant for production. Configure SMTP (e.g. Resend/Postmark) under
