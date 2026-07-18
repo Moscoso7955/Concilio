@@ -108,6 +108,23 @@
     input[type="color"] { width: 42px; height: 36px; padding: 0; border: 1px solid var(--border); border-radius: 8px; background: var(--panel-2); }
     .muted { color: var(--muted); font-size: 0.85rem; }
     .file-input { display: none; }
+
+    /* Invoices */
+    .toolbar-row { display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: center; margin-bottom: 1rem; }
+    .pill { border-radius: 999px; padding: 0.25rem 0.55rem; font-size: 0.78rem; font-weight: 600; border: 1px solid var(--border); background: var(--panel-2); color: var(--text); font-family: inherit; cursor: pointer; }
+    .pill--unpaid { color: #fbbf24; border-color: #b4790f; }
+    .pill--paid { color: #4ade80; border-color: #15803d; }
+    .dup-tag { color: #fca5a5; border: 1px solid var(--danger); border-radius: 6px; font-size: 0.68rem; padding: 0.05rem 0.35rem; margin-left: 0.4rem; }
+    th.sortable { cursor: pointer; user-select: none; }
+    th.sortable .arrow { opacity: 0.5; font-size: 0.7rem; }
+    .review-card { border-color: var(--amber); }
+    .banner-info { background: rgba(99,102,241,0.12); border: 1px solid var(--accent); border-radius: 8px; padding: 0.5rem 0.75rem; font-size: 0.85rem; margin-bottom: 0.9rem; }
+    .modal-overlay { position: fixed; inset: 0; background: rgba(2,8,20,0.7); display: flex; align-items: center; justify-content: center; padding: 1rem; z-index: 50; }
+    .modal { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; width: 100%; max-width: 460px; padding: 1.25rem; max-height: 90vh; overflow-y: auto; }
+    .modal h3 { margin-bottom: 1rem; }
+    .inline-select { background: var(--panel-2); border: 1px solid var(--border); color: var(--text); border-radius: 7px; padding: 0.25rem 0.4rem; font-size: 0.85rem; font-family: inherit; }
+    a.filelink { color: var(--accent); text-decoration: none; }
+    a.filelink:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
@@ -163,6 +180,7 @@
       <button class="tab active" data-tab="financials">Financials</button>
       <button class="tab" data-tab="memos">Memo Board</button>
       <button class="tab" data-tab="documents">Documents</button>
+      <button class="tab" data-tab="invoices">Invoices</button>
       <button class="tab admin-only hidden" data-tab="site">Site Content</button>
       <button class="tab admin-only hidden" data-tab="owners">Owners</button>
     </div>
@@ -249,6 +267,57 @@
       </div>
     </section>
 
+    <!-- Invoices -->
+    <section class="tab-panel hidden" data-panel="invoices">
+      <div class="toolbar-row">
+        <select class="inline-select" id="inv_range">
+          <option value="this_month">This Month</option>
+          <option value="last_month">Last Month</option>
+          <option value="last_3">Last 3 Months</option>
+          <option value="this_year">This Year</option>
+          <option value="all">All</option>
+        </select>
+        <button class="btn admin-only hidden" id="invAddBtn" style="flex:0 0 auto;">+ Add invoice</button>
+        <button class="btn btn--ghost admin-only hidden" id="invBulkBtn" style="flex:0 0 auto;">Bulk upload…</button>
+        <input type="file" class="file-input" id="invBulkInput" accept="application/pdf,image/*" multiple>
+        <button class="btn btn--ghost" id="invCsvBtn" style="flex:0 0 auto;">Export CSV</button>
+        <span class="muted" id="invBanner"></span>
+      </div>
+
+      <!-- Review queue -->
+      <div class="section-card review-card hidden" id="reviewCard">
+        <h2>New — needs review</h2>
+        <p class="muted" style="margin-bottom:0.75rem;">Emailed bills, auto-filed. Assign a GL code and confirm the vendor/amount to approve.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Vendor</th><th>Date</th><th class="num">Amount</th><th>Code</th><th>File</th><th></th></tr></thead>
+            <tbody id="reviewBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Main ledger -->
+      <div class="section-card">
+        <h2>Bills</h2>
+        <div class="table-wrap">
+          <table id="invTable">
+            <thead><tr>
+              <th class="sortable" data-sort="invoice_date">Date <span class="arrow"></span></th>
+              <th class="sortable" data-sort="vendor">Vendor <span class="arrow"></span></th>
+              <th>Code</th>
+              <th class="num sortable" data-sort="amount">Amount <span class="arrow"></span></th>
+              <th>Payment</th>
+              <th>File</th>
+              <th class="admin-only hidden"></th>
+            </tr></thead>
+            <tbody id="invBody"></tbody>
+          </table>
+        </div>
+        <p class="muted" id="invEmpty">No bills in this range.</p>
+        <p class="muted" id="invFooter" style="margin-top:0.75rem;"></p>
+      </div>
+    </section>
+
     <!-- Site Content (admin) -->
     <section class="tab-panel hidden" data-panel="site">
       <div class="section-card">
@@ -288,6 +357,35 @@
         </div>
       </div>
     </section>
+  </div>
+
+  <!-- Add-invoice modal -->
+  <div class="modal-overlay hidden" id="invModal">
+    <div class="modal">
+      <h3>Add invoice</h3>
+      <div class="field">
+        <label>Attachment (AI pre-fills the fields)</label>
+        <button class="btn btn--ghost" type="button" id="invFilePick">Choose PDF / image…</button>
+        <input type="file" class="file-input" id="invFileInput" accept="application/pdf,image/*">
+        <div class="muted" id="invFileStatus" style="margin-top:0.35rem;"></div>
+      </div>
+      <div class="field"><label>Vendor</label><input type="text" id="invf_vendor"></div>
+      <div class="row">
+        <div><label>Date</label><input type="date" id="invf_date"></div>
+        <div><label>Amount</label><input type="number" step="0.01" id="invf_amount"></div>
+      </div>
+      <div class="row">
+        <div><label>GL code</label><select id="invf_code" class="inline-select" style="width:100%;padding:0.6rem 0.7rem;"></select></div>
+        <div><label>Payment</label><select id="invf_status" class="inline-select" style="width:100%;padding:0.6rem 0.7rem;">
+          <option>Unpaid</option><option>Paid CC</option><option>Paid ACH</option><option>Paid Check</option></select></div>
+      </div>
+      <div class="field"><label>Note</label><input type="text" id="invf_note"></div>
+      <div class="row" style="align-items:center;">
+        <button class="btn" id="invSaveBtn" style="flex:0 0 auto;">Save invoice</button>
+        <button class="btn btn--ghost" id="invCancelBtn" style="flex:0 0 auto;">Cancel</button>
+        <span class="muted" id="invSaveStatus"></span>
+      </div>
+    </div>
   </div>
 
   <script src="/assets/js/config.js"></script>
@@ -354,7 +452,7 @@
       $("userEmail").textContent = session.user.email;
       const rb = $("roleBadge"); rb.textContent = profile.role; rb.classList.toggle("badge--admin", isAdmin());
       document.querySelectorAll(".admin-only").forEach((el) => show(el, isAdmin()));
-      loadFinancials(); loadMemos(); loadDocuments();
+      loadFinancials(); loadMemos(); loadDocuments(); loadInvoices();
       if (isAdmin()) { loadSite(); loadOwners(); }
     }
 
@@ -635,6 +733,271 @@
       if (!confirm("Remove " + email + " from the allowlist?")) return;
       await supabase.from("allowed_owners").delete().eq("email", email); loadOwners();
     }
+
+    /* ---------------- Invoices ---------------- */
+    let invRows = [], glCodes = [], glCat = {};
+    let invSort = { key: "invoice_date", dir: "desc" };
+
+    async function loadGlCodes() {
+      if (glCodes.length) return;
+      const { data } = await supabase.from("gl_codes").select("*").order("sort");
+      glCodes = data || [];
+      glCat = Object.fromEntries(glCodes.map((c) => [c.code, c.category]));
+      const opts = '<option value="">—</option>' + glCodes.map((c) => `<option value="${c.code}">${c.code} · ${escapeHtml(c.category)}</option>`).join("");
+      const sel = $("invf_code"); if (sel) sel.innerHTML = opts;
+    }
+
+    function rangeBounds() {
+      const now = new Date(), y = now.getFullYear(), m = now.getMonth();
+      const iso = (d) => d.toISOString().slice(0, 10);
+      switch ($("inv_range").value) {
+        case "this_month": return [iso(new Date(y, m, 1)), iso(new Date(y, m + 1, 0))];
+        case "last_month": return [iso(new Date(y, m - 1, 1)), iso(new Date(y, m, 0))];
+        case "last_3": return [iso(new Date(y, m - 2, 1)), iso(new Date(y, m + 1, 0))];
+        case "this_year": return [iso(new Date(y, 0, 1)), iso(new Date(y, 11, 31))];
+        default: return [null, null];
+      }
+    }
+    const money = (n) => n == null ? "—" : "$" + Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    async function loadInvoices() {
+      await loadGlCodes();
+      const { data, error } = await supabase.from("invoices_list").select("*").order("created_at", { ascending: false });
+      invRows = (!error && data) || [];
+      renderReview();
+      renderLedger();
+    }
+
+    function dupSet(rows) {
+      const seen = {}, dups = new Set();
+      for (const r of rows) {
+        if (!r.vendor || !r.invoice_date || r.amount == null) continue;
+        const k = r.vendor.toLowerCase() + "|" + r.invoice_date + "|" + r.amount;
+        if (seen[k]) dups.add(r.id); else seen[k] = true;
+        if (seen[k] && rows.filter((x) => x.vendor && x.invoice_date && x.amount != null && (x.vendor.toLowerCase() + "|" + x.invoice_date + "|" + x.amount) === k).length > 1) dups.add(r.id);
+      }
+      return dups;
+    }
+
+    function codeSelect(row) {
+      const opts = '<option value="">—</option>' + glCodes.map((c) => `<option value="${c.code}"${c.code === row.code ? " selected" : ""}>${c.code}</option>`).join("");
+      return `<select class="inline-select" data-code="${row.id}"${isAdmin() ? "" : " disabled"}>${opts}</select>`;
+    }
+    function statusPill(row) {
+      const cls = row.payment_status === "Unpaid" ? "pill--unpaid" : "pill--paid";
+      const opts = ["Unpaid", "Paid CC", "Paid ACH", "Paid Check"].map((s) => `<option${s === row.payment_status ? " selected" : ""}>${s}</option>`).join("");
+      return `<select class="pill ${cls}" data-status="${row.id}"${isAdmin() ? "" : " disabled"}>${opts}</select>`;
+    }
+    const fileCell = (row) => row.has_file ? `<a class="filelink" data-file="${row.id}" href="#">View</a>` : "—";
+
+    function renderReview() {
+      const rows = invRows.filter((r) => r.needs_review);
+      show($("reviewCard"), rows.length > 0);
+      const body = $("reviewBody"); body.innerHTML = "";
+      for (const r of rows) {
+        const tr = document.createElement("tr");
+        tr.innerHTML =
+          `<td>${escapeHtml(r.vendor || "")}</td><td>${r.invoice_date || "—"}</td><td class="num">${money(r.amount)}</td>
+           <td>${codeSelect(r)}</td><td>${fileCell(r)}</td>
+           <td class="num">${isAdmin() ? `<button class="btn btn--sm" data-approve="${r.id}">Approve</button>` : ""}</td>`;
+        body.appendChild(tr);
+      }
+      wireRowControls(body);
+      body.querySelectorAll("[data-approve]").forEach((b) => b.addEventListener("click", () => approveInvoice(b.dataset.approve)));
+    }
+
+    function renderLedger() {
+      const [from, to] = rangeBounds();
+      let rows = invRows.filter((r) => !r.needs_review).filter((r) =>
+        !from || r.invoice_date == null || (r.invoice_date >= from && r.invoice_date <= to));
+      const dir = invSort.dir === "asc" ? 1 : -1;
+      rows.sort((a, b) => {
+        let x = a[invSort.key], y = b[invSort.key];
+        if (invSort.key === "invoice_date") { // undated always visible, sorted to the end
+          if (x == null && y == null) return 0;
+          if (x == null) return 1; if (y == null) return -1;
+        }
+        if (x == null) x = ""; if (y == null) y = "";
+        if (typeof x === "string") return x.localeCompare(y) * dir;
+        return (x - y) * dir;
+      });
+      const dups = dupSet(rows);
+      const body = $("invBody"); body.innerHTML = "";
+      show($("invEmpty"), rows.length === 0);
+      for (const r of rows) {
+        const tr = document.createElement("tr");
+        tr.innerHTML =
+          `<td>${r.invoice_date || '<span class="muted">undated</span>'}</td>
+           <td>${escapeHtml(r.vendor || "")}${dups.has(r.id) ? '<span class="dup-tag">Dup</span>' : ""}</td>
+           <td>${codeSelect(r)}</td>
+           <td class="num">${money(r.amount)}</td>
+           <td>${statusPill(r)}</td>
+           <td>${fileCell(r)}</td>` +
+          (isAdmin() ? `<td class="num"><button class="btn btn--danger btn--sm" data-delinv="${r.id}">Delete</button></td>` : "");
+        body.appendChild(tr);
+      }
+      wireRowControls(body);
+      body.querySelectorAll("[data-delinv]").forEach((b) => b.addEventListener("click", () => deleteInvoice(b.dataset.delinv)));
+      const total = rows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+      $("invFooter").textContent = `${rows.length} bill(s) · ${money(total)} total`;
+    }
+
+    function wireRowControls(scope) {
+      scope.querySelectorAll("[data-code]").forEach((sel) => sel.addEventListener("change", () => inlineUpdate(sel.dataset.code, { code: sel.value || null })));
+      scope.querySelectorAll("[data-status]").forEach((sel) => sel.addEventListener("change", () => {
+        sel.className = "pill " + (sel.value === "Unpaid" ? "pill--unpaid" : "pill--paid");
+        inlineUpdate(sel.dataset.status, { payment_status: sel.value });
+      }));
+      scope.querySelectorAll("[data-file]").forEach((a) => a.addEventListener("click", (e) => { e.preventDefault(); viewFile(a.dataset.file); }));
+    }
+
+    async function inlineUpdate(id, patch) { // optimistic; reload on error to roll back
+      const row = invRows.find((r) => r.id === id); if (row) Object.assign(row, patch, patch.code ? { category: glCat[patch.code] } : {});
+      const { error } = await supabase.from("invoices").update(patch).eq("id", id);
+      if (error) { alert(error.message); loadInvoices(); }
+    }
+
+    async function approveInvoice(id) {
+      const row = invRows.find((r) => r.id === id);
+      if (!row.vendor || row.vendor.toLowerCase() === "unknown vendor") return alert("Set a real vendor before approving.");
+      if (row.amount == null) return alert("Set an amount before approving.");
+      if (!row.code) return alert("Assign a GL code before approving.");
+      const { error } = await supabase.from("invoices").update({ needs_review: false }).eq("id", id);
+      if (error) return alert(error.message);
+      loadInvoices();
+    }
+
+    async function deleteInvoice(id) {
+      if (!confirm("Delete this bill?")) return;
+      const { data } = await supabase.from("invoices").select("file_url").eq("id", id).single();
+      if (data?.file_url?.startsWith("storage:")) await supabase.storage.from("invoices").remove([data.file_url.slice(8)]);
+      await supabase.from("invoices").delete().eq("id", id);
+      loadInvoices();
+    }
+
+    async function viewFile(id) {
+      const { data } = await supabase.from("invoices").select("file_url, file_name").eq("id", id).single();
+      const u = data?.file_url;
+      if (!u) return;
+      if (u.startsWith("storage:")) {
+        const { data: s } = await supabase.storage.from("invoices").createSignedUrl(u.slice(8), 120);
+        if (s?.signedUrl) window.open(s.signedUrl, "_blank", "noopener");
+      } else if (u.startsWith("data:")) {
+        // Landmine 3: convert data URL to a Blob object URL synchronously before opening.
+        const [meta, b64] = u.split(",");
+        const mime = (meta.match(/data:(.*?);/) || [])[1] || "application/octet-stream";
+        const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+        window.open(URL.createObjectURL(new Blob([bytes], { type: mime })), "_blank", "noopener");
+      }
+    }
+
+    // Upload a file: storage first, data-URL fallback (landmine 3, cap ~5MB).
+    async function uploadInvoiceFile(file) {
+      if (!file) return null;
+      const path = "manual/" + Date.now() + "-" + Math.random().toString(36).slice(2, 8) + "-" + file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const { error } = await supabase.storage.from("invoices").upload(path, file, { contentType: file.type || undefined });
+      if (!error) return "storage:" + path;
+      if (file.size > 5 * 1024 * 1024) return null; // too big for a data-URL fallback
+      return await new Promise((res) => { const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(file); });
+    }
+
+    async function extractFile(file) {
+      const fd = new FormData(); fd.append("file", file);
+      const { data, error } = await supabase.functions.invoke("invoices-extract", { body: fd });
+      if (error || !data?.ok) throw new Error(data?.error || error?.message || "extraction failed");
+      return data.extracted || {};
+    }
+
+    // Sorting + range + toolbar wiring
+    document.querySelectorAll("#invTable th.sortable").forEach((th) => th.addEventListener("click", () => {
+      const k = th.dataset.sort;
+      invSort = { key: k, dir: invSort.key === k && invSort.dir === "desc" ? "asc" : "desc" };
+      document.querySelectorAll("#invTable .arrow").forEach((a) => a.textContent = "");
+      th.querySelector(".arrow").textContent = invSort.dir === "asc" ? "▲" : "▼";
+      renderLedger();
+    }));
+    $("inv_range").addEventListener("change", renderLedger);
+
+    // Manual add modal
+    let pendingFile = null;
+    $("invAddBtn")?.addEventListener("click", () => {
+      pendingFile = null;
+      ["invf_vendor", "invf_amount", "invf_note", "invf_date"].forEach((i) => $(i).value = "");
+      $("invf_code").value = ""; $("invf_status").value = "Unpaid";
+      $("invFileStatus").textContent = ""; $("invSaveStatus").textContent = "";
+      show($("invModal"), true);
+    });
+    $("invCancelBtn")?.addEventListener("click", () => show($("invModal"), false));
+    $("invFilePick")?.addEventListener("click", () => $("invFileInput").click());
+    $("invFileInput")?.addEventListener("change", async () => {
+      pendingFile = $("invFileInput").files[0]; if (!pendingFile) return;
+      $("invFileStatus").textContent = "Reading with AI…";
+      try {
+        const x = await extractFile(pendingFile);
+        if (x.vendor) $("invf_vendor").value = x.vendor;
+        if (x.invoiceDate) $("invf_date").value = x.invoiceDate;
+        if (x.amount != null) $("invf_amount").value = x.amount;
+        if (x.category) { const gc = glCodes.find((c) => c.category === x.category); if (gc) $("invf_code").value = gc.code; }
+        $("invFileStatus").textContent = pendingFile.name + " ✓ pre-filled";
+      } catch (e) { $("invFileStatus").textContent = "AI read failed: " + e.message + " (fill manually)"; }
+    });
+    $("invSaveBtn")?.addEventListener("click", async () => {
+      const st = $("invSaveStatus");
+      const vendor = $("invf_vendor").value.trim();
+      if (!vendor) { st.textContent = "Vendor is required."; return; }
+      st.textContent = "Saving…";
+      try {
+        const file_url = pendingFile ? await uploadInvoiceFile(pendingFile) : null;
+        const { data, error } = await supabase.rpc("create_invoice", {
+          p_vendor: vendor, p_code: $("invf_code").value || null,
+          p_invoice_date: $("invf_date").value || null,
+          p_amount: $("invf_amount").value ? Number($("invf_amount").value) : null,
+          p_payment_status: $("invf_status").value, p_note: $("invf_note").value.trim() || null,
+          p_file_url: file_url, p_file_name: pendingFile ? pendingFile.name : null, p_needs_review: false,
+        });
+        if (error) throw error;
+        show($("invModal"), false);
+        if (data?.duplicate) alert("Heads up: a bill with the same vendor, date, and amount already exists.");
+        loadInvoices();
+      } catch (e) { st.textContent = e.message || "Save failed."; }
+    });
+
+    // Bulk upload
+    $("invBulkBtn")?.addEventListener("click", () => $("invBulkInput").click());
+    $("invBulkInput")?.addEventListener("change", async () => {
+      const files = Array.from($("invBulkInput").files); if (!files.length) return;
+      let read = 0, added = 0, failed = 0;
+      const banner = $("invBanner");
+      const tick = () => banner.textContent = `Bulk: ${read}/${files.length} read · ${added} added · ${failed} failed`;
+      tick();
+      for (const f of files) {
+        try {
+          const x = await extractFile(f); read++;
+          const file_url = await uploadInvoiceFile(f);
+          const gc = x.category ? glCodes.find((c) => c.category === x.category) : null;
+          const { error } = await supabase.rpc("create_invoice", {
+            p_vendor: x.vendor || "Unknown vendor", p_code: gc ? gc.code : null,
+            p_invoice_date: x.invoiceDate || null, p_amount: x.amount ?? null,
+            p_payment_status: "Unpaid", p_file_url: file_url, p_file_name: f.name, p_needs_review: false,
+          });
+          if (error) failed++; else added++;
+        } catch (_) { failed++; }
+        tick();
+      }
+      $("invBulkInput").value = "";
+      loadInvoices();
+    });
+
+    // CSV export of the filtered + sorted ledger
+    $("invCsvBtn")?.addEventListener("click", () => {
+      const [from, to] = rangeBounds();
+      const rows = invRows.filter((r) => !r.needs_review).filter((r) => !from || r.invoice_date == null || (r.invoice_date >= from && r.invoice_date <= to));
+      const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+      const lines = [["Date", "Vendor", "Code", "Category", "Amount", "Payment", "Note", "Receipt"].join(",")];
+      for (const r of rows) lines.push([r.invoice_date || "", r.vendor || "", r.code || "", r.category || "", r.amount ?? "", r.payment_status, r.note || "", r.has_file ? r.file_name || "yes" : ""].map(esc).join(","));
+      const url = URL.createObjectURL(new Blob([lines.join("\n")], { type: "text/csv" }));
+      const a = document.createElement("a"); a.href = url; a.download = "invoices.csv"; a.click();
+    });
 
     /* ---------------- utils ---------------- */
     function escapeHtml(s) {

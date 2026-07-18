@@ -33,6 +33,7 @@ administration/ ──magic-link auth──► Supabase Auth ──► RLS-guard
 | Financials     | all owners | Monthly revenue/expenses/net; admins add rows or import CSV |
 | Memo Board     | all owners | Post/read memos; admins can pin; authors/admins can delete  |
 | Documents      | all owners | Private document hub; admins upload, owners download via signed links |
+| Invoices       | all owners | AI-extracted overhead bills (manual + bulk + email-in); admins write |
 | Site Content   | admins     | Edit the public page (brand, tagline, colors, SEO)          |
 | Owners         | admins     | Manage the sign-in allowlist and roles                      |
 
@@ -53,8 +54,42 @@ signs in.
 - `site_content(id=1, content jsonb)` — public site CMS
 - `documents(title, description, category, file_path, …)` — document hub (private bucket)
 
-Migrations live in [`supabase/migrations/`](supabase/migrations/) — apply them in order
-(`0001_full_backend.sql`, then `0002_documents.sql`).
+- `invoices`, `gl_codes`, `tenants`, `ai_usage` — the AI invoicing module
+
+Migrations live in [`supabase/migrations/`](supabase/migrations/) — apply them in
+order (`0001_full_backend.sql` → `0002_documents.sql` → `0003_invoices.sql`).
+
+## AI Invoicing — edge functions & email-in setup
+
+The invoicing module needs two Edge Functions and an Anthropic key. All extraction
+runs server-side (the key never reaches the browser); the model is `claude-opus-4-8`.
+
+1. **Set edge-function secrets** (Supabase → Edge Functions → Secrets, or CLI):
+   - `ANTHROPIC_API_KEY` — required for AI extraction.
+   - `RESEND_WEBHOOK_SECRET` (`whsec_…`) — required for email-in.
+   - (`SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` are injected automatically.)
+
+2. **Deploy the functions** from `supabase/functions/`:
+   - `invoices-extract` — **verify_jwt = true** (called by signed-in admins).
+   - `email-inbound` — **verify_jwt = false** (Resend calls it; it verifies the
+     Svix signature itself and fails closed if the secret is unset).
+
+3. **Email-in (Resend):**
+   - Add and verify an **inbound domain** in Resend (MX/DNS records) — this must
+     be done before any mail is received.
+   - Route `bills-<token>@<your-domain>` to a Resend inbound webhook pointing at
+     the deployed `email-inbound` function URL. The `<token>` matches
+     `tenants.inbound_token` (seeded as `callidus`).
+   - Forwarded bills are AI-parsed and filed with **needs review** = true; approve
+     them from the Invoices tab (requires vendor + amount + GL code).
+   - Note: Resend's inbound payload field names can vary — if filing misbehaves,
+     check the attachment/recipient field names in `email-inbound/index.ts`.
+
+Invoicing built-in safeguards (each learned in production): list queries never pull
+file blobs; dates serialized as ISO; blob-store failures fall back to capped data
+URLs; the webhook fails closed and always 200s with dedupe; inline email images are
+filtered out; duplicate detection runs server-side at create; approval is validated
+in the database.
 
 ## Project structure
 
