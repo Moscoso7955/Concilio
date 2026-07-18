@@ -162,6 +162,7 @@
     <div class="tabs">
       <button class="tab active" data-tab="financials">Financials</button>
       <button class="tab" data-tab="memos">Memo Board</button>
+      <button class="tab" data-tab="documents">Documents</button>
       <button class="tab admin-only hidden" data-tab="site">Site Content</button>
       <button class="tab admin-only hidden" data-tab="owners">Owners</button>
     </div>
@@ -217,6 +218,35 @@
       </div>
       <div id="memoList"></div>
       <p class="muted" id="memoEmpty">No memos yet.</p>
+    </section>
+
+    <!-- Documents -->
+    <section class="tab-panel hidden" data-panel="documents">
+      <div class="section-card admin-only hidden">
+        <h2>Upload a document</h2>
+        <div class="row">
+          <div style="flex:2;"><label>Title</label><input type="text" id="doc_title" placeholder="e.g. Employee Handbook"></div>
+          <div><label>Category</label><input type="text" id="doc_category" placeholder="e.g. HR, Legal, SOP"></div>
+        </div>
+        <div class="field" style="margin-top:0.75rem;"><label>Description</label><input type="text" id="doc_description" placeholder="Optional short summary"></div>
+        <div class="row" style="align-items:center;">
+          <button class="btn" id="docUploadBtn" style="flex:0 0 auto;">Choose file &amp; upload…</button>
+          <input type="file" class="file-input" id="docFileInput">
+          <span class="muted" id="docStatus"></span>
+        </div>
+        <p class="muted" style="margin-top:0.5rem;">PDF, images, or Office files. Stored privately — owners download via secure links.</p>
+      </div>
+
+      <div class="section-card">
+        <h2>Documents</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Title</th><th>Category</th><th>Added</th><th class="num">Size</th><th></th></tr></thead>
+            <tbody id="docBody"></tbody>
+          </table>
+        </div>
+        <p class="muted" id="docEmpty">No documents yet.</p>
+      </div>
     </section>
 
     <!-- Site Content (admin) -->
@@ -324,7 +354,7 @@
       $("userEmail").textContent = session.user.email;
       const rb = $("roleBadge"); rb.textContent = profile.role; rb.classList.toggle("badge--admin", isAdmin());
       document.querySelectorAll(".admin-only").forEach((el) => show(el, isAdmin()));
-      loadFinancials(); loadMemos();
+      loadFinancials(); loadMemos(); loadDocuments();
       if (isAdmin()) { loadSite(); loadOwners(); }
     }
 
@@ -483,6 +513,71 @@
     async function deleteMemo(id) {
       if (!confirm("Delete this memo?")) return;
       await supabase.from("memos").delete().eq("id", id); loadMemos();
+    }
+
+    /* ---------------- Documents ---------------- */
+    function fmtSize(b) {
+      if (!b && b !== 0) return "";
+      if (b < 1024) return b + " B";
+      if (b < 1048576) return (b / 1024).toFixed(0) + " KB";
+      return (b / 1048576).toFixed(1) + " MB";
+    }
+    async function loadDocuments() {
+      const { data, error } = await supabase.from("documents").select("*").order("created_at", { ascending: false });
+      const rows = (!error && data) || [];
+      const body = $("docBody"); body.innerHTML = "";
+      show($("docEmpty"), rows.length === 0);
+      for (const d of rows) {
+        const tr = document.createElement("tr");
+        tr.innerHTML =
+          `<td><strong>${escapeHtml(d.title)}</strong>${d.description ? `<br><span class="muted">${escapeHtml(d.description)}</span>` : ""}</td>
+           <td>${escapeHtml(d.category || "")}</td>
+           <td>${new Date(d.created_at).toLocaleDateString()}</td>
+           <td class="num">${fmtSize(d.size_bytes)}</td>
+           <td class="num">
+             <button class="btn btn--ghost btn--sm" data-dl="${d.file_path}" data-name="${escapeHtml(d.file_name)}">Download</button>
+             ${isAdmin() ? `<button class="btn btn--danger btn--sm" data-deldoc="${d.id}" data-path="${d.file_path}">Delete</button>` : ""}
+           </td>`;
+        body.appendChild(tr);
+      }
+      body.querySelectorAll("[data-dl]").forEach((b) => b.addEventListener("click", () => downloadDoc(b.dataset.dl)));
+      body.querySelectorAll("[data-deldoc]").forEach((b) => b.addEventListener("click", () => deleteDoc(b.dataset.deldoc, b.dataset.path)));
+    }
+
+    async function downloadDoc(path) {
+      const { data, error } = await supabase.storage.from(cfg.BUCKET_DOCS || "documents").createSignedUrl(path, 120);
+      if (error || !data) { alert("Could not generate download link."); return; }
+      window.open(data.signedUrl, "_blank", "noopener");
+    }
+
+    $("docUploadBtn")?.addEventListener("click", () => $("docFileInput").click());
+    $("docFileInput")?.addEventListener("change", async () => {
+      const file = $("docFileInput").files[0]; if (!file) return;
+      const st = $("docStatus");
+      const title = $("doc_title").value.trim() || file.name;
+      try {
+        st.textContent = "Uploading…";
+        const clean = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+        const path = "docs/" + Date.now() + "-" + Math.random().toString(36).slice(2, 8) + "-" + clean;
+        const { error: upErr } = await supabase.storage.from("documents").upload(path, file, { contentType: file.type || undefined });
+        if (upErr) throw upErr;
+        const { error: insErr } = await supabase.from("documents").insert({
+          title, description: $("doc_description").value.trim() || null,
+          category: $("doc_category").value.trim() || null,
+          file_path: path, file_name: file.name, mime: file.type || null, size_bytes: file.size,
+          uploaded_by: profile.id, uploaded_by_name: profile.full_name || profile.email
+        });
+        if (insErr) throw insErr;
+        $("doc_title").value = ""; $("doc_description").value = ""; $("doc_category").value = ""; $("docFileInput").value = "";
+        st.textContent = "Uploaded ✓"; loadDocuments();
+      } catch (e) { st.textContent = "Upload failed: " + (e.message || e); }
+    });
+
+    async function deleteDoc(id, path) {
+      if (!confirm("Delete this document?")) return;
+      await supabase.storage.from("documents").remove([path]);
+      await supabase.from("documents").delete().eq("id", id);
+      loadDocuments();
     }
 
     /* ---------------- Site content (admin) ---------------- */

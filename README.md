@@ -32,6 +32,7 @@ administration/ ──magic-link auth──► Supabase Auth ──► RLS-guard
 | -------------- | ---------- | ----------------------------------------------------------- |
 | Financials     | all owners | Monthly revenue/expenses/net; admins add rows or import CSV |
 | Memo Board     | all owners | Post/read memos; admins can pin; authors/admins can delete  |
+| Documents      | all owners | Private document hub; admins upload, owners download via signed links |
 | Site Content   | admins     | Edit the public page (brand, tagline, colors, SEO)          |
 | Owners         | admins     | Manage the sign-in allowlist and roles                      |
 
@@ -50,8 +51,10 @@ signs in.
 - `financials(period, revenue, expenses, net, notes)` — monthly snapshots
 - `memos(author, title, body, pinned, …)` — memo board
 - `site_content(id=1, content jsonb)` — public site CMS
+- `documents(title, description, category, file_path, …)` — document hub (private bucket)
 
-Full schema + RLS is in [`supabase/migrations/0001_full_backend.sql`](supabase/migrations/0001_full_backend.sql).
+Migrations live in [`supabase/migrations/`](supabase/migrations/) — apply them in order
+(`0001_full_backend.sql`, then `0002_documents.sql`).
 
 ## Project structure
 
