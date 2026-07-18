@@ -16,6 +16,12 @@ window.createOwnershipStore = function (supabase) {
       .slice(0, MAX_LINKS);
   }
 
+  // The `kind` column ships in migration 0005. Until it's applied, Postgres
+  // rejects it as an undefined column (42703) — detect that so we can retry
+  // without it and keep the graph fully usable in the meantime.
+  const missingKind = (e) =>
+    e && (e.code === "42703" || /column .*kind/i.test(e.message || ""));
+
   return {
     async loadGraph() {
       const [{ data: entities }, { data: edges }] = await Promise.all([
@@ -33,6 +39,7 @@ window.createOwnershipStore = function (supabase) {
         name: input.name ?? "New box",
         category: input.category ?? null,
         subcategory: input.subcategory ?? null,
+        kind: input.kind === "entity" ? "entity" : "individual",
         email: input.email ?? null,
         notes: input.notes ?? null,
         color: input.color ?? null,
@@ -40,18 +47,26 @@ window.createOwnershipStore = function (supabase) {
         position_x: input.position_x ?? 0,
         position_y: input.position_y ?? 0,
       };
-      const { data, error } = await supabase.from("ownership_entities").insert(row).select().single();
+      let { data, error } = await supabase.from("ownership_entities").insert(row).select().single();
+      if (error && missingKind(error)) {
+        delete row.kind;
+        ({ data, error } = await supabase.from("ownership_entities").insert(row).select().single());
+      }
       if (error) throw error;
       return { ...data, links: Array.isArray(data.links) ? data.links : [] };
     },
 
     async updateEntity(id, patch) {
       const p = {};
-      for (const k of ["name", "category", "subcategory", "email", "notes", "color"]) {
+      for (const k of ["name", "category", "subcategory", "kind", "email", "notes", "color"]) {
         if (patch[k] !== undefined) p[k] = patch[k];
       }
       if (patch.links !== undefined) p.links = cleanLinks(patch.links);
-      const { error } = await supabase.from("ownership_entities").update(p).eq("id", id);
+      let { error } = await supabase.from("ownership_entities").update(p).eq("id", id);
+      if (error && missingKind(error) && "kind" in p) {
+        delete p.kind;
+        ({ error } = await supabase.from("ownership_entities").update(p).eq("id", id));
+      }
       if (error) throw error;
     },
 

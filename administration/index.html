@@ -378,7 +378,13 @@
       <div class="graph-wrap">
         <div class="graph-toolbar">
           <button class="btn" id="ownAddBox" style="flex:0 0 auto;">+ Add box</button>
-          <span class="muted">Click a box to edit. Drag a box's bottom handle onto another box's top to connect; click an edge to change its %.</span>
+          <div style="display:flex;align-items:center;gap:0.3rem;flex:0 0 auto;">
+            <button class="btn btn--ghost btn--sm" id="ownZoomOut" title="Zoom out" style="flex:0 0 auto;">−</button>
+            <span class="muted" id="ownZoomLabel" style="min-width:3.5ch;text-align:center;">100%</span>
+            <button class="btn btn--ghost btn--sm" id="ownZoomIn" title="Zoom in" style="flex:0 0 auto;">+</button>
+            <button class="btn btn--ghost btn--sm" id="ownZoomReset" title="Reset zoom" style="flex:0 0 auto;">Reset</button>
+          </div>
+          <span class="muted">Click a box to edit. Drag a box's bottom handle onto another box's top to connect; click an edge to change its %. Ctrl/⌘+scroll to zoom.</span>
         </div>
         <div class="graph-viewport" id="ownViewport">
           <div class="graph-canvas" id="ownCanvas">
@@ -764,8 +770,33 @@
     /* ---------------- Ownership graph (admin) ---------------- */
     const gStore = window.createOwnershipStore(supabase);
     const MAX_LINKS = 4, PANE_W = 340;
-    let gEnt = [], gEdge = [], gSel = null, gInit = false;
+    const GRID = 20, ZMIN = 0.4, ZMAX = 2;
+    let gEnt = [], gEdge = [], gSel = null, gInit = false, gZoom = 1;
     const posTimer = { t: null }, posPending = new Map();
+    const snap = (v) => Math.round(v / GRID) * GRID;
+
+    function applyZoom() {
+      const c = $("ownCanvas");
+      c.style.transformOrigin = "0 0";
+      c.style.transform = "scale(" + gZoom + ")";
+      const lbl = $("ownZoomLabel"); if (lbl) lbl.textContent = Math.round(gZoom * 100) + "%";
+    }
+    // Set zoom while keeping canvas-point (cx,cy) pinned under the same screen spot.
+    function setZoom(z, cx, cy) {
+      const view = $("ownViewport");
+      const old = gZoom;
+      const nz = Math.min(ZMAX, Math.max(ZMIN, z));
+      if (nz === old) return;
+      const sl = view.scrollLeft, st = view.scrollTop;
+      gZoom = nz; applyZoom();
+      if (cx != null) { view.scrollLeft = sl + cx * (nz - old); view.scrollTop = st + cy * (nz - old); }
+    }
+    function zoomBy(factor) {
+      const view = $("ownViewport");
+      const cx = (view.scrollLeft + view.clientWidth / 2) / gZoom;
+      const cy = (view.scrollTop + view.clientHeight / 2) / gZoom;
+      setZoom(gZoom * factor, cx, cy);
+    }
 
     function toHref(url) {
       const u = (url || "").trim(); if (!u) return null;
@@ -804,8 +835,11 @@
         let pctHtml = "";
         if (pct !== null) {
           const cls = pct > 100 ? "red" : pct < 100 ? "amber" : "";
-          const suffix = pct > 100 ? " (over)" : pct < 100 ? " (incomplete)" : "";
-          pctHtml = `<div class="gnode__pct ${cls}">${(pct % 1 === 0 ? pct : pct.toFixed(2))}%${suffix}</div>`;
+          const fmt = (n) => (n % 1 === 0 ? n : Number(n).toFixed(2));
+          let label = fmt(pct) + "%";
+          if (pct > 100) label += " · " + fmt(pct - 100) + "% over";
+          else if (pct < 100) label += " · missing " + fmt(100 - pct) + "%";
+          pctHtml = `<div class="gnode__pct ${cls}">${label}</div>`;
         }
         node.innerHTML =
           `<div class="ghandle ghandle--top"></div><div class="ghandle ghandle--bottom"></div>` +
@@ -853,7 +887,7 @@
         const temp = document.createElementNS("http://www.w3.org/2000/svg", "line");
         temp.setAttribute("x1", x1); temp.setAttribute("y1", y1); temp.setAttribute("stroke", "#6366f1"); temp.setAttribute("stroke-width", "2"); temp.setAttribute("stroke-dasharray", "5 4");
         svg.appendChild(temp);
-        const mv = (m) => { temp.setAttribute("x2", m.clientX - rect.left); temp.setAttribute("y2", m.clientY - rect.top); };
+        const mv = (m) => { temp.setAttribute("x2", (m.clientX - rect.left) / gZoom); temp.setAttribute("y2", (m.clientY - rect.top) / gZoom); };
         const up = async (m) => {
           document.removeEventListener("pointermove", mv); document.removeEventListener("pointerup", up); temp.remove();
           const el = document.elementFromPoint(m.clientX, m.clientY);
@@ -875,15 +909,18 @@
         const sx = ev.clientX, sy = ev.clientY, ox = node.offsetLeft, oy = node.offsetTop;
         let moved = false;
         const mv = (m) => {
-          const dx = m.clientX - sx, dy = m.clientY - sy;
-          if (Math.abs(dx) > 3 || Math.abs(dy) > 3) moved = true;
-          node.style.left = Math.max(0, ox + dx) + "px"; node.style.top = Math.max(0, oy + dy) + "px";
+          const sdx = m.clientX - sx, sdy = m.clientY - sy; // screen delta
+          if (Math.abs(sdx) > 3 || Math.abs(sdy) > 3) moved = true;
+          node.style.left = Math.max(0, ox + sdx / gZoom) + "px";
+          node.style.top = Math.max(0, oy + sdy / gZoom) + "px";
           renderEdges();
         };
         const up = () => {
           document.removeEventListener("pointermove", mv); document.removeEventListener("pointerup", up);
           if (!moved) { openPane(e.id); return; }
-          const x = parseFloat(node.style.left), y = parseFloat(node.style.top);
+          const x = Math.max(0, snap(parseFloat(node.style.left)));
+          const y = Math.max(0, snap(parseFloat(node.style.top)));
+          node.style.left = x + "px"; node.style.top = y + "px"; renderEdges();
           const ent = gEnt.find((z) => z.id === e.id); if (ent) { ent.position_x = x; ent.position_y = y; }
           posPending.set(e.id, { x, y });
           if (posTimer.t) clearTimeout(posTimer.t);
@@ -913,10 +950,24 @@
     function wireGraphChrome() {
       $("ownAddBox").addEventListener("click", async () => {
         const view = $("ownViewport");
-        const x = view.scrollLeft + 120 + Math.random() * 260, y = view.scrollTop + 90 + Math.random() * 160;
-        const ent = await gStore.addEntity({ name: "New box", position_x: Math.round(x), position_y: Math.round(y) });
+        const x = snap((view.scrollLeft + 120) / gZoom + Math.random() * 160);
+        const y = snap((view.scrollTop + 90) / gZoom + Math.random() * 120);
+        const ent = await gStore.addEntity({ name: "New box", position_x: x, position_y: y });
         gEnt.push(ent); gSel = ent.id; render(); openPane(ent.id);
       });
+      // Zoom controls
+      $("ownZoomIn").addEventListener("click", () => zoomBy(1.2));
+      $("ownZoomOut").addEventListener("click", () => zoomBy(1 / 1.2));
+      $("ownZoomReset").addEventListener("click", () => { gZoom = 1; applyZoom(); });
+      $("ownViewport").addEventListener("wheel", (ev) => {
+        if (!ev.ctrlKey && !ev.metaKey) return; // let normal scrolling through
+        ev.preventDefault();
+        const rect = $("ownViewport").getBoundingClientRect();
+        const cx = ($("ownViewport").scrollLeft + (ev.clientX - rect.left)) / gZoom;
+        const cy = ($("ownViewport").scrollTop + (ev.clientY - rect.top)) / gZoom;
+        setZoom(gZoom * (ev.deltaY < 0 ? 1.1 : 1 / 1.1), cx, cy);
+      }, { passive: false });
+      applyZoom();
       // Click empty canvas closes the pane.
       $("ownCanvas").addEventListener("click", (ev) => {
         if (ev.target.id === "ownCanvas" || ev.target.id === "ownSvg") { gSel = null; closePane(); renderNodes(); renderEdges(); }
@@ -925,13 +976,14 @@
 
     function focusNode(x, y) {
       const view = $("ownViewport");
-      view.scrollTo({ left: Math.max(0, x - view.clientWidth / 2 + PANE_W / 2), top: Math.max(0, y - view.clientHeight / 2), behavior: "smooth" });
+      view.scrollTo({ left: Math.max(0, x * gZoom - view.clientWidth / 2 + PANE_W / 2), top: Math.max(0, y * gZoom - view.clientHeight / 2), behavior: "smooth" });
     }
 
     function closePane() { show($("ownPane"), false); }
 
     function openPane(id) {
       const e = gEnt.find((z) => z.id === id); if (!e) return;
+      const kind = e.kind === "entity" ? "entity" : "individual";
       gSel = id; renderNodes();
       const pane = $("ownPane");
       const linkRows = (i, l) => `
@@ -946,6 +998,12 @@
           <strong>Edit box</strong><button class="iconbtn" id="paneClose" style="font-size:1.3rem;">×</button>
         </div>
         <div class="field"><label>Name</label><input type="text" id="pName" value="${escapeHtml(e.name || "")}"></div>
+        <div class="field"><label>Type</label>
+          <select id="pKind" class="inline-select" style="width:100%;padding:0.6rem 0.7rem;">
+            <option value="individual"${kind === "individual" ? " selected" : ""}>Individual — a person, can be invited to the portal</option>
+            <option value="entity"${kind === "entity" ? " selected" : ""}>Entity — company / asset, no invite</option>
+          </select>
+        </div>
         <div class="row">
           <div class="field" style="flex:1;"><label>Parent label</label><input type="text" id="pCat" value="${escapeHtml(e.category || "")}" placeholder="Owner / Product / IP"></div>
           <div class="field" style="flex:1;"><label>Sub</label><input type="text" id="pSub" value="${escapeHtml(e.subcategory || "")}" placeholder="SaaS / Patent / LLC"></div>
@@ -955,7 +1013,7 @@
             <input type="text" id="pColor" value="${escapeHtml(e.color || "")}" placeholder="#3b82f6" style="max-width:120px;">
             <button class="iconbtn" id="pColorClear">Clear</button></div>
         </div>
-        <div class="field"><label>Email</label><input type="email" id="pEmail" value="${escapeHtml(e.email || "")}" placeholder="optional"></div>
+        <div class="field" id="pEmailField"><label>Email</label><input type="email" id="pEmail" value="${escapeHtml(e.email || "")}" placeholder="optional"></div>
         <div class="field">
           <div style="display:flex;justify-content:space-between;align-items:center;"><label>Links (<span id="pLinkN">${(e.links || []).length}</span>/${MAX_LINKS})</label>
             <button class="iconbtn" id="pAddLink" style="color:var(--accent);">+ Add link</button></div>
@@ -963,7 +1021,7 @@
         </div>
         <div class="field"><label>Notes</label><textarea id="pNotes" rows="3">${escapeHtml(e.notes || "")}</textarea></div>
 
-        <div class="field access-box">
+        <div class="field access-box" id="pAccessField">
           <label style="margin-bottom:0.5rem;">Portal access</label>
           <div id="pAccess" class="muted">…</div>
         </div>
@@ -1003,7 +1061,8 @@
       $("paneClose").addEventListener("click", () => { gSel = null; closePane(); renderNodes(); });
 
       const collect = () => ({
-        name: $("pName").value.trim(), category: $("pCat").value.trim() || null, subcategory: $("pSub").value.trim() || null,
+        name: $("pName").value.trim(), kind: $("pKind").value === "entity" ? "entity" : "individual",
+        category: $("pCat").value.trim() || null, subcategory: $("pSub").value.trim() || null,
         email: $("pEmail").value.trim() || null, notes: $("pNotes").value.trim() || null, color: $("pColor").value.trim() || null,
         links: links.map((l) => ({ label: l.label.trim(), url: l.url.trim() })).filter((l) => l.url || l.label),
       });
@@ -1032,8 +1091,16 @@
         render(); openPane(child.id); focusNode(x, y);
       });
 
-      // Portal access — grant/revoke via the allowlist, keyed on this box's email.
-      renderAccess(id, e.email);
+      // Type toggle: entities are companies/assets — no email invite, no portal access.
+      const applyKind = () => {
+        const isEntity = $("pKind").value === "entity";
+        show($("pEmailField"), !isEntity);
+        show($("pAccessField"), !isEntity);
+        // Portal access — grant/revoke via the allowlist, keyed on this box's email.
+        if (!isEntity) renderAccess(id, $("pEmail").value);
+      };
+      $("pKind").addEventListener("change", applyKind);
+      applyKind();
     }
 
     async function renderAccess(id, email) {
