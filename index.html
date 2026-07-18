@@ -63,6 +63,34 @@
       text-align: center;
     }
 
+    .coming-soon__login {
+      position: absolute;
+      top: 1.5rem;
+      right: 1.75rem;
+      z-index: 2;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.5rem 1rem;
+      font-size: 0.85rem;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      color: #ffffff;
+      text-decoration: none;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      border-radius: 999px;
+      backdrop-filter: blur(6px);
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .coming-soon__login:hover {
+      background: rgba(255, 255, 255, 0.14);
+      border-color: rgba(255, 255, 255, 0.5);
+    }
+    @media (max-width: 480px) {
+      .coming-soon__login { top: 1rem; right: 1rem; padding: 0.45rem 0.85rem; }
+    }
+
     .coming-soon__bg {
       --overlay: transparent;
       position: absolute;
@@ -162,6 +190,11 @@
 
   <main class="coming-soon">
     <div class="coming-soon__bg"></div>
+
+    <a class="coming-soon__login" href="/administration">
+      Login
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path><polyline points="10 17 15 12 10 7"></polyline><line x1="15" y1="12" x2="3" y2="12"></line></svg>
+    </a>
 
     <div class="coming-soon__content">
       <img
