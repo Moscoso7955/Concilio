@@ -438,6 +438,7 @@
     });
 
     let profile = null;
+    let currentUserId = null; // guards against redundant route() re-entry
     const isAdmin = () => profile && profile.role === "admin";
 
     /* ---------------- Auth ---------------- */
@@ -467,9 +468,18 @@
     $("backToLogin").addEventListener("click", () => { show($("checkEmail"), false); show($("loginView"), true); });
     $("signOutBtn").addEventListener("click", async () => { await supabase.auth.signOut(); location.reload(); });
 
-    supabase.auth.onAuthStateChange((_event, session) => { route(session); });
+    supabase.auth.onAuthStateChange((event, session) => {
+      // Defer off the auth-callback lock (calling supabase.auth.* inside the
+      // callback can deadlock), and skip events that don't change who's signed in
+      // so a token refresh never reloads the app out from under the user.
+      if (event === "TOKEN_REFRESHED" || event === "USER_UPDATED") return;
+      setTimeout(() => route(session), 0);
+    });
 
     async function route(session) {
+      const uid = session?.user?.id || null;
+      if (uid === currentUserId) return; // already routed for this signed-in state
+      currentUserId = uid;
       if (!session) {
         show($("appView"), false); show($("checkEmail"), false); show($("loginView"), true);
         return;
