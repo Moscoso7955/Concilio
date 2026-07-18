@@ -16,11 +16,13 @@ window.createOwnershipStore = function (supabase) {
       .slice(0, MAX_LINKS);
   }
 
-  // The `kind` column ships in migration 0005. Until it's applied, Postgres
-  // rejects it as an undefined column (42703) — detect that so we can retry
-  // without it and keep the graph fully usable in the meantime.
-  const missingKind = (e) =>
-    e && (e.code === "42703" || /column .*kind/i.test(e.message || ""));
+  // Optional columns ship in later migrations (`kind` → 0005, `in_reports` →
+  // 0007). Until a migration is applied, Postgres rejects the column as
+  // undefined (42703) — detect that so we can retry without the optional
+  // fields and keep the graph fully usable in the meantime.
+  const undefinedColumn = (e) =>
+    e && (e.code === "42703" || /column .*(kind|in_reports)/i.test(e.message || ""));
+  const stripOptional = (row) => { const r = { ...row }; delete r.kind; delete r.in_reports; return r; };
 
   return {
     async loadGraph() {
@@ -40,6 +42,7 @@ window.createOwnershipStore = function (supabase) {
         category: input.category ?? null,
         subcategory: input.subcategory ?? null,
         kind: input.kind === "entity" ? "entity" : "individual",
+        in_reports: input.in_reports === true,
         email: input.email ?? null,
         notes: input.notes ?? null,
         color: input.color ?? null,
@@ -48,9 +51,8 @@ window.createOwnershipStore = function (supabase) {
         position_y: input.position_y ?? 0,
       };
       let { data, error } = await supabase.from("ownership_entities").insert(row).select().single();
-      if (error && missingKind(error)) {
-        delete row.kind;
-        ({ data, error } = await supabase.from("ownership_entities").insert(row).select().single());
+      if (error && undefinedColumn(error)) {
+        ({ data, error } = await supabase.from("ownership_entities").insert(stripOptional(row)).select().single());
       }
       if (error) throw error;
       return { ...data, links: Array.isArray(data.links) ? data.links : [] };
@@ -58,14 +60,13 @@ window.createOwnershipStore = function (supabase) {
 
     async updateEntity(id, patch) {
       const p = {};
-      for (const k of ["name", "category", "subcategory", "kind", "email", "notes", "color"]) {
+      for (const k of ["name", "category", "subcategory", "kind", "in_reports", "email", "notes", "color"]) {
         if (patch[k] !== undefined) p[k] = patch[k];
       }
       if (patch.links !== undefined) p.links = cleanLinks(patch.links);
       let { error } = await supabase.from("ownership_entities").update(p).eq("id", id);
-      if (error && missingKind(error) && "kind" in p) {
-        delete p.kind;
-        ({ error } = await supabase.from("ownership_entities").update(p).eq("id", id));
+      if (error && undefinedColumn(error) && ("kind" in p || "in_reports" in p)) {
+        ({ error } = await supabase.from("ownership_entities").update(stripOptional(p)).eq("id", id));
       }
       if (error) throw error;
     },
