@@ -428,7 +428,7 @@
     const configured = cfg && cfg.SUPABASE_URL && cfg.SUPABASE_URL.indexOf("__") !== 0;
     const $ = (id) => document.getElementById(id);
     const show = (el, on = true) => el.classList.toggle("hidden", !on);
-    const money = (n) => "$" + Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const money = (n) => n == null ? "—" : "$" + Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const monthLabel = (d) => new Date(d + "T00:00:00").toLocaleDateString(undefined, { year: "numeric", month: "short" });
 
     if (!configured) { show($("notConfigured"), true); throw new Error("not configured"); }
@@ -1073,7 +1073,6 @@
         default: return [null, null];
       }
     }
-    const money = (n) => n == null ? "—" : "$" + Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
     async function loadInvoices() {
       await loadGlCodes();
