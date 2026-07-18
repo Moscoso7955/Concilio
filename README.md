@@ -35,7 +35,7 @@ administration/ ──magic-link auth──► Supabase Auth ──► RLS-guard
 | Documents      | all owners | Private document hub; admins upload, owners download via signed links |
 | Invoices       | all owners | AI-extracted overhead bills (manual + bulk + email-in); admins write |
 | Site Content   | admins     | Edit the public page (brand, tagline, colors, SEO)          |
-| Owners         | admins     | Manage the sign-in allowlist and roles                      |
+| Ownership      | admins     | Interactive ownership/relationship graph; the details pane grants portal access (allowlist) per person |
 
 ## Roles
 
@@ -56,8 +56,10 @@ signs in.
 
 - `invoices`, `gl_codes`, `tenants`, `ai_usage` — the AI invoicing module
 
+- `ownership_entities`, `ownership_edges` — the ownership/relationship graph
+
 Migrations live in [`supabase/migrations/`](supabase/migrations/) — apply them in
-order (`0001_full_backend.sql` → `0002_documents.sql` → `0003_invoices.sql`).
+order (`0001` → `0002` → `0003` → `0004`).
 
 ## AI Invoicing — edge functions & email-in setup
 
@@ -112,11 +114,13 @@ in the database.
 
 3. **Configure Auth** (Dashboard → Authentication):
    - Enable the **Email** provider with **magic links** (email OTP).
+   - Enable the **Google** provider and paste the OAuth **Client ID + Secret**
+     from Google Cloud (see the browser checklist below).
    - **Site URL:** `https://callidusco.com`
    - **Redirect URLs:** add `https://callidusco.com/administration` (and
      `http://localhost:3000/administration` if testing locally).
-   - Leave "Confirm email" on; the allowlist trigger blocks any email that
-     isn't pre-approved, so public signups can stay enabled safely.
+   - The allowlist signup trigger blocks any email that isn't pre-approved — for
+     **both** magic-link and Google — so only invited people can ever sign in.
 
 4. **(Recommended) Custom SMTP** — Supabase's built-in email is rate-limited and
    not meant for production. Configure SMTP (e.g. Resend/Postmark) under
