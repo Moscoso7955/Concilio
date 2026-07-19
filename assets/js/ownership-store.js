@@ -20,8 +20,12 @@ window.createOwnershipStore = function (supabase) {
   // 0007). Until a migration is applied, Postgres rejects the column as
   // undefined (42703) — detect that so we can retry without the optional
   // fields and keep the graph fully usable in the meantime.
-  const undefinedColumn = (e) =>
-    e && (e.code === "42703" || /column .*(kind|in_reports)/i.test(e.message || ""));
+  const undefinedColumn = (e) => {
+    if (!e) return false;
+    if (e.code === "42703" || e.code === "PGRST204") return true; // undefined column / schema cache
+    const m = `${e.message || ""} ${e.details || ""} ${e.hint || ""}`;
+    return /schema cache/i.test(m) || /\b(kind|in_reports)\b/.test(m);
+  };
   const stripOptional = (row) => { const r = { ...row }; delete r.kind; delete r.in_reports; return r; };
 
   return {
