@@ -9,8 +9,8 @@
   <style>
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
     :root {
-      --bg: #0a192f; --panel: #112240; --panel-2: #1c2f52; --border: #24406e;
-      --text: #e2e8f0; --muted: #94a3b8; --accent: #6366f1; --accent-hover: #4f46e5;
+      --bg: #111111; --panel: #1a1a1a; --panel-2: #262626; --border: #2f2f2f;
+      --text: #e5e7eb; --muted: #8a8f98; --accent: #22c55e; --accent-hover: #16a34a;
       --danger: #ef4444; --ok: #22c55e; --amber: #f59e0b;
     }
     body {
@@ -41,7 +41,7 @@
 
     .btn {
       border: none; border-radius: 9px; padding: 0.6rem 1.1rem; font-size: 0.9rem; font-weight: 600;
-      cursor: pointer; font-family: inherit; background: var(--accent); color: #fff; transition: background 0.15s;
+      cursor: pointer; font-family: inherit; background: var(--accent); color: #0b0b0b; transition: background 0.15s; font-weight: 700;
     }
     .btn:hover { background: var(--accent-hover); }
     .btn:disabled { opacity: 0.55; cursor: not-allowed; }
@@ -136,9 +136,17 @@
     .inline-select { background: var(--panel-2); border: 1px solid var(--border); color: var(--text); border-radius: 7px; padding: 0.25rem 0.4rem; font-size: 0.85rem; font-family: inherit; }
     a.filelink { color: var(--accent); text-decoration: none; }
     a.filelink:hover { text-decoration: underline; }
+    .inv-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; }
+    .inv-head h2 { font-size: 1.25rem; margin: 0; }
+    .inv-actions { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+    .inv-emailbar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;
+      background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 0.7rem 0.9rem; margin-bottom: 1rem; font-size: 0.9rem; }
+    .inv-emailaddr { color: var(--accent); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 600; }
+    .inv-range-row { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 1rem; }
+    .inv-range-row label { margin: 0; flex: 0 0 auto; }
 
     /* Ownership graph */
-    .graph-wrap { position: relative; height: calc(100vh - 210px); min-height: 460px; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: #0b1730; }
+    .graph-wrap { position: relative; height: calc(100vh - 210px); min-height: 460px; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: #141414; }
     .graph-toolbar { display: flex; align-items: center; gap: 0.6rem; padding: 0.55rem 0.7rem; border-bottom: 1px solid var(--border); background: var(--panel); }
     .graph-viewport { position: absolute; inset: 0; top: 48px; overflow: auto; }
     .graph-canvas {
@@ -343,7 +351,26 @@
 
     <!-- Invoices -->
     <section class="tab-panel hidden" data-panel="invoices">
-      <div class="toolbar-row">
+      <div class="inv-head">
+        <div>
+          <h2>Invoices</h2>
+          <p class="muted" style="margin:0.2rem 0 0;">Overhead bills — utilities, internet, rent, insurance — plus supplier invoices, all in one place.</p>
+        </div>
+        <div class="inv-actions">
+          <button class="btn btn--ghost" id="invCsvBtn" style="flex:0 0 auto;">Export</button>
+          <button class="btn btn--ghost admin-only hidden" id="invBulkBtn" style="flex:0 0 auto;">Bulk</button>
+          <input type="file" class="file-input" id="invBulkInput" accept="application/pdf,image/*" multiple>
+          <button class="btn admin-only hidden" id="invAddBtn" style="flex:0 0 auto;">Upload Invoice</button>
+        </div>
+      </div>
+
+      <div class="inv-emailbar" id="invEmailBar">
+        <span>📧 Email bills to: <span class="inv-emailaddr" id="invEmailAddr">…</span></span>
+        <button class="btn btn--ghost btn--sm" id="invEmailCopy" style="flex:0 0 auto;">Copy</button>
+      </div>
+
+      <div class="inv-range-row">
+        <label>Date range</label>
         <select class="inline-select" id="inv_range">
           <option value="this_month">This Month</option>
           <option value="last_month">Last Month</option>
@@ -351,10 +378,6 @@
           <option value="this_year">This Year</option>
           <option value="all">All</option>
         </select>
-        <button class="btn admin-only hidden" id="invAddBtn" style="flex:0 0 auto;">+ Add invoice</button>
-        <button class="btn btn--ghost admin-only hidden" id="invBulkBtn" style="flex:0 0 auto;">Bulk upload…</button>
-        <input type="file" class="file-input" id="invBulkInput" accept="application/pdf,image/*" multiple>
-        <button class="btn btn--ghost" id="invCsvBtn" style="flex:0 0 auto;">Export CSV</button>
         <span class="muted" id="invBanner"></span>
       </div>
 
@@ -396,7 +419,7 @@
     <section class="tab-panel hidden" data-panel="coa">
       <div class="section-card">
         <h2>Chart of Accounts</h2>
-        <p class="muted" style="margin-bottom:1rem;">Assign a numeric code and tax rate to each category. Mark a category as a <strong>Sub account</strong> to nest it under a parent. This list is exactly what the invoice <strong>Code</strong> picker chooses from.</p>
+        <p class="muted" style="margin-bottom:1rem;">Assign a numeric code to each category. Mark a category as a <strong>Sub account</strong> to nest it under a parent. This list is exactly what the invoice <strong>Code</strong> picker chooses from.</p>
         <div class="row" style="align-items:center;margin-bottom:1rem;">
           <input type="text" id="coa_name" placeholder="Add a category…" style="flex:2;">
           <button class="btn" id="coaAddBtn" style="flex:0 0 auto;">Add category</button>
@@ -404,7 +427,7 @@
         </div>
         <div class="table-wrap">
           <table id="coaTable">
-            <thead><tr><th>Category</th><th>Sub account</th><th>Code / Parent</th><th class="num">Tax rate</th><th></th></tr></thead>
+            <thead><tr><th>Category</th><th>Sub account</th><th>Code / Parent</th><th></th></tr></thead>
             <tbody id="coaBody"></tbody>
           </table>
         </div>
@@ -1000,7 +1023,7 @@
         const lx = (x1 + x2) / 2, ly = my;
         const label = (e.percentage % 1 === 0 ? e.percentage : Number(e.percentage).toFixed(2)) + "%";
         svg.insertAdjacentHTML("beforeend",
-          `<rect x="${lx - 16}" y="${ly - 9}" width="32" height="18" rx="4" fill="#0b1730" stroke="#334155"></rect>
+          `<rect x="${lx - 16}" y="${ly - 9}" width="32" height="18" rx="4" fill="#141414" stroke="#334155"></rect>
            <text x="${lx}" y="${ly + 4}" text-anchor="middle" font-size="11" fill="#cbd5e1">${label}</text>`);
       }
       svg.querySelectorAll(".edge-hit").forEach((h) => h.addEventListener("click", () => editEdge(h.dataset.edge)));
@@ -1292,11 +1315,25 @@
 
     async function loadInvoices() {
       await loadGlCodes();
+      loadEmailBar();
       const { data, error } = await supabase.from("invoices_list").select("*").order("created_at", { ascending: false });
       invRows = (!error && data) || [];
       renderReview();
       renderLedger();
     }
+
+    async function loadEmailBar() {
+      const el = $("invEmailAddr"); if (!el) return;
+      const domain = (window.CALLIDUS_CONFIG && window.CALLIDUS_CONFIG.INBOUND_DOMAIN) || "reply.callidusco.com";
+      let token = "callidus";
+      const { data } = await supabase.from("tenants").select("inbound_token").order("created_at").limit(1).maybeSingle();
+      if (data?.inbound_token) token = data.inbound_token;
+      el.textContent = `bills-${token}@${domain}`;
+    }
+    $("invEmailCopy")?.addEventListener("click", async () => {
+      const addr = ($("invEmailAddr").textContent || "").trim();
+      try { await navigator.clipboard.writeText(addr); const b = $("invEmailCopy"), t = b.textContent; b.textContent = "Copied ✓"; setTimeout(() => (b.textContent = t), 1200); } catch (_) {}
+    });
 
     function dupSet(rows) {
       const seen = {}, dups = new Set();
@@ -1558,9 +1595,10 @@
         const subs = coaSubs(r.code), hasSubs = subs.length > 0, open = coaOpen[r.code];
         const parentSel = '<select class="inline-select" data-parent="' + r.code + '">' +
           coaTops().filter((t) => t.code !== r.code).map((t) => `<option value="${t.code}"${t.code === r.parent_code ? " selected" : ""}>under ${escapeHtml(t.category)} (${t.code})</option>`).join("") + "</select>";
+        const codeInput = `<input type="text" data-codeinput="${r.code}" value="${escapeHtml(r.code)}" style="width:5rem;padding:0.35rem 0.4rem;font-weight:700;">`;
         const codeCell = isSub
-          ? `<div style="display:flex;gap:0.4rem;align-items:center;"><strong>${escapeHtml(r.code)}</strong> ${parentSel}</div>`
-          : `<strong>${escapeHtml(r.code)}</strong>`;
+          ? `<div style="display:flex;gap:0.4rem;align-items:center;">${codeInput} ${parentSel}</div>`
+          : codeInput;
         const canSub = !hasSubs; // one level deep: a parent-of-subs can't itself be a sub
         return `<tr>
           <td style="${isSub ? "padding-left:1.8rem;" : ""}">
@@ -1570,7 +1608,6 @@
           </td>
           <td><label style="margin:0;display:inline-flex;align-items:center;gap:0.3rem;${canSub ? "" : "opacity:0.4;"}"><input type="checkbox" data-sub="${r.code}"${isSub ? " checked" : ""}${canSub ? "" : " disabled"} style="width:auto;"> Sub</label></td>
           <td>${codeCell}</td>
-          <td class="num"><div style="display:inline-flex;align-items:center;gap:0.2rem;"><input type="number" step="0.001" min="0" data-tax="${r.code}" value="${r.tax_rate ?? 0}" style="width:4.5rem;padding:0.35rem 0.4rem;text-align:right;"> %</div></td>
           <td class="num"><button class="btn btn--danger btn--sm" data-delcoa="${r.code}">Delete</button></td>
         </tr>`;
       };
@@ -1584,7 +1621,7 @@
     function wireChart(body) {
       body.querySelectorAll("[data-toggle]").forEach((b) => b.addEventListener("click", () => { coaOpen[b.dataset.toggle] = !coaOpen[b.dataset.toggle]; renderChart(); }));
       body.querySelectorAll("[data-name]").forEach((inp) => inp.addEventListener("change", () => coaUpdate(inp.dataset.name, { category: inp.value.trim() || "Untitled", name: inp.value.trim() || "Untitled" })));
-      body.querySelectorAll("[data-tax]").forEach((inp) => inp.addEventListener("change", () => coaUpdate(inp.dataset.tax, { tax_rate: Number(inp.value) || 0 })));
+      body.querySelectorAll("[data-codeinput]").forEach((inp) => inp.addEventListener("change", () => renameCode(inp.dataset.codeinput, inp.value.trim())));
       body.querySelectorAll("[data-parent]").forEach((sel) => sel.addEventListener("change", () => coaUpdate(sel.dataset.parent, { parent_code: sel.value || null })));
       body.querySelectorAll("[data-sub]").forEach((cb) => cb.addEventListener("change", () => {
         const code = cb.dataset.sub;
@@ -1600,11 +1637,30 @@
     async function coaUpdate(code, patch) {
       const st = $("coaStatus"); st.textContent = "";
       const { error } = await supabase.from("gl_codes").update(patch).eq("code", code);
-      if (error) { st.textContent = coaColMissing(error) ? "Run migration 0006 to enable tax rates & sub-accounts." : error.message; loadChart(); return; }
+      if (error) { st.textContent = coaColMissing(error) ? "Run migration 0006 to enable sub-accounts." : error.message; loadChart(); return; }
       const row = coaRows.find((r) => r.code === code); if (row) Object.assign(row, patch);
       if (patch.parent_code) coaOpen[patch.parent_code] = true;
       renderChart();
       glCodes = []; loadGlCodes(true); // refresh the invoice Code picker
+    }
+
+    async function renameCode(oldCode, newCode) {
+      const st = $("coaStatus"); st.textContent = "";
+      if (!newCode || newCode === oldCode) { renderChart(); return; }
+      if (coaRows.some((r) => r.code === newCode)) { st.textContent = `Code ${newCode} is already in use.`; renderChart(); return; }
+      const row = coaRows.find((r) => r.code === oldCode); if (!row) return;
+      // Insert the new code first, repoint references, then drop the old — keeps
+      // the invoices FK valid at every step (no ON UPDATE CASCADE required).
+      const ins = { code: newCode, category: row.category, name: row.name, sort: row.sort, parent_code: row.parent_code ?? null };
+      let { error } = await supabase.from("gl_codes").insert(ins);
+      if (error) { st.textContent = error.message; renderChart(); return; }
+      await supabase.from("invoices").update({ code: newCode }).eq("code", oldCode);
+      await supabase.from("gl_codes").update({ parent_code: newCode }).eq("parent_code", oldCode);
+      const del = await supabase.from("gl_codes").delete().eq("code", oldCode);
+      if (del.error) { st.textContent = del.error.message; }
+      if (coaOpen[oldCode]) { coaOpen[newCode] = true; delete coaOpen[oldCode]; }
+      await loadChart();
+      glCodes = []; loadGlCodes(true);
     }
 
     async function deleteAccount(code) {
