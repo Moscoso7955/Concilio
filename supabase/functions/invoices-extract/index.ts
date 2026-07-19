@@ -1,11 +1,14 @@
-// AI invoice extraction. Authenticated (verify_jwt=true) — the client sends a
-// file, Claude returns structured fields. The Anthropic key stays server-side.
-// Used by the manual-upload modal and bulk upload.
+// AI invoice extraction. Deploy with verify_jwt = FALSE: the JWT gateway rejects
+// the browser's cross-origin CORS preflight (OPTIONS carries no auth), which
+// surfaces as "Failed to send a request to the Edge Function". Instead this
+// function does its own auth — it requires a valid Supabase user token on POST.
+// The Anthropic key stays server-side. Used by the manual-upload modal + bulk.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const ANON = Deno.env.get("SUPABASE_ANON_KEY")!;
 const ANTHROPIC_KEY = Deno.env.get("ANTHROPIC_API_KEY")!;
 const admin = createClient(SUPABASE_URL, SERVICE, { auth: { persistSession: false } });
 
@@ -99,6 +102,10 @@ export async function extractInvoice(bytes: Uint8Array, mime: string, purpose: s
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
+  // Own auth (verify_jwt is off): require a valid signed-in user.
+  const token = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
+  const { data: { user } } = await createClient(SUPABASE_URL, ANON).auth.getUser(token);
+  if (!user) return json({ error: "Unauthorized" }, 401);
   try {
     const form = await req.formData();
     const file = form.get("file") as File | null;

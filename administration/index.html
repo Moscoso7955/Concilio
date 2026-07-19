@@ -371,13 +371,7 @@
 
       <div class="inv-range-row">
         <label>Date range</label>
-        <select class="inline-select" id="inv_range">
-          <option value="this_month">This Month</option>
-          <option value="last_month">Last Month</option>
-          <option value="last_3">Last 3 Months</option>
-          <option value="this_year">This Year</option>
-          <option value="all">All</option>
-        </select>
+        <span id="invRangePicker"></span>
         <span class="muted" id="invBanner"></span>
       </div>
 
@@ -489,7 +483,7 @@
       </div>
       <div class="field"><label>Vendor</label><input type="text" id="invf_vendor"></div>
       <div class="row">
-        <div><label>Date</label><input type="date" id="invf_date"></div>
+        <div><label>Date</label><span id="invf_date_mount"></span></div>
         <div><label>Amount</label><input type="number" step="0.01" id="invf_amount"></div>
       </div>
       <div class="row">
@@ -508,6 +502,7 @@
 
   <script src="/assets/js/config.js"></script>
   <script src="/assets/js/ownership-store.js"></script>
+  <script src="/assets/js/date-range-picker.js"></script>
   <script type="module">
     import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
 
@@ -1301,16 +1296,15 @@
       const sel = $("invf_code"); if (sel) sel.innerHTML = inner;
     }
 
+    const isoLocal = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    let invRange = null; // { from, to } ISO strings
+    (() => {
+      const now = new Date(), first = new Date(now.getFullYear(), now.getMonth(), 1);
+      invRange = { from: isoLocal(first), to: isoLocal(now) };
+    })();
+
     function rangeBounds() {
-      const now = new Date(), y = now.getFullYear(), m = now.getMonth();
-      const iso = (d) => d.toISOString().slice(0, 10);
-      switch ($("inv_range").value) {
-        case "this_month": return [iso(new Date(y, m, 1)), iso(new Date(y, m + 1, 0))];
-        case "last_month": return [iso(new Date(y, m - 1, 1)), iso(new Date(y, m, 0))];
-        case "last_3": return [iso(new Date(y, m - 2, 1)), iso(new Date(y, m + 1, 0))];
-        case "this_year": return [iso(new Date(y, 0, 1)), iso(new Date(y, 11, 31))];
-        default: return [null, null];
-      }
+      return invRange ? [invRange.from, invRange.to] : [null, null];
     }
 
     async function loadInvoices() {
@@ -1483,13 +1477,31 @@
       th.querySelector(".arrow").textContent = invSort.dir === "asc" ? "▲" : "▼";
       renderLedger();
     }));
-    $("inv_range").addEventListener("change", renderLedger);
+    // Terminal-green date pickers: range filter + the Add-invoice modal date.
+    let invDatePicker = null;
+    (function initInvPickers() {
+      const rangeMount = $("invRangePicker");
+      if (rangeMount && window.createDateRangePicker) {
+        const now = new Date(), first = new Date(now.getFullYear(), now.getMonth(), 1);
+        window.createDateRangePicker({
+          mount: rangeMount,
+          initialStart: first, initialEnd: now,
+          presets: ["today", "thisWeek", "thisMonth", "lastMonth", "last3Months", "thisYear"],
+          onChange: (start, end) => { invRange = { from: isoLocal(start), to: isoLocal(end) }; renderLedger(); },
+        });
+      }
+      const dateMount = $("invf_date_mount");
+      if (dateMount && window.createDatePicker) {
+        invDatePicker = window.createDatePicker({ mount: dateMount, initial: "" });
+      }
+    })();
 
     // Manual add modal
     let pendingFile = null;
     $("invAddBtn")?.addEventListener("click", () => {
       pendingFile = null;
-      ["invf_vendor", "invf_amount", "invf_note", "invf_date"].forEach((i) => $(i).value = "");
+      ["invf_vendor", "invf_amount", "invf_note"].forEach((i) => $(i).value = "");
+      if (invDatePicker) invDatePicker.setValue("");
       $("invf_code").value = ""; $("invf_status").value = "Unpaid";
       $("invFileStatus").textContent = ""; $("invSaveStatus").textContent = "";
       show($("invModal"), true);
@@ -1502,7 +1514,7 @@
       try {
         const x = await extractFile(pendingFile);
         if (x.vendor) $("invf_vendor").value = x.vendor;
-        if (x.invoiceDate) $("invf_date").value = x.invoiceDate;
+        if (x.invoiceDate && invDatePicker) invDatePicker.setValue(x.invoiceDate);
         if (x.amount != null) $("invf_amount").value = x.amount;
         if (x.category) { const gc = glCodes.find((c) => c.category === x.category); if (gc) $("invf_code").value = gc.code; }
         $("invFileStatus").textContent = pendingFile.name + " ✓ pre-filled";
@@ -1517,7 +1529,7 @@
         const file_url = pendingFile ? await uploadInvoiceFile(pendingFile) : null;
         const { data, error } = await supabase.rpc("create_invoice", {
           p_vendor: vendor, p_code: $("invf_code").value || null,
-          p_invoice_date: $("invf_date").value || null,
+          p_invoice_date: (invDatePicker ? invDatePicker.getValue() : "") || null,
           p_amount: $("invf_amount").value ? Number($("invf_amount").value) : null,
           p_payment_status: $("invf_status").value, p_note: $("invf_note").value.trim() || null,
           p_file_url: file_url, p_file_name: pendingFile ? pendingFile.name : null, p_needs_review: false,
