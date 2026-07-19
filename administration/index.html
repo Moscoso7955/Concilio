@@ -85,6 +85,17 @@
     .stat .v { font-size: 1.6rem; font-weight: 700; margin-top: 0.25rem; }
     .v.pos { color: var(--ok); } .v.neg { color: var(--danger); }
 
+    /* ---------- Reports: unit cards ---------- */
+    .unit-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 0.9rem; }
+    .unit-card { background: var(--panel-2); border: 1px solid var(--border); border-radius: 12px; padding: 1rem 1.1rem; cursor: pointer; transition: border-color 0.15s, transform 0.05s; }
+    .unit-card:hover { border-color: var(--accent); }
+    .unit-card:active { transform: translateY(1px); }
+    .unit-card__name { font-weight: 700; margin-bottom: 0.6rem; }
+    .unit-card__figs { display: flex; gap: 1.25rem; }
+    .unit-card__figs .k { display: block; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+    .unit-card__figs .v { font-size: 1.15rem; font-weight: 700; }
+    .unit-card__meta { margin-top: 0.6rem; font-size: 0.78rem; }
+
     /* ---------- Tables ---------- */
     .table-wrap { overflow-x: auto; }
     table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
@@ -230,38 +241,56 @@
       <button class="tab admin-only hidden" data-tab="owners">Ownership</button>
     </div>
 
-    <!-- Financials -->
+    <!-- Reports -->
     <section class="tab-panel" data-panel="financials">
-      <div class="stats" id="finStats"></div>
-
-      <div class="section-card admin-only hidden">
-        <h2>Add / update a month</h2>
-        <div class="row">
-          <div><label>Month</label><input type="month" id="fin_period"></div>
-          <div><label>Revenue</label><input type="number" step="0.01" id="fin_revenue" placeholder="0.00"></div>
-          <div><label>Expenses</label><input type="number" step="0.01" id="fin_expenses" placeholder="0.00"></div>
+      <!-- GROUP VIEW: whole-group panes on top, units below -->
+      <div id="repGroupView">
+        <h2 style="font-size:0.95rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.75rem;">Group — all units combined</h2>
+        <div class="stats" id="repGroupStats"></div>
+        <div class="section-card">
+          <h2>Units</h2>
+          <div id="repUnits" class="unit-grid"></div>
+          <p class="muted" id="repUnitsEmpty">No units yet. In the <strong>Ownership</strong> tab, open an entity and turn on “Show this unit in Reports.”</p>
         </div>
-        <div class="field" style="margin-top:0.75rem;"><label>Notes</label><input type="text" id="fin_notes" placeholder="Optional"></div>
-        <div class="row" style="align-items:center;">
-          <button class="btn" id="finSaveBtn" style="flex:0 0 auto;">Save month</button>
-          <button class="btn btn--ghost" id="finCsvBtn" style="flex:0 0 auto;">Import CSV…</button>
-          <input type="file" class="file-input" id="finCsvInput" accept=".csv,text/csv">
-          <span class="muted" id="finFormStatus"></span>
-        </div>
-        <p class="muted" style="margin-top:0.5rem;">CSV columns: <code>period,revenue,expenses,notes</code> (period as YYYY-MM).</p>
       </div>
 
-      <div class="section-card">
-        <h2>Monthly figures</h2>
-        <div class="table-wrap">
-          <table id="finTable">
-            <thead><tr>
-              <th>Month</th><th class="num">Revenue</th><th class="num">Expenses</th><th class="num">Net</th><th>Notes</th><th class="admin-only hidden"></th>
-            </tr></thead>
-            <tbody id="finBody"></tbody>
-          </table>
+      <!-- UNIT DRILL-IN -->
+      <div id="repUnitView" class="hidden">
+        <div class="row" style="align-items:center;margin-bottom:1rem;">
+          <button class="btn btn--ghost btn--sm" id="repBack" style="flex:0 0 auto;">← All units</button>
+          <h2 id="repUnitName" style="flex:1;font-size:1.1rem;margin:0;"></h2>
         </div>
-        <p class="muted" id="finEmpty">No figures yet.</p>
+        <div class="stats" id="repUnitStats"></div>
+
+        <div class="section-card admin-only hidden">
+          <h2>Add / update a month</h2>
+          <div class="row">
+            <div><label>Month</label><input type="month" id="fin_period"></div>
+            <div><label>Revenue</label><input type="number" step="0.01" id="fin_revenue" placeholder="0.00"></div>
+            <div><label>Expenses</label><input type="number" step="0.01" id="fin_expenses" placeholder="0.00"></div>
+          </div>
+          <div class="field" style="margin-top:0.75rem;"><label>Notes</label><input type="text" id="fin_notes" placeholder="Optional"></div>
+          <div class="row" style="align-items:center;">
+            <button class="btn" id="finSaveBtn" style="flex:0 0 auto;">Save month</button>
+            <button class="btn btn--ghost" id="finCsvBtn" style="flex:0 0 auto;">Import CSV…</button>
+            <input type="file" class="file-input" id="finCsvInput" accept=".csv,text/csv">
+            <span class="muted" id="finFormStatus"></span>
+          </div>
+          <p class="muted" style="margin-top:0.5rem;">CSV columns: <code>period,revenue,expenses,notes</code> (period as YYYY-MM). Rows import to this unit.</p>
+        </div>
+
+        <div class="section-card">
+          <h2>Monthly figures</h2>
+          <div class="table-wrap">
+            <table id="finTable">
+              <thead><tr>
+                <th>Month</th><th class="num">Revenue</th><th class="num">Expenses</th><th class="num">Net</th><th>Notes</th><th class="admin-only hidden"></th>
+              </tr></thead>
+              <tbody id="finBody"></tbody>
+            </table>
+          </div>
+          <p class="muted" id="finEmpty">No figures yet.</p>
+        </div>
       </div>
     </section>
 
@@ -553,23 +582,84 @@
       });
     });
 
-    /* ---------------- Financials ---------------- */
-    async function loadFinancials() {
-      const { data, error } = await supabase.from("financials").select("*").order("period", { ascending: false });
-      const rows = (!error && data) || [];
-      // summary from latest month
-      const stats = $("finStats"); stats.innerHTML = "";
-      if (rows.length) {
-        const latest = rows[0];
-        const cards = [
-          ["Latest month", monthLabel(latest.period), ""],
-          ["Revenue", money(latest.revenue), "pos"],
-          ["Expenses", money(latest.expenses), "neg"],
-          ["Net", money(latest.net), latest.net >= 0 ? "pos" : "neg"]
-        ];
-        stats.innerHTML = cards.map(([k, v, c]) =>
-          `<div class="stat"><div class="k">${k}</div><div class="v ${c}">${v}</div></div>`).join("");
+    /* ---------------- Reports (per-unit financials) ---------------- */
+    let repFin = [], repUnits = [], repUnit = null;
+
+    const finNeedsMigration = (e) =>
+      e && (e.code === "42703" || e.code === "42P10" || /entity_id|unique|constraint|on conflict/i.test(e.message || ""));
+
+    async function upsertFinancials(rows) {
+      // Prefer per-unit uniqueness; fall back to period-only until migration 0008 lands.
+      let { error } = await supabase.from("financials").upsert(rows, { onConflict: "entity_id,period" });
+      if (error && finNeedsMigration(error)) {
+        const stripped = rows.map((r) => { const c = { ...r }; delete c.entity_id; return c; });
+        ({ error } = await supabase.from("financials").upsert(stripped, { onConflict: "period" }));
+        if (!error) return { error: null, degraded: true };
       }
+      return { error, degraded: false };
+    }
+
+    function periodAgg(rows) {
+      const map = new Map();
+      for (const r of rows) {
+        const a = map.get(r.period) || { period: r.period, revenue: 0, expenses: 0 };
+        a.revenue += Number(r.revenue) || 0; a.expenses += Number(r.expenses) || 0;
+        map.set(r.period, a);
+      }
+      return [...map.values()].map((a) => ({ ...a, net: a.revenue - a.expenses }))
+        .sort((x, y) => y.period.localeCompare(x.period));
+    }
+
+    function statCards(latest) {
+      if (!latest) return `<div class="stat"><div class="k">Latest month</div><div class="v">—</div></div>`;
+      const cards = [
+        ["Latest month", monthLabel(latest.period), ""],
+        ["Revenue", money(latest.revenue), "pos"],
+        ["Expenses", money(latest.expenses), "neg"],
+        ["Net", money(latest.net), latest.net >= 0 ? "pos" : "neg"],
+      ];
+      return cards.map(([k, v, c]) => `<div class="stat"><div class="k">${k}</div><div class="v ${c}">${v}</div></div>`).join("");
+    }
+
+    async function loadFinancials() {
+      const [finRes, entRes] = await Promise.all([
+        supabase.from("financials").select("*").order("period", { ascending: false }),
+        supabase.from("ownership_entities").select("id,name,kind,in_reports").order("name"),
+      ]);
+      repFin = (!finRes.error && finRes.data) || [];
+      repUnits = ((!entRes.error && entRes.data) || []).filter((e) => e.in_reports);
+      if (repUnit && !repUnits.some((u) => u.id === repUnit)) repUnit = null;
+      if (repUnit) renderUnitView(); else renderGroupView();
+    }
+
+    function renderGroupView() {
+      show($("repGroupView"), true); show($("repUnitView"), false);
+      $("repGroupStats").innerHTML = statCards(periodAgg(repFin)[0]);
+      const grid = $("repUnits"); grid.innerHTML = "";
+      show($("repUnitsEmpty"), repUnits.length === 0);
+      for (const u of repUnits) {
+        const latest = periodAgg(repFin.filter((r) => r.entity_id === u.id))[0];
+        const card = document.createElement("div");
+        card.className = "unit-card";
+        card.innerHTML =
+          `<div class="unit-card__name">${escapeHtml(u.name)}</div>
+           <div class="unit-card__figs">
+             <div><span class="k">Revenue</span><span class="v pos">${latest ? money(latest.revenue) : "—"}</span></div>
+             <div><span class="k">Net</span><span class="v ${latest && latest.net < 0 ? "neg" : "pos"}">${latest ? money(latest.net) : "—"}</span></div>
+           </div>
+           <div class="unit-card__meta muted">${latest ? monthLabel(latest.period) : "No figures yet"}</div>`;
+        card.addEventListener("click", () => { repUnit = u.id; renderUnitView(); });
+        grid.appendChild(card);
+      }
+    }
+
+    function renderUnitView() {
+      const u = repUnits.find((x) => x.id === repUnit);
+      if (!u) { repUnit = null; renderGroupView(); return; }
+      show($("repGroupView"), false); show($("repUnitView"), true);
+      $("repUnitName").textContent = u.name;
+      const rows = repFin.filter((r) => r.entity_id === repUnit);
+      $("repUnitStats").innerHTML = statCards(periodAgg(rows)[0]);
       const body = $("finBody"); body.innerHTML = "";
       show($("finEmpty"), rows.length === 0);
       for (const r of rows) {
@@ -587,31 +677,37 @@
         b.addEventListener("click", () => deleteFinancial(b.dataset.del)));
     }
 
+    $("repBack")?.addEventListener("click", () => { repUnit = null; renderGroupView(); });
+
     $("finSaveBtn")?.addEventListener("click", async () => {
       const st = $("finFormStatus"); st.textContent = "";
+      if (!repUnit) { st.textContent = "Open a unit first."; return; }
       const m = $("fin_period").value; // YYYY-MM
       if (!m) { st.textContent = "Pick a month."; return; }
       const row = {
-        period: m + "-01",
+        entity_id: repUnit, period: m + "-01",
         revenue: Number($("fin_revenue").value || 0),
         expenses: Number($("fin_expenses").value || 0),
-        notes: $("fin_notes").value.trim() || null
+        notes: $("fin_notes").value.trim() || null,
       };
-      const { error } = await supabase.from("financials").upsert(row, { onConflict: "period" });
+      const { error, degraded } = await upsertFinancials([row]);
       if (error) { st.textContent = error.message; return; }
       $("fin_revenue").value = ""; $("fin_expenses").value = ""; $("fin_notes").value = "";
-      st.textContent = "Saved ✓"; loadFinancials();
+      st.textContent = degraded ? "Saved — run migration 0008 for per-unit data" : "Saved ✓";
+      loadFinancials();
     });
 
     $("finCsvBtn")?.addEventListener("click", () => $("finCsvInput").click());
     $("finCsvInput")?.addEventListener("change", async () => {
       const file = $("finCsvInput").files[0]; if (!file) return;
-      const st = $("finFormStatus"); st.textContent = "Parsing…";
+      const st = $("finFormStatus");
+      if (!repUnit) { st.textContent = "Open a unit first."; $("finCsvInput").value = ""; return; }
+      st.textContent = "Parsing…";
       const text = await file.text();
-      const rows = parseFinancialCsv(text);
+      const rows = parseFinancialCsv(text).map((r) => ({ ...r, entity_id: repUnit }));
       if (!rows.length) { st.textContent = "No valid rows found."; return; }
-      const { error } = await supabase.from("financials").upsert(rows, { onConflict: "period" });
-      st.textContent = error ? error.message : `Imported ${rows.length} row(s) ✓`;
+      const { error, degraded } = await upsertFinancials(rows);
+      st.textContent = error ? error.message : (degraded ? `Imported ${rows.length} — run migration 0008` : `Imported ${rows.length} row(s) ✓`);
       if (!error) loadFinancials();
       $("finCsvInput").value = "";
     });
