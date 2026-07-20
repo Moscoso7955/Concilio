@@ -586,19 +586,30 @@
       $("userEmail").textContent = session.user.email;
       const rb = $("roleBadge"); rb.textContent = profile.role; rb.classList.toggle("badge--admin", isAdmin());
       document.querySelectorAll(".admin-only").forEach((el) => show(el, isAdmin()));
+      restoreTab(); // land on the tab the user was on before the reload
       loadFinancials(); loadMemos(); loadDocuments(); loadInvoices();
       if (isAdmin()) { loadSite(); loadGraph(); loadChart(); }
     }
 
-    /* ---------------- Tabs ---------------- */
+    /* ---------------- Tabs (active tab survives reload) ---------------- */
+    function activateTab(name) {
+      const btn = document.querySelector(`.tab[data-tab="${name}"]`);
+      if (!btn || btn.classList.contains("hidden")) return false;
+      document.querySelectorAll(".tab").forEach((x) => x.classList.toggle("active", x === btn));
+      document.querySelectorAll(".tab-panel").forEach((p) => show(p, p.dataset.panel === name));
+      return true;
+    }
     document.querySelectorAll(".tab").forEach((t) => {
       t.addEventListener("click", () => {
-        document.querySelectorAll(".tab").forEach((x) => x.classList.remove("active"));
-        t.classList.add("active");
-        const name = t.dataset.tab;
-        document.querySelectorAll(".tab-panel").forEach((p) => show(p, p.dataset.panel === name));
+        activateTab(t.dataset.tab);
+        try { localStorage.setItem("callidus_tab", t.dataset.tab); } catch (_) {}
       });
     });
+    function restoreTab() {
+      let saved = null;
+      try { saved = localStorage.getItem("callidus_tab"); } catch (_) {}
+      if (saved) activateTab(saved); // falls back to the default (Reports) if hidden/unknown
+    }
 
     /* ---------------- Reports (per-unit financials) ---------------- */
     let repFin = [], repUnits = [], repUnit = null;
