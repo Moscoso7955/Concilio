@@ -1464,8 +1464,26 @@
 
     async function extractFile(file) {
       const fd = new FormData(); fd.append("file", file);
-      const { data, error } = await supabase.functions.invoke("invoices-extract", { body: fd });
-      if (error || !data?.ok) throw new Error(data?.error || error?.message || "extraction failed");
+      const url = cfg.SUPABASE_URL + "/functions/v1/invoices-extract";
+      let session = null;
+      try { session = (await supabase.auth.getSession()).data.session; } catch (_) {}
+      let res;
+      try {
+        // Direct fetch (equivalent to functions.invoke) so we can surface the real status.
+        res = await fetch(url, {
+          method: "POST",
+          headers: {
+            apikey: cfg.SUPABASE_ANON_KEY,
+            Authorization: "Bearer " + (session?.access_token || cfg.SUPABASE_ANON_KEY),
+          },
+          body: fd, // browser sets multipart content-type automatically
+        });
+      } catch (e) {
+        throw new Error("can't reach the function (CORS/network) — check invoices-extract is deployed with Verify JWT OFF");
+      }
+      let data = {};
+      try { data = await res.json(); } catch (_) {}
+      if (!res.ok || !data.ok) throw new Error(data.error || ("HTTP " + res.status));
       return data.extracted || {};
     }
 
