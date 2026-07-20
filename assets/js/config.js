@@ -9,11 +9,9 @@ window.CALLIDUS_CONFIG = {
   SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9mbGl1dXVsYWdxbGJkandybmpjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMwMjQyNjEsImV4cCI6MjA5ODYwMDI2MX0.RtWcgElaqD3_BKa5_jJKhO_hTcCg4RnYGdD19Gt48Ho",
   TABLE: "site_content",
   BUCKET: "site-assets",
-  // Resend inbound domain — the Invoices banner shows
-  // bills-<tenant token>@<this domain>. Must be a domain whose MX points at
-  // Resend's inbound servers. The root callidusco.com MX is Google Workspace
-  // (christian@'s real mailbox) and must stay that way — set this to the
-  // dedicated inbound subdomain (bills.callidusco.com) once it's verified
-  // in Resend. Empty = banner shows "not set up yet".
-  INBOUND_DOMAIN: ""
+  // Resend inbound domain (verified 2026-07-20) — the Invoices banner shows
+  // bills-<tenant token>@<this domain>. The root callidusco.com MX stays on
+  // Google Workspace (christian@'s real mailbox); inbound bills use this
+  // dedicated subdomain, whose MX points at Resend's inbound servers.
+  INBOUND_DOMAIN: "bills.callidusco.com"
 };
