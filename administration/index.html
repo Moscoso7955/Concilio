@@ -520,7 +520,7 @@
     });
 
     let profile = null;
-    let currentUserId = null; // guards against redundant route() re-entry
+    let currentUserId; // undefined until first route; guards redundant re-entry (null = signed-out, already rendered)
     const isAdmin = () => profile && profile.role === "admin";
 
     /* ---------------- Auth ---------------- */
