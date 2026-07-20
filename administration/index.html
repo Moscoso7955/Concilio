@@ -1317,12 +1317,17 @@
     }
 
     async function loadEmailBar() {
-      const el = $("invEmailAddr"); if (!el) return;
-      const domain = (window.CALLIDUS_CONFIG && window.CALLIDUS_CONFIG.INBOUND_DOMAIN) || "reply.callidusco.com";
+      const bar = $("invEmailBar"); if (!bar) return;
+      const domain = window.CALLIDUS_CONFIG && window.CALLIDUS_CONFIG.INBOUND_DOMAIN;
+      if (!domain) {
+        // No verified inbound domain yet — don't show a non-working address.
+        bar.innerHTML = '<span class="muted">📧 Email-in (forward bills to auto-file) isn’t set up yet.</span>';
+        return;
+      }
       let token = "callidus";
       const { data } = await supabase.from("tenants").select("inbound_token").order("created_at").limit(1).maybeSingle();
       if (data?.inbound_token) token = data.inbound_token;
-      el.textContent = `bills-${token}@${domain}`;
+      const el = $("invEmailAddr"); if (el) el.textContent = `bills-${token}@${domain}`;
     }
     $("invEmailCopy")?.addEventListener("click", async () => {
       const addr = ($("invEmailAddr").textContent || "").trim();
