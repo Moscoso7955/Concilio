@@ -19,20 +19,23 @@ const CATEGORIES = [
   "Licenses & Permits", "Waste & Recycling", "Software & Subscriptions",
   "Professional Services", "Other",
 ];
+// category is a plain nullable string (Anthropic rejects enum on a nullable
+// union type); allowed values are enforced via the system prompt below.
 const SCHEMA = {
   type: "object", additionalProperties: false,
   properties: {
     vendor: { type: ["string", "null"] },
     invoiceDate: { type: ["string", "null"] },
     amount: { type: ["number", "null"] },
-    category: { type: ["string", "null"], enum: [...CATEGORIES, null] },
+    category: { type: ["string", "null"] },
   },
   required: ["vendor", "invoiceDate", "amount", "category"],
 };
 const SYSTEM = `You extract fields from a single overhead bill for bookkeeping.
 If a field is not clearly present, return null rather than guessing.
 vendor = the company that ISSUED the bill (biller). invoiceDate = ISO YYYY-MM-DD.
-amount = total due, numeric only. category = one allowed value or null.`;
+amount = total due, numeric only.
+category = choose EXACTLY one of these values, or null if unclear: ${CATEGORIES.join(", ")}.`;
 
 // --- Landmine 4: verify Resend (Svix) signature, fail CLOSED ---
 async function verify(req: Request, body: string): Promise<boolean> {

@@ -31,8 +31,11 @@ Core rule: if a field is not clearly present, return null rather than guessing.
 - vendor: the company that ISSUED the bill (the biller), never the customer being billed.
 - invoiceDate: ISO YYYY-MM-DD; prefer the invoice/statement date over the due date.
 - amount: the total amount due, numeric only (no currency symbols).
-- category: one of the allowed values, or null if unclear.`;
+- category: choose EXACTLY one of these values, or null if unclear: ${CATEGORIES.join(", ")}.`;
 
+// NOTE: Anthropic's structured-output validator rejects `enum` on a nullable
+// union type, so category is a plain nullable string; the allowed values are
+// enforced via the system prompt above (and matched to GL codes client-side).
 const SCHEMA = {
   type: "object",
   additionalProperties: false,
@@ -40,7 +43,7 @@ const SCHEMA = {
     vendor: { type: ["string", "null"] },
     invoiceDate: { type: ["string", "null"] },
     amount: { type: ["number", "null"] },
-    category: { type: ["string", "null"], enum: [...CATEGORIES, null] },
+    category: { type: ["string", "null"] },
   },
   required: ["vendor", "invoiceDate", "amount", "category"],
 };
