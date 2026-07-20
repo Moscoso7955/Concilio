@@ -68,23 +68,29 @@ export async function extractInvoice(bytes: Uint8Array, mime: string, purpose: s
     ...buildContent(bytes, mime),
     { type: "text", text: "Extract the fields per the schema. Return null for anything not clearly present." },
   ];
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "x-api-key": ANTHROPIC_KEY,
-      "anthropic-version": "2023-06-01",
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "claude-opus-4-8",
-      max_tokens: 1024,
-      system: SYSTEM,
-      output_config: { format: { type: "json_schema", schema: SCHEMA } },
-      messages: [{ role: "user", content }],
-    }),
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data?.error?.message || "extraction failed");
+  // Retry transient capacity errors (529 Overloaded / 429 rate limit).
+  let res: Response | null = null, data: any = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": ANTHROPIC_KEY,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "claude-opus-4-8",
+        max_tokens: 1024,
+        system: SYSTEM,
+        output_config: { format: { type: "json_schema", schema: SCHEMA } },
+        messages: [{ role: "user", content }],
+      }),
+    });
+    data = await res.json();
+    if (res.ok || (res.status !== 529 && res.status !== 429)) break;
+    await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+  }
+  if (!res!.ok) throw new Error(data?.error?.message || "extraction failed");
 
   // Meter usage per tenant.
   try {

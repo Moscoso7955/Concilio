@@ -1,0 +1,39 @@
+name: Check Resend DNS records
+
+# Verifies the DNS records Resend needs on callidusco.com.
+# Manual dispatch only — run it after adding records in Squarespace.
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the four Resend records
+        run: |
+          fail=0
+          echo "== TXT resend._domainkey.callidusco.com (DKIM) =="
+          out=$(dig +short TXT resend._domainkey.callidusco.com)
+          echo "${out:-<missing>}"
+          echo "$out" | grep -q "p=" || { echo "FAIL: DKIM TXT missing"; fail=1; }
+
+          echo "== MX send.callidusco.com =="
+          out=$(dig +short MX send.callidusco.com)
+          echo "${out:-<missing>}"
+          echo "$out" | grep -qi "amazonses.com" || { echo "FAIL: MX missing"; fail=1; }
+
+          echo "== TXT send.callidusco.com (SPF) =="
+          out=$(dig +short TXT send.callidusco.com)
+          echo "${out:-<missing>}"
+          echo "$out" | grep -q "v=spf1" || { echo "FAIL: SPF TXT missing"; fail=1; }
+
+          echo "== TXT _dmarc.callidusco.com (optional) =="
+          out=$(dig +short TXT _dmarc.callidusco.com)
+          echo "${out:-<missing (optional — not a failure)>}"
+
+          echo "== Sanity: existing records untouched =="
+          echo "www CNAME: $(dig +short CNAME www.callidusco.com)"
+          echo "google._domainkey TXT present: $(dig +short TXT google._domainkey.callidusco.com | head -c 40)..."
+
+          exit $fail

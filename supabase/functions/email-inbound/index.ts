@@ -57,16 +57,22 @@ async function extract(bytes: Uint8Array, mime: string): Promise<Record<string, 
   if (mime === "application/pdf") block = { type: "document", source: { type: "base64", media_type: "application/pdf", data: b64 } };
   else if (mime.startsWith("image/")) block = { type: "image", source: { type: "base64", media_type: ["image/png","image/jpeg","image/gif","image/webp"].includes(mime) ? mime : "image/png", data: b64 } };
   else block = { type: "text", text: new TextDecoder().decode(bytes).slice(0, 200_000) };
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: { "x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-    body: JSON.stringify({
-      model: "claude-opus-4-8", max_tokens: 1024, system: SYSTEM,
-      output_config: { format: { type: "json_schema", schema: SCHEMA } },
-      messages: [{ role: "user", content: [block, { type: "text", text: "Extract per the schema." }] }],
-    }),
-  });
-  const data = await res.json();
+  // Retry transient capacity errors (529 Overloaded / 429 rate limit).
+  let res: Response | null = null, data: any = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-opus-4-8", max_tokens: 1024, system: SYSTEM,
+        output_config: { format: { type: "json_schema", schema: SCHEMA } },
+        messages: [{ role: "user", content: [block, { type: "text", text: "Extract per the schema." }] }],
+      }),
+    });
+    data = await res.json();
+    if (res.ok || (res.status !== 529 && res.status !== 429)) break;
+    await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+  }
   try {
     const { data: t } = await admin.from("tenants").select("id").order("created_at").limit(1).single();
     await admin.from("ai_usage").insert({ tenant_id: t?.id, model: "claude-opus-4-8", input_tokens: data.usage?.input_tokens, output_tokens: data.usage?.output_tokens, purpose: "email" });
