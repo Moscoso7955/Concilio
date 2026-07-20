@@ -10,10 +10,10 @@ window.CALLIDUS_CONFIG = {
   TABLE: "site_content",
   BUCKET: "site-assets",
   // Resend inbound domain — the Invoices banner shows
-  // bills-<tenant token>@<this domain>. NOTE: must be a domain whose MX
-  // points at Resend's inbound servers. The root callidusco.com MX is Google
-  // Workspace (christian@'s real mailbox) and must stay that way; inbound
-  // bills ride the already-verified reply.tipsyapp.io subdomain until a
-  // bills.callidusco.com subdomain is set up in Resend.
-  INBOUND_DOMAIN: "reply.tipsyapp.io"
+  // bills-<tenant token>@<this domain>. Must be a domain whose MX points at
+  // Resend's inbound servers. The root callidusco.com MX is Google Workspace
+  // (christian@'s real mailbox) and must stay that way — set this to the
+  // dedicated inbound subdomain (bills.callidusco.com) once it's verified
+  // in Resend. Empty = banner shows "not set up yet".
+  INBOUND_DOMAIN: ""
 };
