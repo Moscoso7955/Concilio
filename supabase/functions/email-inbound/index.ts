@@ -86,10 +86,17 @@ async function fileInvoice(tenantId: string, sourceKey: string, extracted: Recor
   if (bytes) {
     const path = `email/${sourceKey.replace(/[^a-zA-Z0-9._/-]/g, "_")}`;
     const { error } = await admin.storage.from("invoices").upload(path, bytes, { contentType: mime, upsert: true });
-    if (!error) file_url = `storage:${path}`;
+    if (error) console.error("fileInvoice storage error:", error.message);
+    else file_url = `storage:${path}`;
   }
   // Landmine 5: dedupe on the source key so provider retries never double-file.
-  await admin.from("invoices").upsert({
+  // NOTE: select-then-insert, NOT upsert — uq_invoices_source_email is a
+  // partial unique index, which Postgres can't match for ON CONFLICT, so the
+  // upsert errored on every call (and the error was silently ignored).
+  const { data: existing } = await admin.from("invoices")
+    .select("id").eq("tenant_id", tenantId).eq("source_email_id", sourceKey).maybeSingle();
+  if (existing) { console.log("dedupe: already filed", sourceKey); return; }
+  const { error: insErr } = await admin.from("invoices").insert({
     tenant_id: tenantId,
     vendor: (extracted.vendor as string) || "Unknown vendor",
     category: (extracted.category as string) || null,
@@ -98,7 +105,9 @@ async function fileInvoice(tenantId: string, sourceKey: string, extracted: Recor
     needs_review: true,
     file_url, file_name: fileName,
     source_email_id: sourceKey,
-  }, { onConflict: "tenant_id,source_email_id", ignoreDuplicates: true });
+  });
+  if (insErr) console.error("fileInvoice insert error:", insErr.message);
+  else console.log("filed invoice", sourceKey, extracted.vendor, extracted.amount);
 }
 
 Deno.serve(async (req) => {
@@ -112,13 +121,16 @@ Deno.serve(async (req) => {
     const email = payload.data || payload;
     const emailId: string = email.id || email.email_id || crypto.randomUUID();
     const recipients: string[] = email.to || email.recipients || [];
+    console.log("event:", payload.type || "?", "| email:", emailId, "| to:", JSON.stringify(recipients));
     const token = (recipients.map(String).join(",").match(/bills-([a-z0-9-]+)@/i) || [])[1];
-    if (!token) return new Response("no token", { status: 200 });
+    if (!token) { console.log("no token in recipients — ignoring"); return new Response("no token", { status: 200 }); }
 
     const { data: tenant } = await admin.from("tenants").select("id").eq("inbound_token", token).single();
-    if (!tenant) return new Response("unknown tenant", { status: 200 });
+    if (!tenant) { console.log("unknown tenant for token:", token); return new Response("unknown tenant", { status: 200 }); }
+    console.log("tenant matched:", token);
 
     const attachments: Array<Record<string, string>> = email.attachments || [];
+    console.log("attachments:", attachments.length, attachments.map((a) => `${a.filename || "?"}[${a.content_type || "?"}] keys:${Object.keys(a).join("+")}`).join(" | ") || "none");
     // Landmine 6: only real bill attachments — PDFs, or images that are NOT inline.
     const real = attachments.filter((a) => {
       const ct = (a.content_type || "").toLowerCase();
@@ -127,12 +139,30 @@ Deno.serve(async (req) => {
       return false;
     });
 
+    // Payload shapes vary: bytes may be inlined base64 (`content`) or behind a
+    // download URL. Resolve whichever is present.
+    async function attachmentBytes(a: Record<string, string>): Promise<Uint8Array | null> {
+      if (a.content) return Uint8Array.from(atob(a.content), (c) => c.charCodeAt(0));
+      const url = a.download_url || a.url || a.href;
+      if (url) {
+        const headers: Record<string, string> = {};
+        const key = Deno.env.get("RESEND_API_KEY");
+        if (key) headers.Authorization = `Bearer ${key}`;
+        const r = await fetch(url, { headers });
+        if (r.ok) return new Uint8Array(await r.arrayBuffer());
+        console.error("attachment fetch failed:", r.status, url);
+      }
+      console.error("attachment has no content or usable URL — keys:", Object.keys(a).join(","));
+      return null;
+    }
+
     if (real.length) {
       for (let i = 0; i < real.length; i++) {
         const a = real[i];
-        if (!a.content) continue; // no bytes available to parse
-        const bytes = Uint8Array.from(atob(a.content), (c) => c.charCodeAt(0));
+        const bytes = await attachmentBytes(a);
+        if (!bytes) continue;
         const extracted = await extract(bytes, a.content_type);
+        console.log("extracted:", JSON.stringify(extracted));
         await fileInvoice(tenant.id, `${emailId}:${a.content_id || i}`, extracted, bytes, a.content_type, a.filename || "attachment");
       }
     } else {
