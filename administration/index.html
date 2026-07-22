@@ -126,6 +126,18 @@
     .pill--unpaid { color: #fbbf24; border-color: #b4790f; }
     .pill--paid { color: #4ade80; border-color: #15803d; }
     .dup-tag { color: #fca5a5; border: 1px solid var(--danger); border-radius: 6px; font-size: 0.68rem; padding: 0.05rem 0.35rem; margin-left: 0.4rem; }
+    /* Tipsy-style invoice list */
+    #invTable thead tr { background: #222; }
+    #invTable tbody tr:hover { background: #242424; }
+    #invTable tfoot tr { background: #222; border-top: 1px solid var(--border); }
+    #invTable tfoot th { border-bottom: none; }
+    .inv-name { font-weight: 600; color: var(--text); white-space: nowrap; }
+    .inv-name.dup { color: #fca5a5; }
+    .inv-sub { font-size: 0.72rem; color: var(--muted); margin-top: 0.15rem; max-width: 20rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    td.dupcell { background: rgba(239,68,68,0.12); }
+    .iconact { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 0.95rem; padding: 0 0.15rem; font-family: inherit; }
+    .iconact:hover { color: var(--accent); }
+    .iconact.del:hover { color: #f87171; }
     .qbo-pill { font-size: 0.68rem; font-weight: 700; padding: 0.15rem 0.5rem; border-radius: 999px; border: 1px solid var(--border); background: var(--panel-2); color: var(--muted); cursor: pointer; font-family: inherit; }
     .qbo-pill.on { background: rgba(34,197,94,0.15); border-color: rgba(34,197,94,0.5); color: #86efac; }
     .splitrow { display: flex; align-items: center; gap: 0.25rem; margin-top: 0.25rem; }
@@ -402,16 +414,21 @@
         <div class="table-wrap">
           <table id="invTable">
             <thead><tr>
-              <th class="sortable" data-sort="invoice_date">Date <span class="arrow"></span></th>
-              <th class="sortable" data-sort="vendor">Vendor <span class="arrow"></span></th>
-              <th>Code</th>
+              <th class="sortable" data-sort="invoice_date">Invoice <span class="arrow"></span></th>
+              <th class="sortable" data-sort="code">Code <span class="arrow"></span></th>
               <th class="num sortable" data-sort="amount">Amount <span class="arrow"></span></th>
-              <th>Payment</th>
+              <th class="sortable" data-sort="payment_status">Payment <span class="arrow"></span></th>
               <th style="text-align:center;">QBO</th>
               <th>File</th>
               <th class="admin-only hidden"></th>
             </tr></thead>
             <tbody id="invBody"></tbody>
+            <tfoot class="hidden" id="invFoot"><tr>
+              <th style="text-align:left;" id="invFootCount"></th>
+              <th></th>
+              <th class="num" id="invFootTotal"></th>
+              <th colspan="4"></th>
+            </tr></tfoot>
           </table>
         </div>
         <p class="muted" id="invEmpty">No bills in this range.</p>
@@ -1374,7 +1391,14 @@
     // Code cell with SPLITS (ported from the proven Tipsy flow): the "+"
     // adds another code with its own amount; the primary code keeps the
     // remainder (total − sum of splits), shown as a locked dashed cell.
-    const codeOpts = (sel) => '<option value="">—</option>' + glCodes.map((c) => `<option value="${c.code}"${c.code === sel ? " selected" : ""}>${c.code}</option>`).join("");
+    const codeOpts = (sel) => '<option value="">—</option>' + glCodes.map((c) => `<option value="${c.code}"${c.code === sel ? " selected" : ""}>${c.code} — ${escapeHtml(c.category)}</option>`).join("");
+    // Tipsy-style naming: "Jul 18, 2026 · WebstaurantStore"
+    const fmtDate = (d) => {
+      const m = String(d || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (!m) return d ? String(d) : "—";
+      return new Date(`${m[1]}-${m[2]}-${m[3]}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    };
+    const invName = (r) => r.invoice_date ? `${fmtDate(r.invoice_date)} · ${r.vendor || ""}` : (r.vendor || "—");
     const splitSum = (row) => (Array.isArray(row.splits) ? row.splits : []).reduce((s, x) => s + (Number(x.amount) || 0), 0);
 
     function codeSelect(row) {
@@ -1412,11 +1436,12 @@
         tr.innerHTML =
           `<td>${escapeHtml(r.vendor || "")}</td><td>${r.invoice_date || "—"}</td><td class="num">${money(r.amount)}</td>
            <td>${codeSelect(r)}</td><td>${fileCell(r)}</td>
-           <td class="num">${isAdmin() ? `<button class="btn btn--sm" data-approve="${r.id}">Approve</button>` : ""}</td>`;
+           <td class="num" style="white-space:nowrap;">${isAdmin() ? `<button class="btn btn--sm" data-approve="${r.id}">Approve</button> <button class="iconact del" data-delinv="${r.id}" title="Discard">✕</button>` : ""}</td>`;
         body.appendChild(tr);
       }
       wireRowControls(body);
       body.querySelectorAll("[data-approve]").forEach((b) => b.addEventListener("click", () => approveInvoice(b.dataset.approve)));
+      body.querySelectorAll("[data-delinv]").forEach((b) => b.addEventListener("click", () => deleteInvoice(b.dataset.delinv)));
     }
 
     function renderLedger() {
@@ -1438,23 +1463,29 @@
       const body = $("invBody"); body.innerHTML = "";
       show($("invEmpty"), rows.length === 0);
       for (const r of rows) {
+        const dup = dups.has(r.id);
         const tr = document.createElement("tr");
         tr.innerHTML =
-          `<td>${r.invoice_date || '<span class="muted">undated</span>'}</td>
-           <td>${escapeHtml(r.vendor || "")}${dups.has(r.id) ? '<span class="dup-tag">Dup</span>' : ""}</td>
+          `<td${dup ? ' class="dupcell"' : ""}>
+             <div class="inv-name${dup ? " dup" : ""}">${escapeHtml(invName(r))}${dup ? '<span class="dup-tag" title="Same vendor, date, and amount as another invoice — likely a duplicate">Dup</span>' : ""}</div>
+             ${r.note ? `<div class="inv-sub" title="${escapeHtml(r.note)}">${escapeHtml(r.note)}</div>` : ""}
+           </td>
            <td>${codeSelect(r)}</td>
            <td class="num">${money(r.amount)}</td>
            <td>${statusPill(r)}</td>
            <td style="text-align:center;">${qboCell(r)}</td>
            <td>${fileCell(r)}</td>` +
-          (isAdmin() ? `<td class="num" style="white-space:nowrap;"><button class="btn btn--ghost btn--sm" data-editinv="${r.id}" title="Edit invoice">✎</button> <button class="btn btn--danger btn--sm" data-delinv="${r.id}">Delete</button></td>` : "");
+          (isAdmin() ? `<td class="num" style="white-space:nowrap;"><button class="iconact" data-editinv="${r.id}" title="Edit invoice">✎</button><button class="iconact del" data-delinv="${r.id}" title="Delete invoice">✕</button></td>` : "");
         body.appendChild(tr);
       }
       wireRowControls(body);
       body.querySelectorAll("[data-delinv]").forEach((b) => b.addEventListener("click", () => deleteInvoice(b.dataset.delinv)));
       body.querySelectorAll("[data-editinv]").forEach((b) => b.addEventListener("click", () => openInvEdit(b.dataset.editinv)));
       const total = rows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
-      $("invFooter").textContent = `${rows.length} bill(s) · ${money(total)} total`;
+      show($("invFoot"), rows.length > 0);
+      $("invFootCount").textContent = `${rows.length} invoice${rows.length === 1 ? "" : "s"}`;
+      $("invFootTotal").textContent = money(total);
+      $("invFooter").textContent = "";
     }
 
     function wireRowControls(scope) {

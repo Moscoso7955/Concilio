@@ -73,6 +73,11 @@ async function extract(bytes: Uint8Array, mime: string): Promise<Record<string, 
     if (res.ok || (res.status !== 529 && res.status !== 429)) break;
     await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
   }
+  if (!res!.ok) {
+    // Don't silently file all-null junk — name the failure in the logs.
+    console.error("anthropic error", res!.status, data?.error?.message || JSON.stringify(data).slice(0, 300));
+    return {};
+  }
   try {
     const { data: t } = await admin.from("tenants").select("id").order("created_at").limit(1).single();
     await admin.from("ai_usage").insert({ tenant_id: t?.id, model: "claude-opus-4-8", input_tokens: data.usage?.input_tokens, output_tokens: data.usage?.output_tokens, purpose: "email" });
@@ -166,9 +171,39 @@ Deno.serve(async (req) => {
         await fileInvoice(tenant.id, `${emailId}:${a.content_id || i}`, extracted, bytes, a.content_type, a.filename || "attachment");
       }
     } else {
-      // No attachments: extract from body text; store the body as a viewable HTML file.
-      const bodyText: string = email.text || email.html || email.body || "";
+      // No attachments: extract from body text. The email.received payload may
+      // be metadata-only (no text/html) — in that case fetch the full email
+      // from Resend's API (needs a RESEND_API_KEY secret).
+      let bodyText: string = email.text || email.html || email.body || "";
+      if (!bodyText.trim()) {
+        console.log("no body in payload — keys:", Object.keys(email).join(","), "— fetching from Resend API");
+        const key = Deno.env.get("RESEND_API_KEY");
+        if (!key) console.error("RESEND_API_KEY not set — cannot fetch email content");
+        else {
+          for (const url of [
+            `https://api.resend.com/emails/inbound/${emailId}`,
+            `https://api.resend.com/emails/${emailId}`,
+          ]) {
+            try {
+              const r = await fetch(url, { headers: { Authorization: `Bearer ${key}` } });
+              console.log("fetch", url, "→", r.status);
+              if (r.ok) {
+                const full = await r.json();
+                bodyText = full.text || full.html || "";
+                if (bodyText.trim()) break;
+              }
+            } catch (err) { console.error("email fetch failed:", String(err)); }
+          }
+        }
+      }
+      if (!bodyText.trim()) {
+        // Nothing to read — skip filing (no dedupe row is written, so a retry
+        // after fixing config will file it properly instead of junk).
+        console.error("no email content available — not filing");
+        return new Response("no content", { status: 200 });
+      }
       const extracted = await extract(new TextEncoder().encode(bodyText), "text/plain");
+      console.log("extracted (body):", JSON.stringify(extracted));
       const safeHtml = `<!doctype html><meta charset="utf-8"><pre style="white-space:pre-wrap;font-family:system-ui;padding:1rem">${
         bodyText.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c] as string))}</pre>`;
       await fileInvoice(tenant.id, `${emailId}:body`, extracted, new TextEncoder().encode(safeHtml), "text/html", "email-body.html");
