@@ -1,0 +1,36 @@
+name: Apply DB migration
+
+# Runs a repo SQL file against the CallidusCo project via the Supabase
+# Management API (auth: SUPABASE_ACCESS_TOKEN). Manual dispatch only —
+# pass the migration file path as input.
+
+on:
+  workflow_dispatch:
+    inputs:
+      file:
+        description: Path to a SQL file in the repo (e.g. supabase/migrations/0009_invoice_splits_qbo.sql)
+        required: true
+        type: string
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run SQL via Supabase Management API
+        env:
+          TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          REF: ofliuuulagqlbdjwrnjc
+          FILE: ${{ inputs.file }}
+        run: |
+          test -f "$FILE" || { echo "::error::No such file: $FILE"; exit 1; }
+          jq -Rs '{query: .}' "$FILE" > /tmp/payload.json
+          code=$(curl -s -o /tmp/resp.json -w "%{http_code}" -X POST \
+            "https://api.supabase.com/v1/projects/$REF/database/query" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/json" \
+            --data @/tmp/payload.json)
+          echo "HTTP $code"
+          cat /tmp/resp.json
+          echo
+          [ "$code" -ge 200 ] && [ "$code" -lt 300 ]
