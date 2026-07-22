@@ -171,11 +171,13 @@ Deno.serve(async (req) => {
         await fileInvoice(tenant.id, `${emailId}:${a.content_id || i}`, extracted, bytes, a.content_type, a.filename || "attachment");
       }
     } else {
-      // No attachments: extract from body text. The email.received payload may
-      // be metadata-only (no text/html) — in that case fetch the full email
-      // from Resend's API (needs a RESEND_API_KEY secret).
-      let bodyText: string = email.text || email.html || email.body || "";
-      if (!bodyText.trim()) {
+      // Tier 2: body text. The email.received payload may be metadata-only
+      // (no text/html) — in that case fetch the full email from Resend's API
+      // (needs a RESEND_API_KEY secret). Keep html separately for the
+      // image-fallback tier below.
+      let bodyText: string = email.text || email.body || "";
+      let bodyHtml: string = email.html || "";
+      if (!bodyText.trim() && !bodyHtml.trim()) {
         console.log("no body in payload — keys:", Object.keys(email).join(","), "— fetching from Resend API");
         const key = Deno.env.get("RESEND_API_KEY");
         if (!key) console.error("RESEND_API_KEY not set — cannot fetch email content");
@@ -189,24 +191,77 @@ Deno.serve(async (req) => {
               console.log("fetch", url, "→", r.status);
               if (r.ok) {
                 const full = await r.json();
-                bodyText = full.text || full.html || "";
-                if (bodyText.trim()) break;
+                bodyText = full.text || "";
+                bodyHtml = full.html || "";
+                if (bodyText.trim() || bodyHtml.trim()) break;
               }
             } catch (err) { console.error("email fetch failed:", String(err)); }
           }
         }
       }
-      if (!bodyText.trim()) {
-        // Nothing to read — skip filing (no dedupe row is written, so a retry
-        // after fixing config will file it properly instead of junk).
-        console.error("no email content available — not filing");
-        return new Response("no content", { status: 200 });
+      const readable = bodyText.trim() || bodyHtml.trim();
+      const meaningful = (x: Record<string, unknown> | null) => !!x && (!!x.vendor || x.amount != null);
+
+      let bodyExtracted: Record<string, unknown> | null = null;
+      if (readable) {
+        bodyExtracted = await extract(new TextEncoder().encode(bodyText.trim() ? bodyText : bodyHtml), "text/plain");
+        console.log("extracted (body):", JSON.stringify(bodyExtracted));
       }
-      const extracted = await extract(new TextEncoder().encode(bodyText), "text/plain");
-      console.log("extracted (body):", JSON.stringify(extracted));
-      const safeHtml = `<!doctype html><meta charset="utf-8"><pre style="white-space:pre-wrap;font-family:system-ui;padding:1rem">${
-        bodyText.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c] as string))}</pre>`;
-      await fileInvoice(tenant.id, `${emailId}:body`, extracted, new TextEncoder().encode(safeHtml), "text/html", "email-body.html");
+
+      if (meaningful(bodyExtracted)) {
+        const src = bodyText.trim() ? bodyText : bodyHtml;
+        const safeHtml = `<!doctype html><meta charset="utf-8"><pre style="white-space:pre-wrap;font-family:system-ui;padding:1rem">${
+          src.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c] as string))}</pre>`;
+        await fileInvoice(tenant.id, `${emailId}:body`, bodyExtracted!, new TextEncoder().encode(safeHtml), "text/html", "email-body.html");
+      } else {
+        // Tier 3: the bill may BE an image in the body — inline CID image
+        // attachments (excluded from tier 1 by design) or <img>-linked
+        // images in the HTML. Read the actual image bytes with vision and
+        // store the image itself as the invoice file. Size floor skips
+        // logos/tracking pixels; largest first.
+        const candidates: Array<{ bytes: Uint8Array; mime: string; name: string }> = [];
+        for (const a of attachments) {
+          const ct = (a.content_type || "").toLowerCase();
+          if (!ct.startsWith("image/")) continue;
+          const bytes = await attachmentBytes(a);
+          if (bytes && bytes.length > 15_000) candidates.push({ bytes, mime: ct, name: a.filename || "inline-image" });
+        }
+        const urls = [...new Set([...bodyHtml.matchAll(/<img[^>]+src=["']?(https?:\/\/[^"'\s>]+)/gi)].map((m) => m[1]))].slice(0, 8);
+        for (const u of urls) {
+          try {
+            const r = await fetch(u);
+            if (!r.ok) continue;
+            const ct = (r.headers.get("content-type") || "").split(";")[0].toLowerCase();
+            if (!ct.startsWith("image/")) continue;
+            const bytes = new Uint8Array(await r.arrayBuffer());
+            if (bytes.length > 15_000) candidates.push({ bytes, mime: ct, name: (u.split("/").pop() || "image").split("?")[0].slice(0, 60) });
+          } catch (_) { /* skip unreachable images */ }
+        }
+        candidates.sort((a, b) => b.bytes.length - a.bytes.length);
+        console.log("image fallback candidates:", candidates.length, candidates.map((c) => `${c.name}(${c.bytes.length}b)`).join(", ") || "none");
+
+        let filed = false;
+        for (const img of candidates.slice(0, 3)) {
+          const x = await extract(img.bytes, img.mime);
+          console.log("extracted (image", img.name + "):", JSON.stringify(x));
+          if (meaningful(x)) {
+            await fileInvoice(tenant.id, `${emailId}:img`, x, img.bytes, img.mime, img.name);
+            filed = true;
+            break;
+          }
+        }
+        if (!filed && readable) {
+          // Nothing meaningful anywhere — file the body anyway (needs_review)
+          // so the email isn't lost; the owner fills the fields by hand.
+          const src = bodyText.trim() ? bodyText : bodyHtml;
+          const safeHtml = `<!doctype html><meta charset="utf-8"><pre style="white-space:pre-wrap;font-family:system-ui;padding:1rem">${
+            src.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c] as string))}</pre>`;
+          await fileInvoice(tenant.id, `${emailId}:body`, bodyExtracted || {}, new TextEncoder().encode(safeHtml), "text/html", "email-body.html");
+        } else if (!filed) {
+          console.error("no email content available — not filing");
+          return new Response("no content", { status: 200 });
+        }
+      }
     }
     return new Response("ok", { status: 200 });
   } catch (e) {
