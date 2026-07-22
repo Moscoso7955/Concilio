@@ -161,6 +161,7 @@ Deno.serve(async (req) => {
       return null;
     }
 
+    let filedCount = 0;
     if (real.length) {
       for (let i = 0; i < real.length; i++) {
         const a = real[i];
@@ -169,16 +170,20 @@ Deno.serve(async (req) => {
         const extracted = await extract(bytes, a.content_type);
         console.log("extracted:", JSON.stringify(extracted));
         await fileInvoice(tenant.id, `${emailId}:${a.content_id || i}`, extracted, bytes, a.content_type, a.filename || "attachment");
+        filedCount++;
       }
-    } else {
+      if (!filedCount) console.log("attachments listed but no bytes in payload — falling through to API fetch");
+    }
+    if (!filedCount) {
       // Tier 2: body text. The email.received payload may be metadata-only
       // (no text/html) — in that case fetch the full email from Resend's API
       // (needs a RESEND_API_KEY secret). Keep html separately for the
       // image-fallback tier below.
       let bodyText: string = email.text || email.body || "";
       let bodyHtml: string = email.html || "";
-      if (!bodyText.trim() && !bodyHtml.trim()) {
-        console.log("no body in payload — keys:", Object.keys(email).join(","), "— fetching from Resend API");
+      let apiAttachments: Array<Record<string, string>> = [];
+      if ((!bodyText.trim() && !bodyHtml.trim()) || real.length) {
+        console.log("fetching full email from Resend API — payload keys:", Object.keys(email).join(","));
         const key = Deno.env.get("RESEND_API_KEY");
         if (!key) console.error("RESEND_API_KEY not set — cannot fetch email content");
         else {
@@ -191,14 +196,33 @@ Deno.serve(async (req) => {
               console.log("fetch", url, "→", r.status);
               if (r.ok) {
                 const full = await r.json();
-                bodyText = full.text || "";
-                bodyHtml = full.html || "";
-                if (bodyText.trim() || bodyHtml.trim()) break;
+                bodyText = full.text || bodyText;
+                bodyHtml = full.html || bodyHtml;
+                if (Array.isArray(full.attachments)) apiAttachments = full.attachments;
+                console.log("API email: text?", !!bodyText.trim(), "html?", !!bodyHtml.trim(), "attachments:", apiAttachments.length, apiAttachments.map((a) => `${a.filename || "?"} keys:${Object.keys(a).join("+")}`).join(" | ") || "none");
+                if (bodyText.trim() || bodyHtml.trim() || apiAttachments.length) break;
               }
             } catch (err) { console.error("email fetch failed:", String(err)); }
           }
         }
       }
+      // Real bill attachments from the API-fetched email (payload had none/no bytes).
+      const apiReal = apiAttachments.filter((a) => {
+        const ct = (a.content_type || "").toLowerCase();
+        if (ct === "application/pdf") return true;
+        if (ct.startsWith("image/")) return (a.content_disposition || "") !== "inline" && !a.content_id;
+        return false;
+      });
+      for (let i = 0; i < apiReal.length; i++) {
+        const a = apiReal[i];
+        const bytes = await attachmentBytes(a);
+        if (!bytes) continue;
+        const extracted = await extract(bytes, a.content_type);
+        console.log("extracted (api attachment):", JSON.stringify(extracted));
+        await fileInvoice(tenant.id, `${emailId}:${a.content_id || a.filename || i}`, extracted, bytes, a.content_type, a.filename || "attachment");
+        filedCount++;
+      }
+      if (filedCount) return new Response("ok", { status: 200 });
       const readable = bodyText.trim() || bodyHtml.trim();
       const meaningful = (x: Record<string, unknown> | null) => !!x && (!!x.vendor || x.amount != null);
 
