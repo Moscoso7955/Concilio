@@ -127,12 +127,19 @@ Deno.serve(async (req) => {
     const emailId: string = email.id || email.email_id || crypto.randomUUID();
     const recipients: string[] = email.to || email.recipients || [];
     console.log("event:", payload.type || "?", "| email:", emailId, "| to:", JSON.stringify(recipients));
-    const token = (recipients.map(String).join(",").match(/bills-([a-z0-9-]+)@/i) || [])[1];
-    if (!token) { console.log("no token in recipients — ignoring"); return new Response("no token", { status: 200 }); }
-
-    const { data: tenant } = await admin.from("tenants").select("id").eq("inbound_token", token).single();
-    if (!tenant) { console.log("unknown tenant for token:", token); return new Response("unknown tenant", { status: 200 }); }
-    console.log("tenant matched:", token);
+    const rec = recipients.map(String).join(",").toLowerCase();
+    const token = (rec.match(/bills-([a-z0-9-]+)@/i) || [])[1];
+    let tenant: { id: string } | null = null;
+    if (token) tenant = (await admin.from("tenants").select("id").eq("inbound_token", token).single()).data;
+    // Forgiving routing: ANY address on our inbound subdomain (receipts@,
+    // bills@, a typo'd token…) files to the primary tenant. Mail for other
+    // domains on the shared Resend account (e.g. Tipsy) is still ignored.
+    if (!tenant && rec.includes("@bills.callidusco.com")) {
+      tenant = (await admin.from("tenants").select("id").order("created_at").limit(1).single()).data;
+      if (tenant) console.log("no/unknown token on our domain — defaulting to primary tenant");
+    }
+    if (!tenant) { console.log("not for us — ignoring:", rec.slice(0, 120)); return new Response("ignored", { status: 200 }); }
+    console.log("tenant resolved", token ? `(token: ${token})` : "(domain default)");
 
     const attachments: Array<Record<string, string>> = email.attachments || [];
     console.log("attachments:", attachments.length, attachments.map((a) => `${a.filename || "?"}[${a.content_type || "?"}] keys:${Object.keys(a).join("+")}`).join(" | ") || "none");
