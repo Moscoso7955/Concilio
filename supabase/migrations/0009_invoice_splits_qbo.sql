@@ -10,7 +10,9 @@ alter table invoices add column if not exists splits jsonb;
 alter table invoices add column if not exists qbo boolean not null default false;
 
 -- Expose both in the blob-free list view (still excludes file_url).
-create or replace view invoices_list
+-- Drop + recreate: CREATE OR REPLACE can't insert columns mid-list.
+drop view if exists invoices_list;
+create view invoices_list
   with (security_invoker = on) as
   select id, tenant_id, vendor, category, code, invoice_date, amount,
          payment_status, needs_review, file_name, note, uploaded_by,
