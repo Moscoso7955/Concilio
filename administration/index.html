@@ -142,8 +142,13 @@
     .todo { display: flex; align-items: flex-start; gap: 0.6rem; padding: 0.6rem 0.4rem; border-bottom: 1px solid var(--border); }
     .todo:last-child { border-bottom: none; }
     .todo input[type="checkbox"] { width: 1.05rem; height: 1.05rem; margin-top: 0.15rem; accent-color: var(--accent); cursor: pointer; flex: 0 0 auto; }
-    .todo__title { flex: 1; min-width: 0; }
+    .todo__title { flex: 1; min-width: 0; cursor: pointer; }
+    .todo__title:hover { color: #fff; }
     .todo.done .todo__title { color: var(--muted); text-decoration: line-through; }
+    .todo.open { background: var(--panel-2); border-radius: 10px; padding: 0.75rem 0.6rem; border-bottom-color: transparent; }
+    .todo__editor { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.5rem; }
+    .todo__editor input[type="text"] { font-weight: 600; }
+    .todo__editor textarea { min-height: 60px; font-size: 0.85rem; }
     .todo__notes { font-size: 0.78rem; color: var(--muted); margin-top: 0.15rem; }
     .todo__src { font-size: 0.66rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; padding: 0.1rem 0.4rem; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); flex: 0 0 auto; }
     .todo__src.email { color: #86efac; border-color: rgba(34,197,94,0.4); }
@@ -1930,7 +1935,7 @@
     $("coa_name")?.addEventListener("keydown", (e) => { if (e.key === "Enter") $("coaAddBtn").click(); });
 
     /* ---------------- To-Do (admin — personal) ---------------- */
-    let todoRows = [];
+    let todoRows = [], todoOpenId = null;
 
     async function loadTodos() {
       const { data, error } = await supabase.from("todos").select("*").order("created_at", { ascending: false });
@@ -1941,13 +1946,48 @@
 
     function todoRow(t) {
       const div = document.createElement("div");
-      div.className = "todo" + (t.done ? " done" : "");
-      div.innerHTML =
-        `<input type="checkbox" data-tdone="${t.id}"${t.done ? " checked" : ""}>
-         <div class="todo__title">${escapeHtml(t.title)}${t.notes ? `<div class="todo__notes">${escapeHtml(t.notes)}</div>` : ""}</div>
-         ${t.source === "email" ? '<span class="todo__src email" title="Found in your inbox by the AI scrub">📧 inbox</span>' : ""}
-         <button class="iconact del" data-tdel="${t.id}" title="Delete">✕</button>`;
+      const open = todoOpenId === t.id;
+      div.className = "todo" + (t.done ? " done" : "") + (open ? " open" : "");
+      const badge = t.source === "email" ? '<span class="todo__src email" title="Found in your inbox by the AI scrub">📧 inbox</span>' : "";
+      if (!open) {
+        div.innerHTML =
+          `<input type="checkbox" data-tdone="${t.id}"${t.done ? " checked" : ""}>
+           <div class="todo__title" data-texpand="${t.id}" title="Click to edit">${escapeHtml(t.title)}${t.notes ? `<div class="todo__notes">${escapeHtml(t.notes)}</div>` : ""}</div>
+           ${badge}
+           <button class="iconact del" data-tdel="${t.id}" title="Delete">✕</button>`;
+      } else {
+        div.innerHTML =
+          `<input type="checkbox" data-tdone="${t.id}"${t.done ? " checked" : ""}>
+           <div class="todo__editor">
+             <input type="text" data-ttitle="${t.id}" value="${escapeHtml(t.title)}">
+             <textarea data-tnotes="${t.id}" placeholder="Notes…">${escapeHtml(t.notes || "")}</textarea>
+             <div style="display:flex;align-items:center;gap:0.5rem;">
+               <button class="btn btn--sm" data-tsave="${t.id}">Save</button>
+               <button class="btn btn--ghost btn--sm" data-tcollapse="${t.id}">Close</button>
+               <span class="muted" data-tstat="${t.id}"></span>
+             </div>
+           </div>
+           ${badge}
+           <button class="iconact del" data-tdel="${t.id}" title="Delete">✕</button>`;
+      }
       return div;
+    }
+
+    async function saveTodoEdit(id, collapse) {
+      const t = todoRows.find((x) => x.id === id); if (!t) return;
+      const ti = document.querySelector(`[data-ttitle="${id}"]`), no = document.querySelector(`[data-tnotes="${id}"]`);
+      if (!ti || !no) return;
+      const title = ti.value.trim() || t.title;
+      const notes = no.value.trim() || null;
+      const changed = title !== t.title || notes !== (t.notes || null);
+      if (changed) {
+        t.title = title; t.notes = notes;
+        const stat = document.querySelector(`[data-tstat="${id}"]`); if (stat) stat.textContent = "Saving…";
+        const { error } = await supabase.from("todos").update({ title, notes }).eq("id", id);
+        const stat2 = document.querySelector(`[data-tstat="${id}"]`); if (stat2) stat2.textContent = error ? error.message : "Saved ✓";
+        if (error) return;
+      }
+      if (collapse) { todoOpenId = null; renderTodos(); }
     }
 
     function renderTodos() {
@@ -1967,10 +2007,22 @@
           await supabase.from("todos").update({ done: t.done, done_at: t.done_at }).eq("id", t.id);
         }));
         scope.querySelectorAll("[data-tdel]").forEach((b) => b.addEventListener("click", async () => {
+          if (todoOpenId === b.dataset.tdel) todoOpenId = null;
           todoRows = todoRows.filter((x) => x.id !== b.dataset.tdel);
           renderTodos();
           await supabase.from("todos").delete().eq("id", b.dataset.tdel);
         }));
+        scope.querySelectorAll("[data-texpand]").forEach((el) => el.addEventListener("click", () => {
+          todoOpenId = el.dataset.texpand; renderTodos();
+          const ti = document.querySelector(`[data-ttitle="${todoOpenId}"]`); if (ti) ti.focus();
+        }));
+        scope.querySelectorAll("[data-tsave]").forEach((b) => b.addEventListener("click", () => saveTodoEdit(b.dataset.tsave, true)));
+        scope.querySelectorAll("[data-tcollapse]").forEach((b) => b.addEventListener("click", () => saveTodoEdit(b.dataset.tcollapse, true)));
+        // Silent auto-save when leaving either field; Enter on the title saves+closes.
+        scope.querySelectorAll("[data-ttitle],[data-tnotes]").forEach((inp) => {
+          inp.addEventListener("blur", () => saveTodoEdit(inp.dataset.ttitle || inp.dataset.tnotes, false));
+          if (inp.dataset.ttitle) inp.addEventListener("keydown", (e) => { if (e.key === "Enter") saveTodoEdit(inp.dataset.ttitle, true); });
+        });
       };
       wire(list); wire(doneList);
     }
