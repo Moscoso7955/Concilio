@@ -196,6 +196,52 @@ Deno.serve(async (req) => {
       let bodyText: string = email.text || email.body || "";
       let bodyHtml: string = email.html || "";
       let apiAttachments: Array<Record<string, string>> = [];
+      let rawRef: string | null = null; // full.raw — MIME source (or a URL to it)
+
+      // Fetch one attachment's bytes by its id (the API lists attachments
+      // id-only; the content lives behind a per-attachment endpoint).
+      async function fetchAttachmentById(attId: string): Promise<Uint8Array | null> {
+        const key = Deno.env.get("RESEND_API_KEY");
+        if (!key || !attId) return null;
+        for (const url of [
+          `https://api.resend.com/emails/inbound/${emailId}/attachments/${attId}`,
+          `https://api.resend.com/emails/${emailId}/attachments/${attId}`,
+        ]) {
+          try {
+            const r = await fetch(url, { headers: { Authorization: `Bearer ${key}` } });
+            await dblog("attachment fetch", { url: url.slice(0, 110), status: r.status, ct: r.headers.get("content-type") });
+            if (!r.ok) continue;
+            const ct = (r.headers.get("content-type") || "").toLowerCase();
+            if (ct.includes("application/json")) {
+              const j = await r.json();
+              if (j.content) return Uint8Array.from(atob(j.content), (c) => c.charCodeAt(0));
+              const u = j.download_url || j.url;
+              if (u) { const rr = await fetch(u); if (rr.ok) return new Uint8Array(await rr.arrayBuffer()); }
+              await dblog("attachment json without content", { keys: Object.keys(j) });
+              return null;
+            }
+            return new Uint8Array(await r.arrayBuffer());
+          } catch (e) { await dblog("attachment fetch threw", { err: String(e).slice(0, 150) }); }
+        }
+        return null;
+      }
+
+      // Last resort: pull the attachment's base64 section out of the raw
+      // MIME source by filename.
+      function attachmentFromRaw(raw: string, filename: string): Uint8Array | null {
+        if (!filename) return null;
+        const idx = raw.indexOf(filename);
+        if (idx < 0) return null;
+        const after = raw.slice(idx);
+        const headerEnd = after.search(/\r?\n\r?\n/);
+        if (headerEnd < 0) return null;
+        const bodyStart = headerEnd + (after.slice(headerEnd).match(/^\r?\n\r?\n/)?.[0].length || 2);
+        const rest = after.slice(bodyStart);
+        const boundary = rest.search(/\r?\n--/);
+        const b64 = rest.slice(0, boundary > 0 ? boundary : undefined).replace(/[\s\r\n]/g, "");
+        if (b64.length < 100 || !/^[A-Za-z0-9+/=]+$/.test(b64)) return null;
+        try { return Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)); } catch { return null; }
+      }
       if ((!bodyText.trim() && !bodyHtml.trim()) || real.length) {
         console.log("fetching full email from Resend API — payload keys:", Object.keys(email).join(","));
         const key = Deno.env.get("RESEND_API_KEY");
@@ -212,6 +258,7 @@ Deno.serve(async (req) => {
               bodyText = full.text || bodyText;
               bodyHtml = full.html || bodyHtml;
               if (Array.isArray(full.attachments)) apiAttachments = full.attachments;
+              if (typeof full.raw === "string" && full.raw) rawRef = full.raw;
               await dblog("api email", {
                 url: url.slice(0, 80), status: r.status, fullKeys: Object.keys(full),
                 hasText: !!bodyText.trim(), hasHtml: !!bodyHtml.trim(),
@@ -231,7 +278,16 @@ Deno.serve(async (req) => {
       });
       for (let i = 0; i < apiReal.length; i++) {
         const a = apiReal[i];
-        const bytes = await attachmentBytes(a);
+        let bytes = a.id ? await fetchAttachmentById(String(a.id)) : null;
+        if (!bytes) bytes = await attachmentBytes(a);
+        if (!bytes && rawRef) {
+          let raw: string | null = rawRef;
+          if (rawRef.startsWith("http")) {
+            try { const r = await fetch(rawRef); raw = r.ok ? await r.text() : null; } catch { raw = null; }
+          }
+          if (raw) bytes = attachmentFromRaw(raw, a.filename || "");
+          if (bytes) await dblog("attachment recovered from raw MIME", { name: a.filename, bytes: bytes.length });
+        }
         if (!bytes) continue;
         const extracted = await extract(bytes, a.content_type);
         await dblog("extracted (api attachment)", extracted);
