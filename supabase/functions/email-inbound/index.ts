@@ -14,6 +14,13 @@ const ANTHROPIC_KEY = Deno.env.get("ANTHROPIC_API_KEY")!;
 const WEBHOOK_SECRET = Deno.env.get("RESEND_WEBHOOK_SECRET"); // whsec_...
 const admin = createClient(SUPABASE_URL, SERVICE, { auth: { persistSession: false } });
 
+// Breadcrumbs to console AND the function_logs table (readable via SQL, so
+// failures can be diagnosed without dashboard access). Best-effort.
+async function dblog(msg: string, detail: unknown = null) {
+  console.log(msg, detail ? JSON.stringify(detail).slice(0, 800) : "");
+  try { await admin.from("function_logs").insert({ fn: "email-inbound", msg, detail }); } catch (_) { /* table may not exist yet */ }
+}
+
 const CATEGORIES = [
   "Utilities", "Internet & Phone", "Rent", "Insurance", "Repairs & Maintenance",
   "Licenses & Permits", "Waste & Recycling", "Software & Subscriptions",
@@ -75,7 +82,7 @@ async function extract(bytes: Uint8Array, mime: string): Promise<Record<string, 
   }
   if (!res!.ok) {
     // Don't silently file all-null junk — name the failure in the logs.
-    console.error("anthropic error", res!.status, data?.error?.message || JSON.stringify(data).slice(0, 300));
+    await dblog("anthropic error", { status: res!.status, message: data?.error?.message });
     return {};
   }
   try {
@@ -111,8 +118,8 @@ async function fileInvoice(tenantId: string, sourceKey: string, extracted: Recor
     file_url, file_name: fileName,
     source_email_id: sourceKey,
   });
-  if (insErr) console.error("fileInvoice insert error:", insErr.message);
-  else console.log("filed invoice", sourceKey, extracted.vendor, extracted.amount);
+  if (insErr) await dblog("fileInvoice insert error", { sourceKey, error: insErr.message });
+  else await dblog("filed invoice", { sourceKey, vendor: extracted.vendor, amount: extracted.amount, fileName });
 }
 
 Deno.serve(async (req) => {
@@ -126,7 +133,7 @@ Deno.serve(async (req) => {
     const email = payload.data || payload;
     const emailId: string = email.id || email.email_id || crypto.randomUUID();
     const recipients: string[] = email.to || email.recipients || [];
-    console.log("event:", payload.type || "?", "| email:", emailId, "| to:", JSON.stringify(recipients));
+    await dblog("event", { type: payload.type, emailId, to: recipients, payloadKeys: Object.keys(email) });
     const rec = recipients.map(String).join(",").toLowerCase();
     const token = (rec.match(/bills-([a-z0-9-]+)@/i) || [])[1];
     let tenant: { id: string } | null = null;
@@ -142,7 +149,7 @@ Deno.serve(async (req) => {
     console.log("tenant resolved", token ? `(token: ${token})` : "(domain default)");
 
     const attachments: Array<Record<string, string>> = email.attachments || [];
-    console.log("attachments:", attachments.length, attachments.map((a) => `${a.filename || "?"}[${a.content_type || "?"}] keys:${Object.keys(a).join("+")}`).join(" | ") || "none");
+    await dblog("payload attachments", { count: attachments.length, each: attachments.map((a) => ({ name: a.filename, type: a.content_type, keys: Object.keys(a) })) });
     // Landmine 6: only real bill attachments — PDFs, or images that are NOT inline.
     const real = attachments.filter((a) => {
       const ct = (a.content_type || "").toLowerCase();
@@ -162,9 +169,9 @@ Deno.serve(async (req) => {
         if (key) headers.Authorization = `Bearer ${key}`;
         const r = await fetch(url, { headers });
         if (r.ok) return new Uint8Array(await r.arrayBuffer());
-        console.error("attachment fetch failed:", r.status, url);
+        await dblog("attachment url fetch failed", { status: r.status, url: url.slice(0, 120) });
       }
-      console.error("attachment has no content or usable URL — keys:", Object.keys(a).join(","));
+      await dblog("attachment has no bytes", { keys: Object.keys(a), name: a.filename });
       return null;
     }
 
@@ -175,7 +182,7 @@ Deno.serve(async (req) => {
         const bytes = await attachmentBytes(a);
         if (!bytes) continue;
         const extracted = await extract(bytes, a.content_type);
-        console.log("extracted:", JSON.stringify(extracted));
+        await dblog("extracted (payload attachment)", extracted);
         await fileInvoice(tenant.id, `${emailId}:${a.content_id || i}`, extracted, bytes, a.content_type, a.filename || "attachment");
         filedCount++;
       }
@@ -200,16 +207,18 @@ Deno.serve(async (req) => {
           ]) {
             try {
               const r = await fetch(url, { headers: { Authorization: `Bearer ${key}` } });
-              console.log("fetch", url, "→", r.status);
-              if (r.ok) {
-                const full = await r.json();
-                bodyText = full.text || bodyText;
-                bodyHtml = full.html || bodyHtml;
-                if (Array.isArray(full.attachments)) apiAttachments = full.attachments;
-                console.log("API email: text?", !!bodyText.trim(), "html?", !!bodyHtml.trim(), "attachments:", apiAttachments.length, apiAttachments.map((a) => `${a.filename || "?"} keys:${Object.keys(a).join("+")}`).join(" | ") || "none");
-                if (bodyText.trim() || bodyHtml.trim() || apiAttachments.length) break;
-              }
-            } catch (err) { console.error("email fetch failed:", String(err)); }
+              if (!r.ok) { await dblog("api fetch", { url: url.slice(0, 80), status: r.status, body: (await r.text()).slice(0, 200) }); continue; }
+              const full = await r.json();
+              bodyText = full.text || bodyText;
+              bodyHtml = full.html || bodyHtml;
+              if (Array.isArray(full.attachments)) apiAttachments = full.attachments;
+              await dblog("api email", {
+                url: url.slice(0, 80), status: r.status, fullKeys: Object.keys(full),
+                hasText: !!bodyText.trim(), hasHtml: !!bodyHtml.trim(),
+                attachments: apiAttachments.map((a) => ({ name: a.filename, type: a.content_type, keys: Object.keys(a) })),
+              });
+              if (bodyText.trim() || bodyHtml.trim() || apiAttachments.length) break;
+            } catch (err) { await dblog("api fetch threw", { url: url.slice(0, 80), err: String(err).slice(0, 200) }); }
           }
         }
       }
@@ -225,7 +234,7 @@ Deno.serve(async (req) => {
         const bytes = await attachmentBytes(a);
         if (!bytes) continue;
         const extracted = await extract(bytes, a.content_type);
-        console.log("extracted (api attachment):", JSON.stringify(extracted));
+        await dblog("extracted (api attachment)", extracted);
         await fileInvoice(tenant.id, `${emailId}:${a.content_id || a.filename || i}`, extracted, bytes, a.content_type, a.filename || "attachment");
         filedCount++;
       }
@@ -236,7 +245,7 @@ Deno.serve(async (req) => {
       let bodyExtracted: Record<string, unknown> | null = null;
       if (readable) {
         bodyExtracted = await extract(new TextEncoder().encode(bodyText.trim() ? bodyText : bodyHtml), "text/plain");
-        console.log("extracted (body):", JSON.stringify(bodyExtracted));
+        await dblog("extracted (body)", bodyExtracted);
       }
 
       if (meaningful(bodyExtracted)) {
@@ -269,12 +278,12 @@ Deno.serve(async (req) => {
           } catch (_) { /* skip unreachable images */ }
         }
         candidates.sort((a, b) => b.bytes.length - a.bytes.length);
-        console.log("image fallback candidates:", candidates.length, candidates.map((c) => `${c.name}(${c.bytes.length}b)`).join(", ") || "none");
+        await dblog("image fallback candidates", candidates.map((c) => ({ name: c.name, bytes: c.bytes.length })));
 
         let filed = false;
         for (const img of candidates.slice(0, 3)) {
           const x = await extract(img.bytes, img.mime);
-          console.log("extracted (image", img.name + "):", JSON.stringify(x));
+          await dblog("extracted (image " + img.name + ")", x);
           if (meaningful(x)) {
             await fileInvoice(tenant.id, `${emailId}:img`, x, img.bytes, img.mime, img.name);
             filed = true;
@@ -289,7 +298,7 @@ Deno.serve(async (req) => {
             src.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c] as string))}</pre>`;
           await fileInvoice(tenant.id, `${emailId}:body`, bodyExtracted || {}, new TextEncoder().encode(safeHtml), "text/html", "email-body.html");
         } else if (!filed) {
-          console.error("no email content available — not filing");
+          await dblog("no email content available — not filing");
           return new Response("no content", { status: 200 });
         }
       }
