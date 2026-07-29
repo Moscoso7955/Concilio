@@ -48,9 +48,17 @@ const SCHEMA = {
   required: ["vendor", "invoiceDate", "amount", "category"],
 };
 
+// Chunked base64 — btoa(String.fromCharCode(...bytes)) blows the call stack
+// on large files (every byte becomes a function argument).
+function toBase64(bytes: Uint8Array): string {
+  let s = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+
 // Build the user content block from the uploaded bytes.
 function buildContent(bytes: Uint8Array, mime: string): unknown[] {
-  const b64 = btoa(String.fromCharCode(...bytes));
+  const b64 = toBase64(bytes);
   if (mime === "application/pdf") {
     return [{ type: "document", source: { type: "base64", media_type: "application/pdf", data: b64 } }];
   }

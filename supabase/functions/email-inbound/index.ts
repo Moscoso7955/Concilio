@@ -58,8 +58,16 @@ async function verify(req: Request, body: string): Promise<boolean> {
   return sigHeader.split(" ").some((p) => p.split(",")[1] === expected);
 }
 
+// Chunked base64 — btoa(String.fromCharCode(...bytes)) blows the call stack
+// on large files (every byte becomes a function argument).
+function toBase64(bytes: Uint8Array): string {
+  let s = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+
 async function extract(bytes: Uint8Array, mime: string): Promise<Record<string, unknown>> {
-  const b64 = btoa(String.fromCharCode(...bytes));
+  const b64 = toBase64(bytes);
   let block: unknown;
   if (mime === "application/pdf") block = { type: "document", source: { type: "base64", media_type: "application/pdf", data: b64 } };
   else if (mime.startsWith("image/")) block = { type: "image", source: { type: "base64", media_type: ["image/png","image/jpeg","image/gif","image/webp"].includes(mime) ? mime : "image/png", data: b64 } };
