@@ -1,0 +1,35 @@
+name: Configure auth SMTP (Resend)
+
+# (b) Points Supabase auth emails (magic links) at Resend SMTP via the
+# Management API — branded, reliable sign-in emails. Manual dispatch.
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  smtp:
+    runs-on: ubuntu-latest
+    env:
+      TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      REF: ofliuuulagqlbdjwrnjc
+    steps:
+      - name: PATCH auth config
+        run: |
+          [ -n "$RESEND_API_KEY" ] || { echo "::error::RESEND_API_KEY repo secret missing"; exit 1; }
+          jq -n --arg pass "$RESEND_API_KEY" '{
+            smtp_admin_email: "portal@callidusco.com",
+            smtp_host: "smtp.resend.com",
+            smtp_port: "465",
+            smtp_user: "resend",
+            smtp_pass: $pass,
+            smtp_sender_name: "Callidus Co.",
+            rate_limit_email_sent: 60
+          }' > /tmp/p.json
+          code=$(curl -s -o /tmp/r.json -w "%{http_code}" -X PATCH \
+            "https://api.supabase.com/v1/projects/$REF/config/auth" \
+            -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+            --data @/tmp/p.json)
+          echo "HTTP $code"
+          head -c 500 /tmp/r.json; echo
+          [ "$code" -ge 200 ] && [ "$code" -lt 300 ]

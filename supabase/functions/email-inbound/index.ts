@@ -116,10 +116,21 @@ async function fileInvoice(tenantId: string, sourceKey: string, extracted: Recor
   const { data: existing } = await admin.from("invoices")
     .select("id").eq("tenant_id", tenantId).eq("source_email_id", sourceKey).maybeSingle();
   if (existing) { console.log("dedupe: already filed", sourceKey); return; }
+  // Vendor memory: a returning vendor's bill pre-fills its last-used GL
+  // code, so repeat bills (e.g. a weekly invoice) are one-click approvals.
+  let code: string | null = null;
+  const vend = (extracted.vendor as string) || null;
+  if (vend) {
+    const { data: prev } = await admin.from("invoices").select("code")
+      .ilike("vendor", vend).not("code", "is", null)
+      .order("created_at", { ascending: false }).limit(1).maybeSingle();
+    code = (prev?.code as string) ?? null;
+  }
   const { error: insErr } = await admin.from("invoices").insert({
     tenant_id: tenantId,
-    vendor: (extracted.vendor as string) || "Unknown vendor",
+    vendor: vend || "Unknown vendor",
     category: (extracted.category as string) || null,
+    code,
     invoice_date: (extracted.invoiceDate as string) || null,
     amount: (extracted.amount as number) ?? null,
     needs_review: true,
@@ -142,6 +153,8 @@ Deno.serve(async (req) => {
     const emailId: string = email.id || email.email_id || crypto.randomUUID();
     const recipients: string[] = email.to || email.recipients || [];
     await dblog("event", { type: payload.type, emailId, to: recipients, payloadKeys: Object.keys(email) });
+    // Log retention: trim breadcrumbs older than 30 days (best-effort).
+    admin.from("function_logs").delete().lt("created_at", new Date(Date.now() - 30 * 86400_000).toISOString()).then(() => {}, () => {});
     const rec = recipients.map(String).join(",").toLowerCase();
     const token = (rec.match(/bills-([a-z0-9-]+)@/i) || [])[1];
     let tenant: { id: string } | null = null;

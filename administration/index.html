@@ -95,6 +95,7 @@
     .unit-card__figs .k { display: block; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
     .unit-card__figs .v { font-size: 1.15rem; font-weight: 700; }
     .unit-card__meta { margin-top: 0.6rem; font-size: 0.78rem; }
+    .rep-sub.active { color: #86efac; border-color: var(--accent); }
 
     /* ---------- Tables ---------- */
     .table-wrap { overflow-x: auto; }
@@ -289,12 +290,50 @@
     <section class="tab-panel" data-panel="financials">
       <!-- GROUP VIEW: whole-group panes on top, units below -->
       <div id="repGroupView">
-        <h2 style="font-size:0.95rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.75rem;">Group — all units combined</h2>
-        <div class="stats" id="repGroupStats"></div>
-        <div class="section-card">
-          <h2>Units</h2>
-          <div id="repUnits" class="unit-grid"></div>
-          <p class="muted" id="repUnitsEmpty">No units yet. In the <strong>Ownership</strong> tab, open an entity and turn on “Show this unit in Reports.”</p>
+        <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;margin-bottom:0.9rem;">
+          <h2 style="font-size:0.95rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin:0;">Group — all units combined</h2>
+          <div style="display:flex;gap:0.35rem;margin-left:auto;">
+            <button class="pill rep-sub active" data-rsub="overview">Overview</button>
+            <button class="pill rep-sub" data-rsub="pnl">P&amp;L</button>
+            <button class="pill rep-sub" data-rsub="codes">Expenses by Code</button>
+          </div>
+        </div>
+
+        <div id="repOverview">
+          <div class="stats" id="repGroupStats"></div>
+          <div class="section-card">
+            <h2>Units</h2>
+            <div id="repUnits" class="unit-grid"></div>
+            <p class="muted" id="repUnitsEmpty">No units yet. In the <strong>Ownership</strong> tab, open an entity and turn on “Show this unit in Reports.”</p>
+          </div>
+        </div>
+
+        <div id="repPnl" class="hidden">
+          <div class="section-card">
+            <h2>Monthly P&amp;L</h2>
+            <p class="muted" style="margin-bottom:0.75rem;">Revenue/expenses from the units' monthly figures; “Bills filed” is what came through Invoices that month (informational — it may already be inside expenses).</p>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Month</th><th class="num">Revenue</th><th class="num">Expenses</th><th class="num">Net</th><th class="num">Bills filed</th></tr></thead>
+                <tbody id="repPnlBody"></tbody>
+              </table>
+            </div>
+            <p class="muted" id="repPnlEmpty">No monthly figures yet.</p>
+          </div>
+        </div>
+
+        <div id="repCodes" class="hidden">
+          <div class="section-card">
+            <h2>Expenses by GL code</h2>
+            <p class="muted" style="margin-bottom:0.75rem;">All filed bills, grouped by code — splits are allocated to their own codes.</p>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Code</th><th>Category</th><th class="num">Bills</th><th class="num">Total</th></tr></thead>
+                <tbody id="repCodesBody"></tbody>
+              </table>
+            </div>
+            <p class="muted" id="repCodesEmpty">No bills yet.</p>
+          </div>
         </div>
       </div>
 
@@ -768,6 +807,60 @@
     }
 
     $("repBack")?.addEventListener("click", () => { repUnit = null; renderGroupView(); });
+
+    // Reports sub-tabs: Overview / P&L / Expenses by Code
+    document.querySelectorAll(".rep-sub").forEach((b) => b.addEventListener("click", () => {
+      document.querySelectorAll(".rep-sub").forEach((x) => x.classList.toggle("active", x === b));
+      const sub = b.dataset.rsub;
+      show($("repOverview"), sub === "overview");
+      show($("repPnl"), sub === "pnl");
+      show($("repCodes"), sub === "codes");
+      if (sub === "pnl") renderRepPnl();
+      if (sub === "codes") renderRepCodes();
+    }));
+
+    function renderRepPnl() {
+      const body = $("repPnlBody"); if (!body) return;
+      body.innerHTML = "";
+      const months = {};
+      for (const a of periodAgg(repFin)) months[a.period.slice(0, 7)] = { rev: a.revenue, exp: a.expenses, bills: 0 };
+      for (const r of invRows) {
+        if (r.needs_review || !r.invoice_date) continue;
+        const m = String(r.invoice_date).slice(0, 7);
+        (months[m] ||= { rev: 0, exp: 0, bills: 0 }).bills += Number(r.amount) || 0;
+      }
+      const keys = Object.keys(months).sort().reverse();
+      show($("repPnlEmpty"), keys.length === 0);
+      for (const m of keys) {
+        const x = months[m], net = (x.rev || 0) - (x.exp || 0);
+        body.insertAdjacentHTML("beforeend",
+          `<tr><td>${monthLabel(m + "-01")}</td><td class="num">${money(x.rev || 0)}</td><td class="num">${money(x.exp || 0)}</td><td class="num"><span class="${net < 0 ? "v neg" : "v pos"}" style="font-size:inherit;">${money(net)}</span></td><td class="num">${money(x.bills || 0)}</td></tr>`);
+      }
+    }
+
+    function renderRepCodes() {
+      const body = $("repCodesBody"); if (!body) return;
+      body.innerHTML = "";
+      const by = {};
+      for (const r of invRows) {
+        if (r.needs_review) continue;
+        const k = r.code || "—";
+        (by[k] ||= { cat: r.category || (r.code ? glCat[r.code] : "Uncoded") || "", sum: 0, n: 0 });
+        by[k].sum += Number(r.amount) || 0; by[k].n++;
+        for (const s of (Array.isArray(r.splits) ? r.splits : [])) {
+          const kk = s.code || "—";
+          (by[kk] ||= { cat: s.category || glCat[s.code] || "", sum: 0, n: 0 });
+          by[kk].sum += Number(s.amount) || 0; by[kk].n++;
+          by[k].sum -= Number(s.amount) || 0; // primary keeps the remainder
+        }
+      }
+      const rows = Object.entries(by).sort((a, b) => b[1].sum - a[1].sum);
+      show($("repCodesEmpty"), rows.length === 0);
+      for (const [code, x] of rows) {
+        body.insertAdjacentHTML("beforeend",
+          `<tr><td><strong>${escapeHtml(code)}</strong></td><td>${escapeHtml(x.cat || "")}</td><td class="num">${x.n}</td><td class="num">${money(x.sum)}</td></tr>`);
+      }
+    }
 
     $("finSaveBtn")?.addEventListener("click", async () => {
       const st = $("finFormStatus"); st.textContent = "";
