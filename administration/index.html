@@ -139,20 +139,6 @@
     .iconact { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 0.95rem; padding: 0 0.15rem; font-family: inherit; }
     .iconact:hover { color: var(--accent); }
     .iconact.del:hover { color: #f87171; }
-    /* To-Do list */
-    .todo { display: flex; align-items: flex-start; gap: 0.6rem; padding: 0.6rem 0.4rem; border-bottom: 1px solid var(--border); }
-    .todo:last-child { border-bottom: none; }
-    .todo input[type="checkbox"] { width: 1.05rem; height: 1.05rem; margin-top: 0.15rem; accent-color: var(--accent); cursor: pointer; flex: 0 0 auto; }
-    .todo__title { flex: 1; min-width: 0; cursor: pointer; }
-    .todo__title:hover { color: #fff; }
-    .todo.done .todo__title { color: var(--muted); text-decoration: line-through; }
-    .todo.open { background: var(--panel-2); border-radius: 10px; padding: 0.75rem 0.6rem; border-bottom-color: transparent; }
-    .todo__editor { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.5rem; }
-    .todo__editor input[type="text"] { font-weight: 600; }
-    .todo__editor textarea { min-height: 60px; font-size: 0.85rem; }
-    .todo__notes { font-size: 0.78rem; color: var(--muted); margin-top: 0.15rem; }
-    .todo__src { font-size: 0.66rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; padding: 0.1rem 0.4rem; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); flex: 0 0 auto; }
-    .todo__src.email { color: #c4c8ce; border-color: rgba(124,132,147,0.4); }
     .qbo-pill { font-size: 0.68rem; font-weight: 700; padding: 0.15rem 0.5rem; border-radius: 999px; border: 1px solid var(--border); background: var(--panel-2); color: var(--muted); cursor: pointer; font-family: inherit; }
     .qbo-pill.on { background: rgba(124,132,147,0.15); border-color: rgba(124,132,147,0.5); color: #c4c8ce; }
     .splitrow { display: flex; align-items: center; gap: 0.25rem; margin-top: 0.25rem; }
@@ -280,7 +266,6 @@
       <button class="tab" data-tab="memos">Memo Board</button>
       <button class="tab" data-tab="documents">Documents</button>
       <button class="tab" data-tab="invoices">Invoices</button>
-      <button class="tab admin-only hidden" data-tab="todos">To-Do</button>
       <button class="tab admin-only hidden" data-tab="coa">Chart of Accounts</button>
       <button class="tab admin-only hidden" data-tab="site">Site Content</button>
       <button class="tab admin-only hidden" data-tab="owners">Ownership</button>
@@ -490,25 +475,6 @@
       </div>
     </section>
 
-    <!-- To-Do (admin — personal) -->
-    <section class="tab-panel hidden" data-panel="todos">
-      <div class="section-card">
-        <h2>To-Do</h2>
-        <p class="muted" style="margin-bottom:1rem;">Your private list — AI items from your inbox scrub plus anything you add here. Only admins see this tab.</p>
-        <div class="row" style="align-items:center;margin-bottom:1rem;">
-          <input type="text" id="todo_title" placeholder="Add a task…" style="flex:2;">
-          <button class="btn" id="todoAddBtn" style="flex:0 0 auto;">Add</button>
-          <span class="muted" id="todoStatus"></span>
-        </div>
-        <div id="todoList"></div>
-        <p class="muted" id="todoEmpty">Nothing on the list. 🎉</p>
-        <div id="todoDoneWrap" class="hidden" style="margin-top:1.25rem;">
-          <h2 style="font-size:0.85rem;color:var(--muted);">Done</h2>
-          <div id="todoDoneList"></div>
-        </div>
-      </div>
-    </section>
-
     <!-- Chart of Accounts (admin) -->
     <section class="tab-panel hidden" data-panel="coa">
       <div class="section-card">
@@ -688,7 +654,7 @@
       document.querySelectorAll(".admin-only").forEach((el) => show(el, isAdmin()));
       restoreTab(); // land on the tab the user was on before the reload
       loadFinancials(); loadMemos(); loadDocuments(); loadInvoices();
-      if (isAdmin()) { loadSite(); loadGraph(); loadChart(); loadTodos(); }
+      if (isAdmin()) { loadSite(); loadGraph(); loadChart(); }
     }
 
     /* ---------------- Tabs (active tab survives reload) ---------------- */
@@ -2026,109 +1992,6 @@
       glCodes = []; loadGlCodes(true);
     });
     $("coa_name")?.addEventListener("keydown", (e) => { if (e.key === "Enter") $("coaAddBtn").click(); });
-
-    /* ---------------- To-Do (admin — personal) ---------------- */
-    let todoRows = [], todoOpenId = null;
-
-    async function loadTodos() {
-      const { data, error } = await supabase.from("todos").select("*").order("created_at", { ascending: false });
-      if (error) { const st = $("todoStatus"); if (st) st.textContent = /does not exist|schema cache/i.test(error.message || "") ? "Run migration 0010 to enable To-Do." : error.message; return; }
-      todoRows = data || [];
-      renderTodos();
-    }
-
-    function todoRow(t) {
-      const div = document.createElement("div");
-      const open = todoOpenId === t.id;
-      div.className = "todo" + (t.done ? " done" : "") + (open ? " open" : "");
-      const badge = t.source === "email" ? '<span class="todo__src email" title="Found in your inbox by the AI scrub">📧 inbox</span>' : "";
-      if (!open) {
-        div.innerHTML =
-          `<input type="checkbox" data-tdone="${t.id}"${t.done ? " checked" : ""}>
-           <div class="todo__title" data-texpand="${t.id}" title="Click to edit">${escapeHtml(t.title)}${t.notes ? `<div class="todo__notes">${escapeHtml(t.notes)}</div>` : ""}</div>
-           ${badge}
-           <button class="iconact del" data-tdel="${t.id}" title="Delete">✕</button>`;
-      } else {
-        div.innerHTML =
-          `<input type="checkbox" data-tdone="${t.id}"${t.done ? " checked" : ""}>
-           <div class="todo__editor">
-             <input type="text" data-ttitle="${t.id}" value="${escapeHtml(t.title)}">
-             <textarea data-tnotes="${t.id}" placeholder="Notes…">${escapeHtml(t.notes || "")}</textarea>
-             <div style="display:flex;align-items:center;gap:0.5rem;">
-               <button class="btn btn--sm" data-tsave="${t.id}">Save</button>
-               <button class="btn btn--ghost btn--sm" data-tcollapse="${t.id}">Close</button>
-               <span class="muted" data-tstat="${t.id}"></span>
-             </div>
-           </div>
-           ${badge}
-           <button class="iconact del" data-tdel="${t.id}" title="Delete">✕</button>`;
-      }
-      return div;
-    }
-
-    async function saveTodoEdit(id, collapse) {
-      const t = todoRows.find((x) => x.id === id); if (!t) return;
-      const ti = document.querySelector(`[data-ttitle="${id}"]`), no = document.querySelector(`[data-tnotes="${id}"]`);
-      if (!ti || !no) return;
-      const title = ti.value.trim() || t.title;
-      const notes = no.value.trim() || null;
-      const changed = title !== t.title || notes !== (t.notes || null);
-      if (changed) {
-        t.title = title; t.notes = notes;
-        const stat = document.querySelector(`[data-tstat="${id}"]`); if (stat) stat.textContent = "Saving…";
-        const { error } = await supabase.from("todos").update({ title, notes }).eq("id", id);
-        const stat2 = document.querySelector(`[data-tstat="${id}"]`); if (stat2) stat2.textContent = error ? error.message : "Saved ✓";
-        if (error) return;
-      }
-      if (collapse) { todoOpenId = null; renderTodos(); }
-    }
-
-    function renderTodos() {
-      const list = $("todoList"), doneList = $("todoDoneList");
-      if (!list) return;
-      list.innerHTML = ""; doneList.innerHTML = "";
-      const open = todoRows.filter((t) => !t.done), done = todoRows.filter((t) => t.done);
-      show($("todoEmpty"), open.length === 0);
-      show($("todoDoneWrap"), done.length > 0);
-      for (const t of open) list.appendChild(todoRow(t));
-      for (const t of done) doneList.appendChild(todoRow(t));
-      const wire = (scope) => {
-        scope.querySelectorAll("[data-tdone]").forEach((cb) => cb.addEventListener("change", async () => {
-          const t = todoRows.find((x) => x.id === cb.dataset.tdone); if (!t) return;
-          t.done = cb.checked; t.done_at = cb.checked ? new Date().toISOString() : null;
-          renderTodos();
-          await supabase.from("todos").update({ done: t.done, done_at: t.done_at }).eq("id", t.id);
-        }));
-        scope.querySelectorAll("[data-tdel]").forEach((b) => b.addEventListener("click", async () => {
-          if (todoOpenId === b.dataset.tdel) todoOpenId = null;
-          todoRows = todoRows.filter((x) => x.id !== b.dataset.tdel);
-          renderTodos();
-          await supabase.from("todos").delete().eq("id", b.dataset.tdel);
-        }));
-        scope.querySelectorAll("[data-texpand]").forEach((el) => el.addEventListener("click", () => {
-          todoOpenId = el.dataset.texpand; renderTodos();
-          const ti = document.querySelector(`[data-ttitle="${todoOpenId}"]`); if (ti) ti.focus();
-        }));
-        scope.querySelectorAll("[data-tsave]").forEach((b) => b.addEventListener("click", () => saveTodoEdit(b.dataset.tsave, true)));
-        scope.querySelectorAll("[data-tcollapse]").forEach((b) => b.addEventListener("click", () => saveTodoEdit(b.dataset.tcollapse, true)));
-        // Silent auto-save when leaving either field; Enter on the title saves+closes.
-        scope.querySelectorAll("[data-ttitle],[data-tnotes]").forEach((inp) => {
-          inp.addEventListener("blur", () => saveTodoEdit(inp.dataset.ttitle || inp.dataset.tnotes, false));
-          if (inp.dataset.ttitle) inp.addEventListener("keydown", (e) => { if (e.key === "Enter") saveTodoEdit(inp.dataset.ttitle, true); });
-        });
-      };
-      wire(list); wire(doneList);
-    }
-
-    $("todoAddBtn")?.addEventListener("click", async () => {
-      const title = $("todo_title").value.trim();
-      if (!title) return;
-      $("todo_title").value = "";
-      const { data, error } = await supabase.from("todos").insert({ title, source: "manual" }).select().single();
-      if (error) { $("todoStatus").textContent = error.message; return; }
-      todoRows.unshift(data); renderTodos();
-    });
-    $("todo_title")?.addEventListener("keydown", (e) => { if (e.key === "Enter") $("todoAddBtn").click(); });
 
     /* ---------------- utils ---------------- */
     function escapeHtml(s) {
