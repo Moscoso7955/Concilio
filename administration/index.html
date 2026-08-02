@@ -340,13 +340,11 @@
           <div class="field" style="margin-top:0.75rem;"><label>Notes</label><input type="text" id="fin_notes" placeholder="Optional"></div>
           <div class="row" style="align-items:center;">
             <button class="btn" id="finSaveBtn" style="flex:0 0 auto;">Save month</button>
-            <button class="btn btn--ghost" id="finAiBtn" style="flex:0 0 auto;">AI read P&amp;L…</button>
-            <button class="btn btn--ghost" id="finCsvBtn" style="flex:0 0 auto;">Import CSV…</button>
+            <button class="btn btn--ghost" id="finAiBtn" style="flex:0 0 auto;">Import P&amp;L…</button>
             <input type="file" class="file-input" id="finAiInput" accept=".pdf,image/*,.csv,.txt,application/pdf">
-            <input type="file" class="file-input" id="finCsvInput" accept=".csv,text/csv">
             <span class="muted" id="finFormStatus"></span>
           </div>
-          <p class="muted" style="margin-top:0.5rem;"><strong>AI read P&amp;L</strong> takes a P&amp;L export (PDF, image, or spreadsheet), pulls each month's revenue and expenses, and imports them to this unit — one month prefills the form for review, several save directly. CSV columns: <code>period,revenue,expenses,notes</code> (period as YYYY-MM).</p>
+          <p class="muted" style="margin-top:0.5rem;"><strong>Import P&amp;L</strong> takes any P&amp;L export (PDF, image, or spreadsheet) — AI pulls each month's revenue and expenses and imports them to this unit. One month prefills the form for review; several save directly.</p>
         </div>
 
         <div class="section-card">
@@ -851,28 +849,6 @@
       loadFinancials();
     });
 
-    $("finCsvBtn")?.addEventListener("click", () => $("finCsvInput").click());
-    $("finCsvInput")?.addEventListener("change", async () => {
-      const file = $("finCsvInput").files[0]; if (!file) return;
-      const st = $("finFormStatus");
-      if (!repUnit) { st.textContent = "Open a unit first."; $("finCsvInput").value = ""; return; }
-      st.textContent = "Parsing…";
-      const text = await file.text();
-      const rows = parseFinancialCsv(text).map((r) => ({ ...r, entity_id: repUnit }));
-      if (!rows.length) {
-        // Not the simple period,revenue,expenses layout (e.g. a QuickBooks
-        // P&L export) — hand it to the AI reader instead of giving up.
-        st.textContent = "Not a period,revenue,expenses CSV — asking AI to read it…";
-        await aiImportPnl(file, st);
-        $("finCsvInput").value = "";
-        return;
-      }
-      const { error, degraded } = await upsertFinancials(rows);
-      st.textContent = error ? error.message : (degraded ? `Imported ${rows.length} — run migration 0008` : `Imported ${rows.length} row(s) ✓`);
-      if (!error) loadFinancials();
-      $("finCsvInput").value = "";
-    });
-
     // AI-read a P&L export (PDF/image/spreadsheet) into monthly figures.
     $("finAiBtn")?.addEventListener("click", () => $("finAiInput").click());
     $("finAiInput")?.addEventListener("change", async () => {
@@ -937,29 +913,6 @@
       try { data = await res.json(); } catch (_) {}
       if (!res.ok || !data.ok) throw new Error(data.error || ("HTTP " + res.status));
       return data.months || [];
-    }
-
-    function parseFinancialCsv(text) {
-      const lines = text.split(/\r?\n/).filter((l) => l.trim());
-      if (!lines.length) return [];
-      const head = lines[0].split(",").map((h) => h.trim().toLowerCase());
-      const idx = (name) => head.indexOf(name);
-      const pI = idx("period"), rI = idx("revenue"), eI = idx("expenses"), nI = idx("notes");
-      if (pI < 0) return [];
-      const out = [];
-      for (let i = 1; i < lines.length; i++) {
-        const c = lines[i].split(",");
-        let p = (c[pI] || "").trim();
-        if (/^\d{4}-\d{2}$/.test(p)) p += "-01";
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(p)) continue;
-        out.push({
-          period: p,
-          revenue: Number((c[rI] || "0").replace(/[^0-9.\-]/g, "")) || 0,
-          expenses: Number((c[eI] || "0").replace(/[^0-9.\-]/g, "")) || 0,
-          notes: nI >= 0 ? (c[nI] || "").trim() || null : null
-        });
-      }
-      return out;
     }
 
     async function deleteFinancial(id) {
