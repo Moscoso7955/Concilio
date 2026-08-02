@@ -873,7 +873,7 @@
         }
         const months = [...byPeriod.values()].sort((a, b) => a.period.localeCompare(b.period));
         if (!months.length) {
-          st.textContent = files.length > 1 ? "AI found no monthly figures in those files." : "AI found no monthly figures in that file.";
+          st.textContent = "No per-month figures found — for a YTD statement, export it from QuickBooks with “Display columns by: Months” and re-upload; each month then imports separately.";
         } else if (months.length === 1) {
           // One month: prefill the form so it can be reviewed before saving.
           const m = months[0];
