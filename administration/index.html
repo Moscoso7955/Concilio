@@ -663,6 +663,9 @@
       if (!btn || btn.classList.contains("hidden")) return false;
       document.querySelectorAll(".tab").forEach((x) => x.classList.toggle("active", x === btn));
       document.querySelectorAll(".tab-panel").forEach((p) => show(p, p.dataset.panel === name));
+      // The graph measures its boxes; re-render now that it's visible so
+      // sizes/edges are computed against real dimensions.
+      if (name === "owners" && typeof gEnt !== "undefined" && gEnt.length) render();
       return true;
     }
     document.querySelectorAll(".tab").forEach((t) => {
@@ -1123,9 +1126,13 @@
           pctHtml +
           ((e.links || []).length ? `<div class="gnode__links">🔗 ${e.links.length} link${e.links.length === 1 ? "" : "s"}</div>` : "");
         canvas.appendChild(node);
-        // Size each box to whole grid blocks (nearest 20px up) for clean alignment.
-        node.style.width = Math.ceil(node.offsetWidth / GRID) * GRID + "px";
-        node.style.height = Math.ceil(node.offsetHeight / GRID) * GRID + "px";
+        // Size each box to whole grid blocks (nearest 20px up) for clean
+        // alignment — but only when actually measurable. A hidden panel
+        // measures 0×0 and would lock the box collapsed.
+        if (node.offsetWidth > 0) {
+          node.style.width = Math.ceil(node.offsetWidth / GRID) * GRID + "px";
+          node.style.height = Math.ceil(node.offsetHeight / GRID) * GRID + "px";
+        }
         wireNode(node, e);
       }
     }
