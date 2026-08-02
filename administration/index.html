@@ -277,7 +277,7 @@
       <div id="repGroupView">
         <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;margin-bottom:0.9rem;">
           <h2 style="font-size:0.95rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin:0;">Group — all units combined</h2>
-          <div style="display:flex;gap:0.35rem;margin-left:auto;">
+          <div class="admin-only hidden" style="display:flex;gap:0.35rem;margin-left:auto;">
             <button class="pill rep-sub active" data-rsub="overview">Overview</button>
             <button class="pill rep-sub" data-rsub="pnl">P&amp;L</button>
             <button class="pill rep-sub" data-rsub="codes">Expenses by Code</button>
@@ -340,11 +340,13 @@
           <div class="field" style="margin-top:0.75rem;"><label>Notes</label><input type="text" id="fin_notes" placeholder="Optional"></div>
           <div class="row" style="align-items:center;">
             <button class="btn" id="finSaveBtn" style="flex:0 0 auto;">Save month</button>
+            <button class="btn btn--ghost" id="finAiBtn" style="flex:0 0 auto;">AI read P&amp;L…</button>
             <button class="btn btn--ghost" id="finCsvBtn" style="flex:0 0 auto;">Import CSV…</button>
+            <input type="file" class="file-input" id="finAiInput" accept=".pdf,image/*,.csv,.txt,application/pdf">
             <input type="file" class="file-input" id="finCsvInput" accept=".csv,text/csv">
             <span class="muted" id="finFormStatus"></span>
           </div>
-          <p class="muted" style="margin-top:0.5rem;">CSV columns: <code>period,revenue,expenses,notes</code> (period as YYYY-MM). Rows import to this unit.</p>
+          <p class="muted" style="margin-top:0.5rem;"><strong>AI read P&amp;L</strong> takes a P&amp;L export (PDF, image, or spreadsheet), pulls each month's revenue and expenses, and imports them to this unit — one month prefills the form for review, several save directly. CSV columns: <code>period,revenue,expenses,notes</code> (period as YYYY-MM).</p>
         </div>
 
         <div class="section-card">
@@ -863,6 +865,68 @@
       if (!error) loadFinancials();
       $("finCsvInput").value = "";
     });
+
+    // AI-read a P&L export (PDF/image/spreadsheet) into monthly figures.
+    $("finAiBtn")?.addEventListener("click", () => $("finAiInput").click());
+    $("finAiInput")?.addEventListener("change", async () => {
+      const file = $("finAiInput").files[0]; if (!file) return;
+      const st = $("finFormStatus");
+      if (!repUnit) { st.textContent = "Open a unit first."; $("finAiInput").value = ""; return; }
+      st.textContent = "AI reading…";
+      try {
+        const months = (await extractPnlFile(file))
+          .filter((m) => /^\d{4}-\d{2}$/.test(m.period || ""));
+        if (!months.length) {
+          st.textContent = "AI found no monthly figures in that file.";
+        } else if (months.length === 1) {
+          // One month: prefill the form so it can be reviewed before saving.
+          const m = months[0];
+          $("fin_period").value = m.period;
+          $("fin_revenue").value = m.revenue ?? "";
+          $("fin_expenses").value = m.expenses ?? "";
+          if (m.notes) $("fin_notes").value = m.notes;
+          st.textContent = "Read 1 month — review the fields, then Save month.";
+        } else {
+          const rows = months.map((m) => ({
+            entity_id: repUnit, period: m.period + "-01",
+            revenue: Number(m.revenue || 0),
+            expenses: Number(m.expenses || 0),
+            notes: (m.notes || "").trim() || null,
+          }));
+          const { error, degraded } = await upsertFinancials(rows);
+          st.textContent = error ? error.message
+            : (degraded ? `Imported ${rows.length} — run migration 0008` : `Imported ${rows.length} month(s) from AI ✓`);
+          if (!error) loadFinancials();
+        }
+      } catch (e) {
+        st.textContent = "AI read failed: " + (e.message || e);
+      }
+      $("finAiInput").value = "";
+    });
+
+    async function extractPnlFile(file) {
+      const fd = new FormData(); fd.append("file", file);
+      const url = cfg.SUPABASE_URL + "/functions/v1/pnl-extract";
+      let session = null;
+      try { session = (await supabase.auth.getSession()).data.session; } catch (_) {}
+      let res;
+      try {
+        res = await fetch(url, {
+          method: "POST",
+          headers: {
+            apikey: cfg.SUPABASE_ANON_KEY,
+            Authorization: "Bearer " + (session?.access_token || cfg.SUPABASE_ANON_KEY),
+          },
+          body: fd,
+        });
+      } catch (e) {
+        throw new Error("can't reach the function (CORS/network) — check pnl-extract is deployed with Verify JWT OFF");
+      }
+      let data = {};
+      try { data = await res.json(); } catch (_) {}
+      if (!res.ok || !data.ok) throw new Error(data.error || ("HTTP " + res.status));
+      return data.months || [];
+    }
 
     function parseFinancialCsv(text) {
       const lines = text.split(/\r?\n/).filter((l) => l.trim());

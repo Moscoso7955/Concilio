@@ -35,3 +35,8 @@ jobs:
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: supabase functions deploy email-inbound --project-ref "$SUPABASE_PROJECT_ID" --no-verify-jwt
+
+      - name: Deploy pnl-extract (JWT off — does its own auth)
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: supabase functions deploy pnl-extract --project-ref "$SUPABASE_PROJECT_ID" --no-verify-jwt
