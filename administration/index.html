@@ -859,7 +859,14 @@
       st.textContent = "Parsing…";
       const text = await file.text();
       const rows = parseFinancialCsv(text).map((r) => ({ ...r, entity_id: repUnit }));
-      if (!rows.length) { st.textContent = "No valid rows found."; return; }
+      if (!rows.length) {
+        // Not the simple period,revenue,expenses layout (e.g. a QuickBooks
+        // P&L export) — hand it to the AI reader instead of giving up.
+        st.textContent = "Not a period,revenue,expenses CSV — asking AI to read it…";
+        await aiImportPnl(file, st);
+        $("finCsvInput").value = "";
+        return;
+      }
       const { error, degraded } = await upsertFinancials(rows);
       st.textContent = error ? error.message : (degraded ? `Imported ${rows.length} — run migration 0008` : `Imported ${rows.length} row(s) ✓`);
       if (!error) loadFinancials();
@@ -873,6 +880,11 @@
       const st = $("finFormStatus");
       if (!repUnit) { st.textContent = "Open a unit first."; $("finAiInput").value = ""; return; }
       st.textContent = "AI reading…";
+      await aiImportPnl(file, st);
+      $("finAiInput").value = "";
+    });
+
+    async function aiImportPnl(file, st) {
       try {
         const months = (await extractPnlFile(file))
           .filter((m) => /^\d{4}-\d{2}$/.test(m.period || ""));
@@ -901,8 +913,7 @@
       } catch (e) {
         st.textContent = "AI read failed: " + (e.message || e);
       }
-      $("finAiInput").value = "";
-    });
+    }
 
     async function extractPnlFile(file) {
       const fd = new FormData(); fd.append("file", file);
