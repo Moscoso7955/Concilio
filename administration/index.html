@@ -341,10 +341,10 @@
           <div class="row" style="align-items:center;">
             <button class="btn" id="finSaveBtn" style="flex:0 0 auto;">Save month</button>
             <button class="btn btn--ghost" id="finAiBtn" style="flex:0 0 auto;">Import P&amp;L…</button>
-            <input type="file" class="file-input" id="finAiInput" accept=".pdf,image/*,.csv,.txt,application/pdf">
+            <input type="file" class="file-input" id="finAiInput" accept=".pdf,image/*,.csv,.txt,application/pdf" multiple>
             <span class="muted" id="finFormStatus"></span>
           </div>
-          <p class="muted" style="margin-top:0.5rem;"><strong>Import P&amp;L</strong> takes any P&amp;L export (PDF, image, or spreadsheet) — AI pulls each month's revenue and expenses and imports them to this unit. One month prefills the form for review; several save directly.</p>
+          <p class="muted" style="margin-top:0.5rem;"><strong>Import P&amp;L</strong> takes P&amp;L exports (PDF, image, or spreadsheet) — select one file or several. AI reads across them, splits out each month's revenue and expenses, and imports them to this unit. A single month prefills the form for review; several save directly.</p>
         </div>
 
         <div class="section-card">
@@ -849,23 +849,31 @@
       loadFinancials();
     });
 
-    // AI-read a P&L export (PDF/image/spreadsheet) into monthly figures.
+    // AI-read P&L exports (PDF/image/spreadsheet) into monthly figures.
+    // Accepts several files at once — months are merged across all of them.
     $("finAiBtn")?.addEventListener("click", () => $("finAiInput").click());
     $("finAiInput")?.addEventListener("change", async () => {
-      const file = $("finAiInput").files[0]; if (!file) return;
+      const files = Array.from($("finAiInput").files || []); if (!files.length) return;
       const st = $("finFormStatus");
       if (!repUnit) { st.textContent = "Open a unit first."; $("finAiInput").value = ""; return; }
-      st.textContent = "AI reading…";
-      await aiImportPnl(file, st);
+      await aiImportPnl(files, st);
       $("finAiInput").value = "";
     });
 
-    async function aiImportPnl(file, st) {
+    async function aiImportPnl(files, st) {
       try {
-        const months = (await extractPnlFile(file))
-          .filter((m) => /^\d{4}-\d{2}$/.test(m.period || ""));
+        const byPeriod = new Map();
+        for (let i = 0; i < files.length; i++) {
+          st.textContent = files.length > 1 ? `AI reading file ${i + 1} of ${files.length}…` : "AI reading…";
+          const found = (await extractPnlFile(files[i]))
+            .filter((m) => /^\d{4}-\d{2}$/.test(m.period || ""));
+          // Same month in two files: the later file wins (also keeps the
+          // upsert batch free of duplicate periods).
+          for (const m of found) byPeriod.set(m.period, m);
+        }
+        const months = [...byPeriod.values()].sort((a, b) => a.period.localeCompare(b.period));
         if (!months.length) {
-          st.textContent = "AI found no monthly figures in that file.";
+          st.textContent = files.length > 1 ? "AI found no monthly figures in those files." : "AI found no monthly figures in that file.";
         } else if (months.length === 1) {
           // One month: prefill the form so it can be reviewed before saving.
           const m = months[0];
