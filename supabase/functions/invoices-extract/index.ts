@@ -13,9 +13,10 @@ const ANTHROPIC_KEY = Deno.env.get("ANTHROPIC_API_KEY")!;
 const admin = createClient(SUPABASE_URL, SERVICE, { auth: { persistSession: false } });
 
 const CATEGORIES = [
-  "Utilities", "Internet & Phone", "Rent", "Insurance", "Repairs & Maintenance",
-  "Licenses & Permits", "Waste & Recycling", "Software & Subscriptions",
-  "Professional Services", "Other",
+  "Utilities", "Phone service", "Rent", "Repairs & maintenance", "Supplies",
+  "Software Subscriptions", "Accounting fees", "Legal fees", "Marketing",
+  "Office expenses", "Travel", "Travel Meals", "Merchant Processing Fees",
+  "Bank fees & service charges", "Contract labor", "Interest Expense",
 ];
 
 const cors = {
