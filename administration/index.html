@@ -1465,7 +1465,7 @@
     const isoLocal = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
     let invRange = null; // { from, to } ISO strings
     (() => {
-      const now = new Date(), first = new Date(now.getFullYear(), now.getMonth(), 1);
+      const now = new Date(), first = new Date(now.getFullYear(), 0, 1); // default: this year
       invRange = { from: isoLocal(first), to: isoLocal(now) };
     })();
 
@@ -1768,7 +1768,7 @@
     (function initInvPickers() {
       const rangeMount = $("invRangePicker");
       if (rangeMount && window.createDateRangePicker) {
-        const now = new Date(), first = new Date(now.getFullYear(), now.getMonth(), 1);
+        const now = new Date(), first = new Date(now.getFullYear(), 0, 1); // default: this year
         window.createDateRangePicker({
           mount: rangeMount,
           initialStart: first, initialEnd: now,
