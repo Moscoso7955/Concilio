@@ -273,6 +273,9 @@
 
     <!-- Reports -->
     <section class="tab-panel" data-panel="financials">
+      <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;margin-bottom:0.9rem;">
+        <div id="repRangePicker"></div>
+      </div>
       <!-- GROUP VIEW: whole-group panes on top, units below -->
       <div id="repGroupView">
         <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;margin-bottom:0.9rem;">
@@ -333,7 +336,7 @@
         <div class="section-card admin-only hidden">
           <h2>Add / update a month</h2>
           <div class="row">
-            <div><label>Month</label><input type="month" id="fin_period"></div>
+            <div><label>Month</label><div id="fin_period_mount"></div></div>
             <div><label>Revenue</label><input type="number" step="0.01" id="fin_revenue" placeholder="0.00"></div>
             <div><label>Expenses</label><input type="number" step="0.01" id="fin_expenses" placeholder="0.00"></div>
           </div>
@@ -683,6 +686,21 @@
     /* ---------------- Reports (per-unit financials) ---------------- */
     let repFin = [], repUnits = [], repUnit = null;
 
+    // Reports date range (defaults to this year). Monthly figures are kept
+    // when their month overlaps the range; invoices compare by exact date.
+    let repRange = null;
+    const repMonthInRange = (period) => {
+      if (!repRange) return true;
+      const m = String(period).slice(0, 7);
+      return m >= repRange.from.slice(0, 7) && m <= repRange.to.slice(0, 7);
+    };
+    const repFinInRange = () => repFin.filter((r) => repMonthInRange(r.period));
+    const repInvInRange = (r) => {
+      if (!repRange) return true;
+      const d = String(r.invoice_date || "").slice(0, 10);
+      return d >= repRange.from && d <= repRange.to;
+    };
+
     const finNeedsMigration = (e) =>
       e && (e.code === "42703" || e.code === "42P10" || /entity_id|unique|constraint|on conflict/i.test(e.message || ""));
 
@@ -708,13 +726,19 @@
         .sort((x, y) => y.period.localeCompare(x.period));
     }
 
-    function statCards(latest) {
-      if (!latest) return `<div class="stat"><div class="k">Latest month</div><div class="v">—</div></div>`;
+    function statCards(aggs) {
+      // Totals across every month in the selected range.
+      if (!aggs || !aggs.length) return `<div class="stat"><div class="k">Period</div><div class="v">—</div></div>`;
+      const rev = aggs.reduce((s, a) => s + a.revenue, 0);
+      const exp = aggs.reduce((s, a) => s + a.expenses, 0);
+      const net = rev - exp;
+      const newest = aggs[0].period, oldest = aggs[aggs.length - 1].period; // aggs are newest-first
+      const label = aggs.length === 1 ? monthLabel(newest) : `${monthLabel(oldest)} – ${monthLabel(newest)}`;
       const cards = [
-        ["Latest month", monthLabel(latest.period), ""],
-        ["Revenue", money(latest.revenue), "pos"],
-        ["Expenses", money(latest.expenses), "neg"],
-        ["Net", money(latest.net), latest.net >= 0 ? "pos" : "neg"],
+        ["Period", label, ""],
+        ["Revenue", money(rev), "pos"],
+        ["Expenses", money(exp), "neg"],
+        ["Net", money(net), net >= 0 ? "pos" : "neg"],
       ];
       return cards.map(([k, v, c]) => `<div class="stat"><div class="k">${k}</div><div class="v ${c}">${v}</div></div>`).join("");
     }
@@ -732,20 +756,24 @@
 
     function renderGroupView() {
       show($("repGroupView"), true); show($("repUnitView"), false);
-      $("repGroupStats").innerHTML = statCards(periodAgg(repFin)[0]);
+      $("repGroupStats").innerHTML = statCards(periodAgg(repFinInRange()));
       const grid = $("repUnits"); grid.innerHTML = "";
       show($("repUnitsEmpty"), repUnits.length === 0);
       for (const u of repUnits) {
-        const latest = periodAgg(repFin.filter((r) => r.entity_id === u.id))[0];
+        const aggs = periodAgg(repFinInRange().filter((r) => r.entity_id === u.id));
+        const rev = aggs.reduce((s, a) => s + a.revenue, 0);
+        const net = aggs.reduce((s, a) => s + a.net, 0);
+        const meta = !aggs.length ? "No figures in range"
+          : (aggs.length === 1 ? monthLabel(aggs[0].period) : `${aggs.length} months`);
         const card = document.createElement("div");
         card.className = "unit-card";
         card.innerHTML =
           `<div class="unit-card__name">${escapeHtml(u.name)}</div>
            <div class="unit-card__figs">
-             <div><span class="k">Revenue</span><span class="v pos">${latest ? money(latest.revenue) : "—"}</span></div>
-             <div><span class="k">Net</span><span class="v ${latest && latest.net < 0 ? "neg" : "pos"}">${latest ? money(latest.net) : "—"}</span></div>
+             <div><span class="k">Revenue</span><span class="v pos">${aggs.length ? money(rev) : "—"}</span></div>
+             <div><span class="k">Net</span><span class="v ${aggs.length && net < 0 ? "neg" : "pos"}">${aggs.length ? money(net) : "—"}</span></div>
            </div>
-           <div class="unit-card__meta muted">${latest ? monthLabel(latest.period) : "No figures yet"}</div>`;
+           <div class="unit-card__meta muted">${meta}</div>`;
         card.addEventListener("click", () => { repUnit = u.id; renderUnitView(); });
         grid.appendChild(card);
       }
@@ -756,8 +784,8 @@
       if (!u) { repUnit = null; renderGroupView(); return; }
       show($("repGroupView"), false); show($("repUnitView"), true);
       $("repUnitName").textContent = u.name;
-      const rows = repFin.filter((r) => r.entity_id === repUnit);
-      $("repUnitStats").innerHTML = statCards(periodAgg(rows)[0]);
+      const rows = repFinInRange().filter((r) => r.entity_id === repUnit);
+      $("repUnitStats").innerHTML = statCards(periodAgg(rows));
       const body = $("finBody"); body.innerHTML = "";
       show($("finEmpty"), rows.length === 0);
       for (const r of rows) {
@@ -792,9 +820,9 @@
       const body = $("repPnlBody"); if (!body) return;
       body.innerHTML = "";
       const months = {};
-      for (const a of periodAgg(repFin)) months[a.period.slice(0, 7)] = { rev: a.revenue, exp: a.expenses, bills: 0 };
+      for (const a of periodAgg(repFinInRange())) months[a.period.slice(0, 7)] = { rev: a.revenue, exp: a.expenses, bills: 0 };
       for (const r of invRows) {
-        if (r.needs_review || !r.invoice_date) continue;
+        if (r.needs_review || !r.invoice_date || !repInvInRange(r)) continue;
         const m = String(r.invoice_date).slice(0, 7);
         (months[m] ||= { rev: 0, exp: 0, bills: 0 }).bills += Number(r.amount) || 0;
       }
@@ -812,7 +840,7 @@
       body.innerHTML = "";
       const by = {};
       for (const r of invRows) {
-        if (r.needs_review) continue;
+        if (r.needs_review || !repInvInRange(r)) continue;
         const k = r.code || "—";
         (by[k] ||= { cat: r.category || (r.code ? glCat[r.code] : "Uncoded") || "", sum: 0, n: 0 });
         by[k].sum += Number(r.amount) || 0; by[k].n++;
@@ -831,10 +859,33 @@
       }
     }
 
+    // Range picker (defaults to this year) + custom month picker for the form.
+    let finMonthPicker = null;
+    (function initRepPickers() {
+      const isoD = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      const mount = $("repRangePicker");
+      if (mount && window.createDateRangePicker) {
+        const now = new Date(), first = new Date(now.getFullYear(), 0, 1);
+        repRange = { from: isoD(first), to: isoD(now) };
+        window.createDateRangePicker({
+          mount,
+          initialStart: first, initialEnd: now,
+          presets: ["thisMonth", "lastMonth", "last3Months", "thisYear"],
+          onChange: (start, end) => {
+            repRange = { from: isoD(start), to: isoD(end) };
+            if (repUnit) renderUnitView(); else renderGroupView();
+            renderRepPnl(); renderRepCodes();
+          },
+        });
+      }
+      const pm = $("fin_period_mount");
+      if (pm && window.createMonthPicker) finMonthPicker = window.createMonthPicker({ mount: pm, initial: "" });
+    })();
+
     $("finSaveBtn")?.addEventListener("click", async () => {
       const st = $("finFormStatus"); st.textContent = "";
       if (!repUnit) { st.textContent = "Open a unit first."; return; }
-      const m = $("fin_period").value; // YYYY-MM
+      const m = finMonthPicker ? finMonthPicker.getValue() : ""; // YYYY-MM
       if (!m) { st.textContent = "Pick a month."; return; }
       const row = {
         entity_id: repUnit, period: m + "-01",
@@ -877,7 +928,7 @@
         } else if (months.length === 1) {
           // One month: prefill the form so it can be reviewed before saving.
           const m = months[0];
-          $("fin_period").value = m.period;
+          if (finMonthPicker) finMonthPicker.setValue(m.period);
           $("fin_revenue").value = m.revenue ?? "";
           $("fin_expenses").value = m.expenses ?? "";
           if (m.notes) $("fin_notes").value = m.notes;

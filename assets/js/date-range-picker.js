@@ -272,6 +272,55 @@
     return { getValue: () => value, setValue: (v) => { value = v || ""; label(); if (openp) build(); }, open: openp_, close };
   };
 
+  // ---- Month picker (year-paged) — replaces native <input type="month">,
+  // styled to match the dark pickers above. Value is "YYYY-MM".
+  window.createMonthPicker = function (opts) {
+    injectCss();
+    const mount = opts.mount;
+    const onChange = opts.onChange || function () {};
+    let value = opts.initial || ""; // YYYY-MM
+    let openp = false;
+    const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const FULL = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    const parse = (s) => { const m = /^(\d{4})-(\d{2})$/.exec(s || ""); return m && +m[2] >= 1 && +m[2] <= 12 ? { y: +m[1], mo: +m[2] - 1 } : null; };
+    const now = new Date();
+    let viewYear = (parse(value) || { y: now.getFullYear() }).y;
+
+    const root = document.createElement("div"); root.className = "dp2-root";
+    const trig = document.createElement("button"); trig.type = "button"; trig.className = "dp2-trigger"; root.appendChild(trig);
+    const pop = document.createElement("div"); pop.className = "dp2-pop mp-pop dp2-hidden"; root.appendChild(pop);
+    mount.appendChild(root);
+
+    function label() { const p = parse(value); trig.textContent = p ? `${FULL[p.mo]} ${p.y}` : "Select month"; }
+    function build() {
+      pop.innerHTML = "";
+      const head = document.createElement("div"); head.className = "dp2-head";
+      const prev = document.createElement("button"); prev.type = "button"; prev.className = "dp2-nav"; prev.textContent = "‹";
+      const title = document.createElement("span"); title.className = "dp2-title"; title.textContent = String(viewYear);
+      const next = document.createElement("button"); next.type = "button"; next.className = "dp2-nav"; next.textContent = "›";
+      prev.addEventListener("click", () => { viewYear--; build(); });
+      next.addEventListener("click", () => { viewYear++; build(); });
+      head.append(prev, title, next); pop.appendChild(head);
+      const grid = document.createElement("div"); grid.className = "mp-grid";
+      const sel = parse(value);
+      for (let i = 0; i < 12; i++) {
+        const btn = document.createElement("button"); btn.type = "button"; btn.className = "dp2-day mp-month"; btn.textContent = MONTHS[i];
+        if (sel && sel.y === viewYear && sel.mo === i) btn.classList.add("is-selected");
+        else if (viewYear === now.getFullYear() && i === now.getMonth()) btn.classList.add("is-today");
+        btn.addEventListener("click", () => { value = `${viewYear}-${pad2(i + 1)}`; label(); onChange(value); close(); });
+        grid.appendChild(btn);
+      }
+      pop.appendChild(grid);
+    }
+    function openp_() { openp = true; const p = parse(value); if (p) viewYear = p.y; build(); pop.classList.remove("dp2-hidden"); document.addEventListener("mousedown", out); document.addEventListener("keydown", key); }
+    function close() { openp = false; pop.classList.add("dp2-hidden"); document.removeEventListener("mousedown", out); document.removeEventListener("keydown", key); }
+    const out = (e) => { if (!root.contains(e.target)) close(); };
+    const key = (e) => { if (e.key === "Escape") close(); };
+    trig.addEventListener("click", () => { openp ? close() : openp_(); });
+    label();
+    return { getValue: () => value, setValue: (v) => { value = v || ""; const p = parse(value); if (p) viewYear = p.y; label(); if (openp) build(); }, open: openp_, close };
+  };
+
   // Colors inherit the portal theme via CSS variables; layout matches the spec.
   const CSS = `
 .drp-root{position:relative;display:inline-block;font-variant-numeric:tabular-nums;color:var(--text,#e5e7eb);}
@@ -343,5 +392,8 @@
 .dp2-day.is-today{color:#a3a9b3;font-weight:600;background:var(--panel-2,#2a2a2a);}
 .dp2-day.is-selected{background:var(--accent,#7c8493);color:#0b0b0b;font-weight:700;}
 .dp2-hidden{display:none !important;}
+.mp-pop{width:246px;}
+.mp-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;}
+.mp-month{padding:11px 0;font-size:13px;}
 `;
 })();
