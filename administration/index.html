@@ -1047,7 +1047,7 @@
     /* ---------------- Ownership graph (admin) ---------------- */
     const gStore = window.createOwnershipStore(supabase);
     const MAX_LINKS = 4, PANE_W = 340;
-    const GRID = 20, ZMIN = 0.4, ZMAX = 2;
+    const GRID = 20, ZMIN = 0.4, ZMAX = 2, GMARGIN = 40; // min distance from canvas edges
     let gEnt = [], gEdge = [], gSel = null, gInit = false, gZoom = 1;
     const posTimer = { t: null }, posPending = new Map();
     const snap = (v) => Math.round(v / GRID) * GRID;
@@ -1104,8 +1104,8 @@
         const node = document.createElement("div");
         node.className = "gnode" + (gSel === e.id ? " sel" : "");
         node.dataset.id = e.id;
-        node.style.left = (e.position_x ?? 0) + "px";
-        node.style.top = (e.position_y ?? 0) + "px";
+        node.style.left = Math.max(GMARGIN, e.position_x ?? 0) + "px";
+        node.style.top = Math.max(GMARGIN, e.position_y ?? 0) + "px";
         if (e.color) { node.style.borderColor = e.color; node.style.backgroundColor = e.color + "14"; }
         const isRoot = !cnt[e.id];
         const pct = isRoot ? null : (tot[e.id] || 0);
@@ -1195,15 +1195,15 @@
         const mv = (m) => {
           const sdx = m.clientX - sx, sdy = m.clientY - sy; // screen delta
           if (Math.abs(sdx) > 3 || Math.abs(sdy) > 3) moved = true;
-          node.style.left = Math.max(0, ox + sdx / gZoom) + "px";
-          node.style.top = Math.max(0, oy + sdy / gZoom) + "px";
+          node.style.left = Math.max(GMARGIN, ox + sdx / gZoom) + "px";
+          node.style.top = Math.max(GMARGIN, oy + sdy / gZoom) + "px";
           renderEdges();
         };
         const up = () => {
           document.removeEventListener("pointermove", mv); document.removeEventListener("pointerup", up);
           if (!moved) { openPane(e.id); return; }
-          const x = Math.max(0, snap(parseFloat(node.style.left)));
-          const y = Math.max(0, snap(parseFloat(node.style.top)));
+          const x = Math.max(GMARGIN, snap(parseFloat(node.style.left)));
+          const y = Math.max(GMARGIN, snap(parseFloat(node.style.top)));
           node.style.left = x + "px"; node.style.top = y + "px"; renderEdges();
           const ent = gEnt.find((z) => z.id === e.id); if (ent) { ent.position_x = x; ent.position_y = y; }
           posPending.set(e.id, { x, y });
@@ -1234,8 +1234,8 @@
     function wireGraphChrome() {
       $("ownAddBox").addEventListener("click", async () => {
         const view = $("ownViewport");
-        const x = snap((view.scrollLeft + 120) / gZoom + Math.random() * 160);
-        const y = snap((view.scrollTop + 90) / gZoom + Math.random() * 120);
+        const x = Math.max(GMARGIN, snap((view.scrollLeft + 120) / gZoom + Math.random() * 160));
+        const y = Math.max(GMARGIN, snap((view.scrollTop + 90) / gZoom + Math.random() * 120));
         const ent = await gStore.addEntity({ name: "New box", position_x: x, position_y: y });
         gEnt.push(ent); gSel = ent.id; render(); openPane(ent.id);
       });
