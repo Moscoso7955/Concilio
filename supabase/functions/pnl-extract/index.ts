@@ -13,6 +13,13 @@ const ANON = Deno.env.get("SUPABASE_ANON_KEY")!;
 const ANTHROPIC_KEY = Deno.env.get("ANTHROPIC_API_KEY")!;
 const admin = createClient(SUPABASE_URL, SERVICE, { auth: { persistSession: false } });
 
+// Breadcrumbs to console AND the function_logs table (readable via SQL, so
+// misreads can be diagnosed without dashboard access). Best-effort.
+async function dblog(msg: string, detail: unknown = null) {
+  console.log(msg, detail ? JSON.stringify(detail).slice(0, 800) : "");
+  try { await admin.from("function_logs").insert({ fn: "pnl-extract", msg, detail }); } catch (_) { /* table may not exist yet */ }
+}
+
 const cors = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, apikey, content-type, x-client-info, x-supabase-api-version",
@@ -25,8 +32,9 @@ const SYSTEM = `You extract monthly totals from a single business profit & loss 
 Core rule: only report figures the document clearly states — never estimate or interpolate.
 - Return one entry per calendar month the statement breaks out (e.g. a P&L by month has one entry per month column).
 - period: the month as YYYY-MM.
-- revenue: that month's TOTAL income/revenue (top-line total, not a subcategory), numeric only.
-- expenses: that month's TOTAL expenses including cost of goods sold and other expenses (if the document only shows total revenue and net income, expenses = revenue minus net income), numeric only.
+- revenue: that month's stated TOTAL income/revenue (the "Total Income" / "Total Revenue" line). Never use Gross Profit, Net Operating Income, or Net Income as revenue.
+- expenses: that month's stated total expenses ("Total for Expenses") plus any cost of goods sold and other-expense totals, as a SIGNED number: keep the sign exactly as printed — a negative or parenthesized total stays negative, never take the absolute value. Individual line items may be negative (credits/reimbursements); trust the printed totals, not your own re-addition.
+- RECONCILE before answering: the statement's convention is revenue - expenses = net income. If net income is stated and your (revenue, expenses) pair does not satisfy that within a cent, set expenses = revenue - net income (this handles sign flips and missed sections).
 - notes: null unless the document flags something material about that month (e.g. "partial month").
 - If the statement shows only a single combined total spanning multiple months with no per-month breakdown, return an empty months array rather than inventing a monthly split. A single-month statement returns exactly one entry.`;
 
@@ -135,6 +143,7 @@ Deno.serve(async (req) => {
     if (!file) return json({ error: "No file provided" }, 400);
     const bytes = new Uint8Array(await file.arrayBuffer());
     const months = await extractPnl(bytes, file.type || "application/octet-stream");
+    await dblog("extracted", { name: file.name, size: bytes.length, months });
     return json({ ok: true, months });
   } catch (e) {
     return json({ ok: false, error: String((e as Error).message || e) }, 500);
