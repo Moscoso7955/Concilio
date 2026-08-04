@@ -726,6 +726,9 @@
         .sort((x, y) => y.period.localeCompare(x.period));
     }
 
+    // Net margin as a percent of revenue; no revenue → nothing to divide by.
+    const marginPct = (rev, net) => rev ? (net / rev * 100).toFixed(1) + "%" : "—";
+
     function statCards(aggs) {
       // Totals across every month in the selected range.
       if (!aggs || !aggs.length) return `<div class="stat"><div class="k">Period</div><div class="v">—</div></div>`;
@@ -739,6 +742,7 @@
         ["Revenue", money(rev), "pos"],
         ["Expenses", money(exp), "neg"],
         ["Net", money(net), net >= 0 ? "pos" : "neg"],
+        ["Profit %", marginPct(rev, net), net >= 0 ? "pos" : "neg"],
       ];
       return cards.map(([k, v, c]) => `<div class="stat"><div class="k">${k}</div><div class="v ${c}">${v}</div></div>`).join("");
     }
@@ -772,6 +776,7 @@
            <div class="unit-card__figs">
              <div><span class="k">Revenue</span><span class="v pos">${aggs.length ? money(rev) : "—"}</span></div>
              <div><span class="k">Net</span><span class="v ${aggs.length && net < 0 ? "neg" : "pos"}">${aggs.length ? money(net) : "—"}</span></div>
+             <div><span class="k">Profit %</span><span class="v ${aggs.length && net < 0 ? "neg" : "pos"}">${aggs.length ? marginPct(rev, net) : "—"}</span></div>
            </div>
            <div class="unit-card__meta muted">${meta}</div>`;
         card.addEventListener("click", () => { repUnit = u.id; renderUnitView(); });
