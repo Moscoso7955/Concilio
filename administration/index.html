@@ -84,7 +84,6 @@
     .stat .k { font-size: 0.78rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
     .stat { display: flex; flex-direction: column; justify-content: center; }
     .stat .v { font-size: 1.6rem; font-weight: 700; margin-top: 0.25rem; white-space: nowrap; }
-    .stat .v.sm { font-size: 1.1rem; line-height: 1.4; }
     .v.pos { color: var(--ok); } .v.neg { color: var(--danger); }
 
     /* ---------- Reports: unit cards ---------- */
@@ -693,22 +692,17 @@
     const marginPct = (rev, net) => rev ? (net / rev * 100).toFixed(1) + "%" : "—";
 
     function statCards(aggs) {
-      // Totals across every month in the selected range.
-      if (!aggs || !aggs.length) return `<div class="stat"><div class="k">Period</div><div class="v">—</div></div>`;
-      const rev = aggs.reduce((s, a) => s + a.revenue, 0);
-      const exp = aggs.reduce((s, a) => s + a.expenses, 0);
+      // Totals across every month in the selected range. The range itself is
+      // already shown by the picker, so no period card — four figures only.
+      const has = aggs && aggs.length;
+      const rev = has ? aggs.reduce((s, a) => s + a.revenue, 0) : 0;
+      const exp = has ? aggs.reduce((s, a) => s + a.expenses, 0) : 0;
       const net = rev - exp;
-      const newest = aggs[0].period, oldest = aggs[aggs.length - 1].period; // aggs are newest-first
-      const shortMon = (p) => new Date(p + "T00:00:00").toLocaleDateString(undefined, { month: "short" });
-      const label = aggs.length === 1 ? monthLabel(newest)
-        : newest.slice(0, 4) === oldest.slice(0, 4) ? `${shortMon(oldest)} – ${monthLabel(newest)}`
-        : `${monthLabel(oldest)} – ${monthLabel(newest)}`;
       const cards = [
-        ["Period", label, "sm"],
-        ["Revenue", money(rev), "pos"],
-        ["Expenses", money(exp), "neg"],
-        ["Net", money(net), net >= 0 ? "pos" : "neg"],
-        ["Profit %", marginPct(rev, net), net >= 0 ? "pos" : "neg"],
+        ["Revenue", has ? money(rev) : "—", "pos"],
+        ["Expenses", has ? money(exp) : "—", ""],
+        ["Net", has ? money(net) : "—", net >= 0 ? "pos" : "neg"],
+        ["Profit %", has ? marginPct(rev, net) : "—", net >= 0 ? "pos" : "neg"],
       ];
       return cards.map(([k, v, c]) => `<div class="stat"><div class="k">${k}</div><div class="v ${c}">${v}</div></div>`).join("");
     }
