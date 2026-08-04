@@ -102,6 +102,44 @@ async function extract(bytes: Uint8Array, mime: string): Promise<Record<string, 
   return JSON.parse(tb?.text || "{}");
 }
 
+// Repair a plain-text body that arrived garbled: UTF-8 read as
+// Windows-1252 ("â€™" for apostrophes) and/or pre-escaped HTML entities.
+const CP1252_REV: Record<number, number> = {
+  0x20AC: 0x80, 0x201A: 0x82, 0x0192: 0x83, 0x201E: 0x84, 0x2026: 0x85, 0x2020: 0x86, 0x2021: 0x87,
+  0x02C6: 0x88, 0x2030: 0x89, 0x0160: 0x8A, 0x2039: 0x8B, 0x0152: 0x8C, 0x017D: 0x8E, 0x2018: 0x91,
+  0x2019: 0x92, 0x201C: 0x93, 0x201D: 0x94, 0x2022: 0x95, 0x2013: 0x96, 0x2014: 0x97, 0x02DC: 0x98,
+  0x2122: 0x99, 0x0161: 0x9A, 0x203A: 0x9B, 0x0153: 0x9C, 0x017E: 0x9E, 0x0178: 0x9F,
+};
+function fixText(s: string): string {
+  let t = s;
+  if (/\u00e2\u20ac|\u00c3[\u00a0-\u00ff]/.test(t)) {
+    try {
+      const bytes = Uint8Array.from([...t].map((ch) => {
+        const c = ch.codePointAt(0)!;
+        return c <= 0xff ? c : (CP1252_REV[c] ?? 0x3f);
+      }));
+      t = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    } catch (_) { /* not mojibake after all — keep the original */ }
+  }
+  if (/&(lt|gt|quot|#39|amp);/.test(t)) {
+    t = t.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, "&");
+  }
+  return t;
+}
+
+// The file stored for a body-only email: prefer the HTML part so "View"
+// renders like the original message; fall back to repaired plain text.
+function buildBodyFile(bodyText: string, bodyHtml: string): { bytes: Uint8Array; mime: string; name: string } {
+  if (bodyHtml.trim()) {
+    const html = /<meta[^>]+charset/i.test(bodyHtml) ? bodyHtml : `<meta charset="utf-8">${bodyHtml}`;
+    return { bytes: new TextEncoder().encode(html), mime: "text/html", name: "email.html" };
+  }
+  const src = fixText(bodyText);
+  const safeHtml = `<!doctype html><meta charset="utf-8"><pre style="white-space:pre-wrap;font-family:system-ui;padding:1rem;max-width:70rem">${
+    src.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c] as string))}</pre>`;
+  return { bytes: new TextEncoder().encode(safeHtml), mime: "text/html", name: "email-body.html" };
+}
+
 async function fileInvoice(tenantId: string, sourceKey: string, extracted: Record<string, unknown>, bytes: Uint8Array | null, mime: string, fileName: string) {
   let file_url: string | null = null;
   if (bytes) {
@@ -322,15 +360,13 @@ Deno.serve(async (req) => {
 
       let bodyExtracted: Record<string, unknown> | null = null;
       if (readable) {
-        bodyExtracted = await extract(new TextEncoder().encode(bodyText.trim() ? bodyText : bodyHtml), "text/plain");
+        bodyExtracted = await extract(new TextEncoder().encode(bodyText.trim() ? fixText(bodyText) : bodyHtml), "text/plain");
         await dblog("extracted (body)", bodyExtracted);
       }
 
       if (meaningful(bodyExtracted)) {
-        const src = bodyText.trim() ? bodyText : bodyHtml;
-        const safeHtml = `<!doctype html><meta charset="utf-8"><pre style="white-space:pre-wrap;font-family:system-ui;padding:1rem">${
-          src.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c] as string))}</pre>`;
-        await fileInvoice(tenant.id, `${emailId}:body`, bodyExtracted!, new TextEncoder().encode(safeHtml), "text/html", "email-body.html");
+        const f = buildBodyFile(bodyText, bodyHtml);
+        await fileInvoice(tenant.id, `${emailId}:body`, bodyExtracted!, f.bytes, f.mime, f.name);
       } else {
         // Tier 3: the bill may BE an image in the body — inline CID image
         // attachments (excluded from tier 1 by design) or <img>-linked
@@ -371,10 +407,8 @@ Deno.serve(async (req) => {
         if (!filed && readable) {
           // Nothing meaningful anywhere — file the body anyway (needs_review)
           // so the email isn't lost; the owner fills the fields by hand.
-          const src = bodyText.trim() ? bodyText : bodyHtml;
-          const safeHtml = `<!doctype html><meta charset="utf-8"><pre style="white-space:pre-wrap;font-family:system-ui;padding:1rem">${
-            src.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c] as string))}</pre>`;
-          await fileInvoice(tenant.id, `${emailId}:body`, bodyExtracted || {}, new TextEncoder().encode(safeHtml), "text/html", "email-body.html");
+          const f = buildBodyFile(bodyText, bodyHtml);
+          await fileInvoice(tenant.id, `${emailId}:body`, bodyExtracted || {}, f.bytes, f.mime, f.name);
         } else if (!filed) {
           await dblog("no email content available — not filing");
           return new Response("no content", { status: 200 });
