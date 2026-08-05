@@ -22,7 +22,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Token avoids anonymous API rate limits when resolving "latest"
+      # (an unauthenticated lookup made this job flake before).
       - uses: supabase/setup-cli@v1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         with:
           version: latest
 
