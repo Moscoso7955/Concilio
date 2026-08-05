@@ -36,6 +36,7 @@ Core rule: only report figures the document clearly states — never estimate or
 - expenses: that month's stated total expenses ("Total for Expenses") plus any cost of goods sold and other-expense totals, as a SIGNED number: keep the sign exactly as printed — a negative or parenthesized total stays negative, never take the absolute value. Individual line items may be negative (credits/reimbursements); trust the printed totals, not your own re-addition.
 - RECONCILE before answering: the statement's convention is revenue - expenses = net income. If net income is stated and your (revenue, expenses) pair does not satisfy that within a cent, set expenses = revenue - net income (this handles sign flips and missed sections).
 - notes: null unless the document flags something material about that month (e.g. "partial month").
+- lines: the month's individual account lines so the statement can be re-rendered. One entry per leaf account row that has a nonzero value for that month (e.g. "410 Services", "605 Accounting fees", "Wages"). Skip subtotal/total rows ("Total for …", "Gross Profit", "Net …") — totals are recomputed. section = the statement section the line sits under, exactly as printed ("Income", "Expenses", "Other Expenses", …); label = the account name as printed; amount = that month's value with its printed sign.
 - If the statement shows only a single combined total spanning multiple months with no per-month breakdown, return an empty months array rather than inventing a monthly split. A single-month statement returns exactly one entry.`;
 
 // NOTE: same constraint as invoices-extract — Anthropic's structured-output
@@ -55,8 +56,21 @@ const SCHEMA = {
           revenue: { type: ["number", "null"] },
           expenses: { type: ["number", "null"] },
           notes: { type: ["string", "null"] },
+          lines: {
+            type: "array",
+            items: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                section: { type: "string" },
+                label: { type: "string" },
+                amount: { type: "number" },
+              },
+              required: ["section", "label", "amount"],
+            },
+          },
         },
-        required: ["period", "revenue", "expenses", "notes"],
+        required: ["period", "revenue", "expenses", "notes", "lines"],
       },
     },
   },
@@ -101,7 +115,7 @@ async function extractPnl(bytes: Uint8Array, mime: string) {
       },
       body: JSON.stringify({
         model: "claude-opus-4-8",
-        max_tokens: 2048,
+        max_tokens: 16384,
         system: SYSTEM,
         output_config: { format: { type: "json_schema", schema: SCHEMA } },
         messages: [{ role: "user", content }],
