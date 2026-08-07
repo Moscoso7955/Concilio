@@ -202,6 +202,8 @@
     .gnode__links { font-size: 0.64rem; color: var(--muted); margin-top: 0.15rem; }
     .ghandle { position: absolute; left: 50%; transform: translateX(-50%); width: 13px; height: 13px; border-radius: 50%; background: #64748b; border: 2px solid var(--panel); cursor: crosshair; }
     .ghandle--top { top: -8px; } .ghandle--bottom { bottom: -8px; }
+    .gtip { position: absolute; transform: translate(-50%, -100%); background: #141414; border: 1px solid var(--accent); border-radius: 7px; padding: 0.3rem 0.6rem; font-size: 0.78rem; color: #c4c8ce; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity 0.12s; z-index: 30; }
+    .gtip.on { opacity: 1; }
     .gpane { position: absolute; top: 48px; right: 0; bottom: 0; width: 340px; max-width: 92%; background: var(--panel); border-left: 1px solid var(--border); overflow-y: auto; padding: 1rem; box-shadow: -8px 0 24px rgba(0,0,0,0.35); }
     .gpane .field { margin-bottom: 0.75rem; }
     .linkrow { display: flex; gap: 0.35rem; align-items: center; margin-bottom: 0.4rem; }
@@ -570,6 +572,7 @@
     });
 
     let profile = null;
+    let currentEmail = null; // signed-in email; links the user to their graph box
     let currentUserId; // undefined until first route; guards redundant re-entry (null = signed-out, already rendered)
     const isAdmin = () => profile && profile.role === "admin";
 
@@ -633,6 +636,7 @@
 
     function enterApp(session) {
       show($("loginView"), false); show($("checkEmail"), false); show($("appView"), true);
+      currentEmail = session.user.email || null;
       $("userEmail").textContent = session.user.email;
       const rb = $("roleBadge"); rb.textContent = profile.role; rb.classList.toggle("badge--admin", isAdmin());
       document.querySelectorAll(".admin-only").forEach((el) => show(el, isAdmin()));
@@ -1154,7 +1158,37 @@
       if (!gInit) { gInit = true; wireGraphChrome(); }
     }
 
-    function render() { renderNodes(); renderEdges(); }
+    function render() { effMemo.clear(); renderNodes(); renderEdges(); }
+
+    // ---- Effective personal ownership ----
+    // The viewer's stake in a box = product of percentages down each path
+    // from their individual box, summed across paths (70% of FBH which
+    // owns 65% of Phoebe → 45.5% of Phoebe). Memoized per render.
+    const effMemo = new Map();
+    function myGraphBox() {
+      if (!currentEmail) return null;
+      return gEnt.find((e) => e.kind !== "entity" && e.email && e.email.toLowerCase() === currentEmail.toLowerCase()) || null;
+    }
+    function effOf(id, myId, stack = new Set()) {
+      if (id === myId) return 1;
+      if (effMemo.has(id)) return effMemo.get(id);
+      if (stack.has(id)) return 0; // cycle guard
+      stack.add(id);
+      let s = 0;
+      for (const e of gEdge) if (e.child_id === id) s += effOf(e.parent_id, myId, stack) * (Number(e.percentage) || 0) / 100;
+      stack.delete(id);
+      effMemo.set(id, s);
+      return s;
+    }
+    let gTip = null;
+    function showTip(node, text) {
+      if (!gTip) { gTip = document.createElement("div"); gTip.className = "gtip"; $("ownCanvas").appendChild(gTip); }
+      gTip.textContent = text;
+      gTip.style.left = (node.offsetLeft + node.offsetWidth / 2) + "px";
+      gTip.style.top = (node.offsetTop - 10) + "px";
+      gTip.classList.add("on");
+    }
+    function hideTip() { if (gTip) gTip.classList.remove("on"); }
 
     function renderNodes() {
       const canvas = $("ownCanvas");
@@ -1247,6 +1281,17 @@
         };
         document.addEventListener("pointermove", mv); document.addEventListener("pointerup", up);
       });
+
+      // Hover: the viewer's calculated stake in this box.
+      node.addEventListener("mouseenter", () => {
+        const me = myGraphBox(); if (!me) return;
+        if (e.id === me.id) { showTip(node, "This is you"); return; }
+        const eff = effOf(e.id, me.id) * 100;
+        if (eff <= 0) return;
+        const fmt = (n) => (Math.round(n * 100) / 100) % 1 === 0 ? Math.round(n) : (Math.round(n * 100) / 100).toFixed(2);
+        showTip(node, `Your ownership: ${fmt(eff)}%`);
+      });
+      node.addEventListener("mouseleave", hideTip);
 
       // Drag to move, or click to open the pane.
       node.addEventListener("pointerdown", (ev) => {
