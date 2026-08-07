@@ -277,7 +277,7 @@
       <button class="tab" data-tab="invoices">Invoices</button>
       <button class="tab admin-only hidden" data-tab="coa">Chart of Accounts</button>
       <button class="tab admin-only hidden" data-tab="site">Site Content</button>
-      <button class="tab admin-only hidden" data-tab="owners">Ownership</button>
+      <button class="tab" data-tab="owners">Ownership</button>
     </div>
 
     <!-- Reports -->
@@ -336,9 +336,9 @@
       </div>
     </section>
 
-    <!-- Memos -->
+    <!-- Memos (view-only for members; the solo admin posts) -->
     <section class="tab-panel hidden" data-panel="memos">
-      <div class="section-card">
+      <div class="section-card admin-only hidden">
         <h2>Post a memo</h2>
         <div class="field"><label>Title</label><input type="text" id="memo_title" placeholder="Short headline"></div>
         <div class="field"><label>Message</label><textarea id="memo_body" placeholder="Write a note for the team…"></textarea></div>
@@ -489,17 +489,17 @@
       </div>
     </section>
 
-    <!-- Owners (admin) -->
+    <!-- Owners: admins edit; members see their downstream slice read-only -->
     <section class="tab-panel hidden" data-panel="owners">
       <div class="graph-wrap">
         <div class="graph-toolbar">
-          <button class="btn" id="ownAddBox" style="flex:0 0 auto;">+ Add box</button>
+          <button class="btn admin-only hidden" id="ownAddBox" style="flex:0 0 auto;">+ Add box</button>
           <div style="display:flex;align-items:center;gap:0.3rem;flex:0 0 auto;">
             <button class="btn btn--ghost btn--sm" id="ownZoomOut" title="Zoom out" style="flex:0 0 auto;">−</button>
             <span class="muted" id="ownZoomLabel" style="min-width:3.5ch;text-align:center;">100%</span>
             <button class="btn btn--ghost btn--sm" id="ownZoomIn" title="Zoom in" style="flex:0 0 auto;">+</button>
           </div>
-          <span class="muted">Click a box to edit. Drag a box's bottom handle onto another box's top to connect; click an edge to change its %. Ctrl/⌘+scroll to zoom.</span>
+          <span class="muted" id="ownHint">Click a box to edit. Drag a box's bottom handle onto another box's top to connect; click an edge to change its %. Ctrl/⌘+scroll to zoom.</span>
         </div>
         <div class="graph-viewport" id="ownViewport">
           <div class="graph-canvas" id="ownCanvas">
@@ -638,7 +638,11 @@
       document.querySelectorAll(".admin-only").forEach((el) => show(el, isAdmin()));
       restoreTab(); // land on the tab the user was on before the reload
       loadFinancials(); loadMemos(); loadDocuments(); loadInvoices();
-      if (isAdmin()) { loadSite(); loadGraph(); loadChart(); }
+      // Everyone gets the graph — RLS scopes non-admins to their own box
+      // plus everything downstream of it; the UI is read-only for them.
+      if (isAdmin()) { loadSite(); loadChart(); }
+      else { const h = $("ownHint"); if (h) h.textContent = "Your ownership — the boxes you own and everything downstream. Click a box for details. Ctrl/⌘+scroll to zoom."; }
+      loadGraph();
     }
 
     /* ---------------- Tabs (active tab survives reload) ---------------- */
@@ -958,7 +962,7 @@
       show($("memoEmpty"), rows.length === 0);
       const me = profile.id;
       for (const m of rows) {
-        const canEdit = isAdmin() || m.author_id === me;
+        const canEdit = isAdmin(); // solo-admin portal: members are view-only
         const div = document.createElement("div");
         div.className = "memo" + (m.pinned ? " pinned" : "");
         div.innerHTML =
@@ -1175,7 +1179,7 @@
           pctHtml = `<div class="gnode__pct ${cls}">${label}</div>`;
         }
         node.innerHTML =
-          `<div class="ghandle ghandle--top"></div><div class="ghandle ghandle--bottom"></div>` +
+          (isAdmin() ? `<div class="ghandle ghandle--top"></div><div class="ghandle ghandle--bottom"></div>` : "") +
           (e.category ? `<div class="gnode__cat" style="color:${e.color || "var(--muted)"}">${escapeHtml(e.category)}</div>` : "") +
           `<div class="gnode__name">${escapeHtml(e.name || "unnamed")}</div>` +
           (e.subcategory ? `<div class="gnode__sub">${escapeHtml(e.subcategory)}</div>` : "") +
@@ -1219,8 +1223,9 @@
     }
 
     function wireNode(node, e) {
-      // Connect: drag from bottom handle to another node.
-      node.querySelector(".ghandle--bottom").addEventListener("pointerdown", (ev) => {
+      // Connect: drag from bottom handle to another node (admins only —
+      // read-only nodes render without handles).
+      node.querySelector(".ghandle--bottom")?.addEventListener("pointerdown", (ev) => {
         ev.stopPropagation(); ev.preventDefault();
         const svg = $("ownSvg"), rect = $("ownCanvas").getBoundingClientRect();
         const x1 = node.offsetLeft + node.offsetWidth / 2, y1 = node.offsetTop + node.offsetHeight;
@@ -1249,6 +1254,7 @@
         const sx = ev.clientX, sy = ev.clientY, ox = node.offsetLeft, oy = node.offsetTop;
         let moved = false;
         const mv = (m) => {
+          if (!isAdmin()) return; // read-only: click opens the pane, no moving
           const sdx = m.clientX - sx, sdy = m.clientY - sy; // screen delta
           if (Math.abs(sdx) > 3 || Math.abs(sdy) > 3) moved = true;
           node.style.left = Math.max(GMARGIN, ox + sdx / gZoom) + "px";
@@ -1278,6 +1284,7 @@
     }
 
     async function editEdge(id) {
+      if (!isAdmin()) return;
       const e = gEdge.find((z) => z.id === id); if (!e) return;
       const a = prompt(`Edit edge — new % (0–100) or "delete":`, String(e.percentage));
       if (a === null) return;
@@ -1288,7 +1295,7 @@
     }
 
     function wireGraphChrome() {
-      $("ownAddBox").addEventListener("click", async () => {
+      $("ownAddBox")?.addEventListener("click", async () => {
         const view = $("ownViewport");
         const x = Math.max(GMARGIN, snap((view.scrollLeft + 120) / gZoom + Math.random() * 160));
         const y = Math.max(GMARGIN, snap((view.scrollTop + 90) / gZoom + Math.random() * 120));
@@ -1325,6 +1332,22 @@
       const kind = e.kind === "entity" ? "entity" : "individual";
       gSel = id; renderNodes();
       const pane = $("ownPane");
+      if (!isAdmin()) {
+        // Read-only details: name, type, notes, clickable links.
+        const linkList = (e.links || []).filter((l) => toHref(l.url)).map((l) =>
+          `<div style="margin:0.3rem 0;"><a href="${escapeHtml(toHref(l.url))}" target="_blank" rel="noopener noreferrer" style="color:#c4c8ce;">${escapeHtml(l.label || l.url)} ↗</a></div>`).join("");
+        pane.innerHTML = `
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem;">
+            <strong>${escapeHtml(e.name || "unnamed")}</strong><button class="iconbtn" id="paneClose" style="font-size:1.3rem;">×</button>
+          </div>
+          <div class="muted" style="margin-bottom:0.9rem;">${kind === "entity" ? "Entity" : "Individual"}${e.subcategory ? " · " + escapeHtml(e.subcategory) : ""}</div>
+          ${e.notes ? `<div class="field"><label>Notes</label><div style="white-space:pre-wrap;">${escapeHtml(e.notes)}</div></div>` : ""}
+          ${linkList ? `<div class="field"><label>Links</label>${linkList}</div>` : ""}
+          ${!e.notes && !linkList ? `<p class="muted">No details on this box.</p>` : ""}`;
+        show(pane, true);
+        $("paneClose").addEventListener("click", closePane);
+        return;
+      }
       const linkRows = (i, l) => `
         <div class="linkrow" data-lrow="${i}">
           <input type="text" data-llabel="${i}" placeholder="Label" value="${escapeHtml(l.label || "")}" style="width:33%;">
