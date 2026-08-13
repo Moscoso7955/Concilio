@@ -268,6 +268,7 @@
       <div class="whoami">
         <span id="userEmail"></span>
         <span class="badge" id="roleBadge">owner</span>
+        <button class="btn btn--ghost btn--sm admin-only hidden" id="settingsBtn" title="Users & access">⚙ Settings</button>
         <button class="btn btn--ghost btn--sm" id="signOutBtn">Sign out</button>
       </div>
     </div>
@@ -277,8 +278,8 @@
       <button class="tab" data-tab="memos">Memo Board</button>
       <button class="tab" data-tab="documents">Documents</button>
       <button class="tab" data-tab="invoices">Invoices</button>
-      <button class="tab admin-only hidden" data-tab="coa">Chart of Accounts</button>
-      <button class="tab admin-only hidden" data-tab="site">Site Content</button>
+      <button class="tab" data-tab="coa">Chart of Accounts</button>
+      <button class="tab" data-tab="site">Site Content</button>
       <button class="tab" data-tab="owners">Ownership</button>
     </div>
 
@@ -334,6 +335,12 @@
             </table>
           </div>
           <p class="muted" id="finEmpty">No figures yet.</p>
+        </div>
+
+        <div class="section-card">
+          <h2>P&amp;L by month</h2>
+          <div class="table-wrap"><table id="pnlGridTable"></table></div>
+          <p class="muted" id="pnlGridEmpty">Account-level detail appears here once P&amp;Ls are imported with the AI reader.</p>
         </div>
       </div>
     </section>
@@ -456,7 +463,7 @@
       <div class="section-card">
         <h2>Chart of Accounts</h2>
         <p class="muted" style="margin-bottom:1rem;">Assign a numeric code to each category. Mark a category as a <strong>Sub account</strong> to nest it under a parent. This list is exactly what the invoice <strong>Code</strong> picker chooses from.</p>
-        <div class="row" style="align-items:center;margin-bottom:1rem;">
+        <div class="row admin-only hidden" style="align-items:center;margin-bottom:1rem;">
           <input type="text" id="coa_name" placeholder="Add a category…" style="flex:2;">
           <button class="btn" id="coaAddBtn" style="flex:0 0 auto;">Add category</button>
           <span class="muted" id="coaStatus"></span>
@@ -514,6 +521,27 @@
   </div>
 
   <!-- Add-invoice modal -->
+  <div class="modal-overlay hidden" id="settingsModal">
+    <div class="modal" style="max-width:680px;">
+      <h3>Settings — users &amp; access</h3>
+      <p class="muted" style="margin-bottom:1rem;">Everyone here signs in with a magic link at their email. Roles: <strong>Admin</strong> — full control; <strong>Accountant</strong> — view-only, sees everything; <strong>Member</strong> — view-only, sees their ownership slice. Tabs control what shows in their menu.</p>
+      <div id="suList"><p class="muted">Loading…</p></div>
+      <div class="section-card" style="margin:1rem 0 0;padding:1rem;">
+        <h2 style="font-size:0.95rem;">Add someone</h2>
+        <div class="row" style="align-items:flex-end;">
+          <div style="flex:2;"><label>Email</label><input type="email" id="suNewEmail" placeholder="name@company.com"></div>
+          <div style="flex:1;"><label>Role</label><select id="suNewRole" class="inline-select" style="width:100%;padding:0.6rem 0.7rem;">
+            <option value="owner">Member</option><option value="accountant">Accountant</option><option value="admin">Admin</option></select></div>
+          <button class="btn" id="suAddBtn" style="flex:0 0 auto;">Add</button>
+        </div>
+        <div class="muted" id="suAddStatus" style="margin-top:0.4rem;"></div>
+      </div>
+      <div class="row" style="align-items:center;margin-top:1rem;">
+        <button class="btn btn--ghost" id="settingsCloseBtn" style="flex:0 0 auto;">Close</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-overlay hidden" id="pnlModal">
     <div class="modal" style="max-width:520px;">
       <h3 id="pnlModalTitle">P&amp;L</h3>
@@ -603,6 +631,92 @@
     $("backToLogin").addEventListener("click", () => { show($("checkEmail"), false); show($("loginView"), true); });
     $("signOutBtn").addEventListener("click", async () => { await supabase.auth.signOut(); location.reload(); });
 
+    /* ---------------- Settings: users & access (admin) ---------------- */
+    const TAB_META = [["financials", "Reports"], ["memos", "Memo Board"], ["documents", "Documents"], ["invoices", "Invoices"], ["coa", "Chart of Accounts"], ["owners", "Ownership"]];
+    const ROLE_LABEL = { owner: "Member", accountant: "Accountant", admin: "Admin" };
+
+    $("settingsBtn")?.addEventListener("click", () => { show($("settingsModal"), true); loadSettingsUsers(); });
+    $("settingsCloseBtn")?.addEventListener("click", () => show($("settingsModal"), false));
+    $("settingsModal")?.addEventListener("click", (e) => { if (e.target === $("settingsModal")) show($("settingsModal"), false); });
+
+    async function loadSettingsUsers() {
+      const box = $("suList"); box.innerHTML = '<p class="muted">Loading…</p>';
+      const [aoRes, profRes] = await Promise.all([
+        supabase.from("allowed_owners").select("*").order("created_at"),
+        supabase.from("profiles").select("id,email,full_name,role,tabs"),
+      ]);
+      const rows = aoRes.data || [], profs = profRes.data || [];
+      const profByEmail = {}; for (const p of profs) profByEmail[(p.email || "").toLowerCase()] = p;
+      const boxByEmail = {}; for (const e of gEnt) if (e.email) boxByEmail[e.email.toLowerCase()] = e;
+      if (!rows.length) { box.innerHTML = '<p class="muted">No users yet — add someone below, or grant access from an ownership box.</p>'; return; }
+      box.innerHTML = rows.map((r, i) => {
+        const em = (r.email || "").toLowerCase();
+        const p = profByEmail[em], b = boxByEmail[em];
+        const who = p?.full_name || b?.name || "";
+        const tabs = Array.isArray(r.tabs) && r.tabs.length ? r.tabs : (ROLE_DEFAULT_TABS[r.role] || null);
+        const checks = TAB_META.map(([k, label]) =>
+          `<label style="display:inline-flex;align-items:center;gap:0.3rem;margin:0 0.75rem 0.25rem 0;font-size:0.8rem;color:var(--text);cursor:pointer;">
+             <input type="checkbox" data-sutab="${i}" value="${k}" style="width:auto;"${!tabs || tabs.includes(k) ? " checked" : ""}> ${label}
+           </label>`).join("");
+        return `<div class="section-card" style="margin-bottom:0.75rem;padding:1rem;" data-surow="${i}" data-suemail="${escapeHtml(r.email)}">
+          <div style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;">
+            <strong>${escapeHtml(r.email)}</strong>
+            ${who ? `<span class="muted">${escapeHtml(who)}</span>` : ""}
+            ${b ? `<span class="badge">in ownership graph</span>` : ""}
+            <span class="badge${p ? " badge--admin" : ""}">${p ? "signed up" : "invited — hasn't signed in"}</span>
+          </div>
+          <div class="row" style="align-items:center;margin-top:0.6rem;">
+            <div style="flex:0 0 auto;"><select data-surole="${i}" class="inline-select">
+              ${["owner", "accountant", "admin"].map((ro) => `<option value="${ro}"${r.role === ro ? " selected" : ""}>${ROLE_LABEL[ro]}</option>`).join("")}
+            </select></div>
+            <button class="btn btn--sm" data-susave="${i}" style="flex:0 0 auto;">Save</button>
+            <button class="btn btn--danger btn--sm" data-suremove="${i}" style="flex:0 0 auto;">Remove</button>
+            <span class="muted" data-sustatus="${i}"></span>
+          </div>
+          <div style="margin-top:0.6rem;" data-sutabs="${i}"${r.role === "admin" ? ' hidden' : ""}>
+            <label style="margin-bottom:0.3rem;">Tabs</label>${checks}
+          </div>
+          ${r.role === "admin" ? '<div class="muted" style="margin-top:0.4rem;font-size:0.78rem;">Admins always see every tab.</div>' : ""}
+        </div>`;
+      }).join("");
+
+      box.querySelectorAll("[data-surole]").forEach((sel) => sel.addEventListener("change", () => {
+        const i = sel.dataset.surole;
+        const tabsDiv = box.querySelector(`[data-sutabs="${i}"]`);
+        if (tabsDiv) tabsDiv.hidden = sel.value === "admin";
+      }));
+      box.querySelectorAll("[data-susave]").forEach((btn) => btn.addEventListener("click", async () => {
+        const i = btn.dataset.susave;
+        const row = box.querySelector(`[data-surow="${i}"]`);
+        const email = row.dataset.suemail;
+        const role = box.querySelector(`[data-surole="${i}"]`).value;
+        const picked = [...box.querySelectorAll(`[data-sutab="${i}"]:checked`)].map((c) => c.value);
+        const tabs = role === "admin" || !picked.length ? null : picked;
+        const st = box.querySelector(`[data-sustatus="${i}"]`); st.textContent = "Saving…";
+        const { error } = await supabase.from("allowed_owners").update({ role, tabs }).eq("email", email);
+        // Mirror onto the live profile if they've already signed up.
+        if (!error) await supabase.from("profiles").update({ role, tabs }).ilike("email", email);
+        st.textContent = error ? error.message : "Saved ✓ (applies at their next sign-in or refresh)";
+      }));
+      box.querySelectorAll("[data-suremove]").forEach((btn) => btn.addEventListener("click", async () => {
+        const i = btn.dataset.suremove;
+        const email = box.querySelector(`[data-surow="${i}"]`).dataset.suemail;
+        if (!confirm(`Remove portal access for ${email}?`)) return;
+        await supabase.from("allowed_owners").delete().eq("email", email);
+        await supabase.from("profiles").delete().ilike("email", email);
+        loadSettingsUsers();
+      }));
+    }
+
+    $("suAddBtn")?.addEventListener("click", async () => {
+      const email = ($("suNewEmail").value || "").trim().toLowerCase();
+      const st = $("suAddStatus");
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { st.textContent = "Enter a valid email."; return; }
+      const { error } = await supabase.from("allowed_owners").upsert({ email, role: $("suNewRole").value }, { onConflict: "email" });
+      st.textContent = error ? error.message : `Added — ${email} can now sign in at this page.`;
+      if (!error) { $("suNewEmail").value = ""; loadSettingsUsers(); }
+    });
+
     supabase.auth.onAuthStateChange((event, session) => {
       // Defer off the auth-callback lock (calling supabase.auth.* inside the
       // callback can deadlock), and skip events that don't change who's signed in
@@ -634,18 +748,38 @@
       enterApp(session);
     }
 
+    // Which tabs this user sees. Admins see everything; others get their
+    // per-user assignment (Settings) or their role's default set. Site
+    // Content is never assignable — it edits the public site.
+    const ALL_TABS = ["financials", "memos", "documents", "invoices", "coa", "site", "owners"];
+    const ROLE_DEFAULT_TABS = {
+      owner: ["financials", "memos", "owners"],
+      accountant: ["financials", "documents", "invoices", "coa"],
+    };
+    function allowedTabs() {
+      if (isAdmin()) return ALL_TABS;
+      const assigned = profile && Array.isArray(profile.tabs) && profile.tabs.length ? profile.tabs : null;
+      return (assigned || ROLE_DEFAULT_TABS[profile?.role] || ROLE_DEFAULT_TABS.owner).filter((t) => t !== "site");
+    }
+
     function enterApp(session) {
       show($("loginView"), false); show($("checkEmail"), false); show($("appView"), true);
       currentEmail = session.user.email || null;
       $("userEmail").textContent = session.user.email;
-      const rb = $("roleBadge"); rb.textContent = profile.role; rb.classList.toggle("badge--admin", isAdmin());
+      const rb = $("roleBadge"); rb.textContent = profile.role === "owner" ? "member" : profile.role;
+      rb.classList.toggle("badge--admin", isAdmin());
       document.querySelectorAll(".admin-only").forEach((el) => show(el, isAdmin()));
+      const tabs = allowedTabs();
+      document.querySelectorAll(".tab").forEach((b) => show(b, tabs.includes(b.dataset.tab)));
       restoreTab(); // land on the tab the user was on before the reload
-      loadFinancials(); loadMemos(); loadDocuments(); loadInvoices();
-      // Everyone gets the graph — RLS scopes non-admins to their own box
-      // plus everything downstream of it; the UI is read-only for them.
-      if (isAdmin()) { loadSite(); loadChart(); }
-      else { const h = $("ownHint"); if (h) h.textContent = "Your ownership — the boxes you own and everything downstream. Click a box for details. Ctrl/⌘+scroll to zoom."; }
+      loadFinancials(); loadMemos();
+      if (tabs.includes("documents")) loadDocuments();
+      if (tabs.includes("invoices")) loadInvoices();
+      if (tabs.includes("coa")) loadChart();
+      if (isAdmin()) loadSite();
+      // Everyone gets the graph — it powers "Your share" in Reports, and
+      // RLS scopes non-staff to their own box plus everything downstream.
+      if (!isAdmin()) { const h = $("ownHint"); if (h) h.textContent = "Your ownership — the boxes you own and everything downstream. Click a box for details. Ctrl/⌘+scroll to zoom."; }
       loadGraph();
     }
 
@@ -722,8 +856,19 @@
 
     // Net margin as a percent of revenue; no revenue → nothing to divide by.
     const marginPct = (rev, net) => rev ? (net / rev * 100).toFixed(1) + "%" : "—";
+    const pctFmt = (n) => { const r = Math.round(n * 100) / 100; return r % 1 === 0 ? String(Math.round(r)) : r.toFixed(2); };
 
-    function statCards(aggs) {
+    // The viewer's effective stake in a unit, from the ownership graph
+    // (product of edge %s down each path from their box, summed across
+    // paths). null until the graph is loaded or when there's no path.
+    function myStakeIn(entityId) {
+      if (!gEnt.length) return null;
+      const me = myGraphBox(); if (!me) return null;
+      const p = effOf(entityId, me.id);
+      return p > 0 ? p : null;
+    }
+
+    function statCards(aggs, share) {
       // Totals across every month in the selected range. The range itself is
       // already shown by the picker, so no period card — four figures only.
       const has = aggs && aggs.length;
@@ -736,6 +881,7 @@
         ["Net", has ? money(net) : "—", net >= 0 ? "pos" : "neg"],
         ["Profit %", has ? marginPct(rev, net) : "—", net >= 0 ? "pos" : "neg"],
       ];
+      if (share) cards.push([share.label, has ? money(share.amount) : "—", share.amount >= 0 ? "pos" : "neg"]);
       return cards.map(([k, v, c]) => `<div class="stat"><div class="k">${k}</div><div class="v ${c}">${v}</div></div>`).join("");
     }
 
@@ -752,13 +898,21 @@
 
     function renderGroupView() {
       show($("repGroupView"), true); show($("repUnitView"), false);
-      $("repGroupStats").innerHTML = statCards(periodAgg(repFinInRange()));
+      // Group "Your share": Σ (stake in unit × unit's net over the range).
+      let shareSum = 0, shareAny = false;
+      const unitNet = new Map();
+      for (const u of repUnits) {
+        const aggs = periodAgg(repFinInRange().filter((r) => r.entity_id === u.id));
+        unitNet.set(u.id, { aggs, rev: aggs.reduce((s, a) => s + a.revenue, 0), net: aggs.reduce((s, a) => s + a.net, 0) });
+        const stake = myStakeIn(u.id);
+        if (stake) { shareAny = true; shareSum += stake * unitNet.get(u.id).net; }
+      }
+      $("repGroupStats").innerHTML = statCards(periodAgg(repFinInRange()), shareAny ? { label: "Your share", amount: shareSum } : null);
       const grid = $("repUnits"); grid.innerHTML = "";
       show($("repUnitsEmpty"), repUnits.length === 0);
       for (const u of repUnits) {
-        const aggs = periodAgg(repFinInRange().filter((r) => r.entity_id === u.id));
-        const rev = aggs.reduce((s, a) => s + a.revenue, 0);
-        const net = aggs.reduce((s, a) => s + a.net, 0);
+        const { aggs, rev, net } = unitNet.get(u.id);
+        const stake = myStakeIn(u.id);
         const meta = !aggs.length ? "No figures in range"
           : (aggs.length === 1 ? monthLabel(aggs[0].period) : `${aggs.length} months`);
         const card = document.createElement("div");
@@ -768,8 +922,9 @@
            <div class="unit-card__figs">
              <div><span class="k">Revenue</span><span class="v pos">${aggs.length ? money(rev) : "—"}</span></div>
              <div><span class="k">Net</span><span class="v ${aggs.length && net < 0 ? "neg" : "pos"}">${aggs.length ? money(net) : "—"}</span></div>
-             <div><span class="k">Profit %</span><span class="v ${aggs.length && net < 0 ? "neg" : "pos"}">${aggs.length ? marginPct(rev, net) : "—"}</span></div>
-           </div>
+             <div><span class="k">Profit %</span><span class="v ${aggs.length && net < 0 ? "neg" : "pos"}">${aggs.length ? marginPct(rev, net) : "—"}</span></div>` +
+          (stake ? `<div><span class="k">Your share (${pctFmt(stake * 100)}%)</span><span class="v ${aggs.length && stake * net < 0 ? "neg" : "pos"}">${aggs.length ? money(stake * net) : "—"}</span></div>` : "") +
+          `</div>
            <div class="unit-card__meta muted">${meta}</div>`;
         card.addEventListener("click", () => { repUnit = u.id; renderUnitView(); });
         grid.appendChild(card);
@@ -782,7 +937,10 @@
       show($("repGroupView"), false); show($("repUnitView"), true);
       $("repUnitName").textContent = u.name;
       const rows = repFinInRange().filter((r) => r.entity_id === repUnit);
-      $("repUnitStats").innerHTML = statCards(periodAgg(rows));
+      const stake = myStakeIn(repUnit);
+      const unitNet = rows.reduce((s, r) => s + (Number(r.net) || 0), 0);
+      $("repUnitStats").innerHTML = statCards(periodAgg(rows),
+        stake ? { label: `Your share (${pctFmt(stake * 100)}%)`, amount: stake * unitNet } : null);
       const body = $("finBody"); body.innerHTML = "";
       show($("finEmpty"), rows.length === 0);
       for (const r of rows) {
@@ -802,9 +960,56 @@
         b.addEventListener("click", () => openPnlModal(b.dataset.viewpnl)));
       if (isAdmin()) body.querySelectorAll("[data-del]").forEach((b) =>
         b.addEventListener("click", () => deleteFinancial(b.dataset.del)));
+      renderPnlGrid(rows);
     }
 
     $("repBack")?.addEventListener("click", () => { repUnit = null; renderGroupView(); });
+
+    // P&L by month: the classic grid — accounts down the side, months
+    // across the top — stitched from each month's stored line detail.
+    function renderPnlGrid(rows) {
+      const table = $("pnlGridTable"); if (!table) return;
+      const withPnl = rows.filter((r) => r.pnl && Array.isArray(r.pnl.lines) && r.pnl.lines.length)
+        .sort((a, b) => String(a.period).localeCompare(String(b.period)));
+      show($("pnlGridEmpty"), withPnl.length === 0);
+      table.innerHTML = "";
+      if (!withPnl.length) return;
+      const months = withPnl.map((r) => String(r.period).slice(0, 7));
+      // Accounts in first-seen order, grouped by statement section.
+      const sections = [], accts = new Map();
+      for (const r of withPnl) {
+        const m = String(r.period).slice(0, 7);
+        for (const l of r.pnl.lines) {
+          const sec = l.section || "Other";
+          if (!sections.includes(sec)) sections.push(sec);
+          const k = sec + " " + (l.label || "");
+          if (!accts.has(k)) accts.set(k, { section: sec, label: l.label || "", vals: {} });
+          accts.get(k).vals[m] = (accts.get(k).vals[m] || 0) + (Number(l.amount) || 0);
+        }
+      }
+      const cell = (v) => `<td class="num">${v ? money(v) : ""}</td>`;
+      const head = `<thead><tr><th>Account</th>${months.map((m) => `<th class="num">${monthLabel(m + "-01")}</th>`).join("")}<th class="num">Total</th></tr></thead>`;
+      let body = "";
+      for (const sec of sections) {
+        body += `<tr><td colspan="${months.length + 2}" style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);padding-top:0.9rem;">${escapeHtml(sec)}</td></tr>`;
+        const secTot = {};
+        for (const a of [...accts.values()].filter((x) => x.section === sec)) {
+          let tot = 0;
+          body += `<tr><td>${escapeHtml(a.label)}</td>${months.map((m) => {
+            const v = a.vals[m] || 0; tot += v; secTot[m] = (secTot[m] || 0) + v; return cell(v);
+          }).join("")}<td class="num"><strong>${money(tot)}</strong></td></tr>`;
+        }
+        const secSum = months.reduce((s, m) => s + (secTot[m] || 0), 0);
+        body += `<tr style="font-weight:650;"><td>Total ${escapeHtml(sec)}</td>${months.map((m) => cell(secTot[m] || 0)).join("")}<td class="num">${money(secSum)}</td></tr>`;
+      }
+      // Net income from the saved monthly totals (the source of truth).
+      const netBy = {};
+      for (const r of withPnl) netBy[String(r.period).slice(0, 7)] = Number(r.net) || 0;
+      const netSum = months.reduce((s, m) => s + (netBy[m] || 0), 0);
+      const netCell = (v) => `<td class="num"><span class="${v < 0 ? "v neg" : "v pos"}" style="font-size:inherit;">${money(v)}</span></td>`;
+      body += `<tr style="font-weight:700;"><td>Net income</td>${months.map((m) => netCell(netBy[m] || 0)).join("")}${netCell(netSum)}</tr>`;
+      table.innerHTML = head + `<tbody>${body}</tbody>`;
+    }
 
     // "View P&L": render the stored line detail as a statement.
     function openPnlModal(finId) {
@@ -1156,6 +1361,9 @@
       gEnt = g.entities; gEdge = g.edges;
       render();
       if (!gInit) { gInit = true; wireGraphChrome(); }
+      // Ownership stakes feed the Reports "Your share" figures, and the
+      // graph usually loads after financials — refresh Reports now.
+      if (repUnit) renderUnitView(); else renderGroupView();
     }
 
     function render() { effMemo.clear(); renderNodes(); renderEdges(); }
@@ -1522,18 +1730,30 @@
       email = (email || "").trim().toLowerCase();
       if (!email) { box.innerHTML = `<span class="muted">Add an email above and Save to grant this person portal access.</span>`; return; }
       const { data } = await supabase.from("allowed_owners").select("*").eq("email", email).maybeSingle();
+      const roleOpts = (sel) => ["owner", "accountant", "admin"].map((ro) =>
+        `<option value="${ro}"${sel === ro ? " selected" : ""}>${({ owner: "Member", accountant: "Accountant", admin: "Admin" })[ro]}</option>`).join("");
       if (data) {
         box.innerHTML = `<div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;">
-          <span class="badge badge--admin">access: ${data.role}</span>
-          <select id="acRole" class="inline-select"><option value="owner"${data.role === "owner" ? " selected" : ""}>Owner</option><option value="admin"${data.role === "admin" ? " selected" : ""}>Admin</option></select>
+          <span class="badge badge--admin">access: ${({ owner: "member", accountant: "accountant", admin: "admin" })[data.role] || data.role}</span>
+          <select id="acRole" class="inline-select">${roleOpts(data.role)}</select>
           <button class="btn btn--sm" id="acUpdate" style="flex:0 0 auto;">Update role</button>
-          <button class="btn btn--danger btn--sm" id="acRevoke" style="flex:0 0 auto;">Revoke</button></div>`;
-        $("acUpdate").addEventListener("click", async () => { await supabase.from("allowed_owners").update({ role: $("acRole").value }).eq("email", email); renderAccess(id, email); });
-        $("acRevoke").addEventListener("click", async () => { if (!confirm("Revoke portal access for " + email + "?")) return; await supabase.from("allowed_owners").delete().eq("email", email); renderAccess(id, email); });
+          <button class="btn btn--danger btn--sm" id="acRevoke" style="flex:0 0 auto;">Revoke</button></div>
+          <div class="muted" style="margin-top:0.4rem;">Tabs and roles are also managed in ⚙ Settings (top right).</div>`;
+        $("acUpdate").addEventListener("click", async () => {
+          await supabase.from("allowed_owners").update({ role: $("acRole").value }).eq("email", email);
+          await supabase.from("profiles").update({ role: $("acRole").value }).ilike("email", email);
+          renderAccess(id, email);
+        });
+        $("acRevoke").addEventListener("click", async () => {
+          if (!confirm("Revoke portal access for " + email + "?")) return;
+          await supabase.from("allowed_owners").delete().eq("email", email);
+          await supabase.from("profiles").delete().ilike("email", email);
+          renderAccess(id, email);
+        });
       } else {
         box.innerHTML = `<div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;">
           <span class="muted">No portal access.</span>
-          <select id="acRole" class="inline-select"><option value="owner">Owner</option><option value="admin">Admin</option></select>
+          <select id="acRole" class="inline-select">${roleOpts("owner")}</select>
           <button class="btn btn--sm" id="acGrant" style="flex:0 0 auto;">Grant access</button></div>
           <div class="muted" style="margin-top:0.4rem;">They'll sign in with a magic link or Google at this email.</div>`;
         $("acGrant").addEventListener("click", async () => { await supabase.from("allowed_owners").upsert({ email, role: $("acRole").value }, { onConflict: "email" }); renderAccess(id, email); });
@@ -2031,6 +2251,19 @@
       show($("coaEmpty"), coaRows.length === 0);
       const rowHtml = (r, isSub) => {
         const subs = coaSubs(r.code), hasSubs = subs.length > 0, open = coaOpen[r.code];
+        if (!isAdmin()) {
+          // View-only chart for accountants: names and codes, no editing.
+          return `<tr>
+            <td style="${isSub ? "padding-left:1.8rem;" : ""}">
+              ${hasSubs ? `<button class="iconbtn" data-toggle="${r.code}" style="width:1.3rem;">${open ? "▾" : "▸"}</button>` : (isSub ? '<span class="muted">↳ </span>' : '<span style="display:inline-block;width:1.3rem;"></span>')}
+              ${escapeHtml(r.category)}
+              ${hasSubs ? `<span class="muted" style="margin-left:0.4rem;">${subs.length} sub${subs.length === 1 ? "" : "s"}</span>` : ""}
+            </td>
+            <td>${isSub ? '<span class="muted">Sub</span>' : ""}</td>
+            <td><strong>${escapeHtml(r.code)}</strong></td>
+            <td></td>
+          </tr>`;
+        }
         const parentSel = '<select class="inline-select" data-parent="' + r.code + '">' +
           coaTops().filter((t) => t.code !== r.code).map((t) => `<option value="${t.code}"${t.code === r.parent_code ? " selected" : ""}>under ${escapeHtml(t.category)} (${t.code})</option>`).join("") + "</select>";
         const codeInput = `<input type="text" data-codeinput="${r.code}" value="${escapeHtml(r.code)}" style="width:5rem;padding:0.35rem 0.4rem;font-weight:700;">`;
