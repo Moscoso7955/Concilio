@@ -192,6 +192,12 @@
     }
     .graph-svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
     .graph-svg .edge-hit { pointer-events: stroke; cursor: pointer; }
+    .graph-svg rect[data-eid], .graph-svg text[data-eid] { pointer-events: all; cursor: pointer; }
+    .graph-svg path, .graph-svg rect, .graph-svg text { transition: opacity 0.12s, stroke 0.12s, fill 0.12s; }
+    .graph-svg .dim:not(.edge-hit) { opacity: 0.15; }
+    .graph-svg path.hot:not(.edge-hit) { stroke: #a3a9b3; stroke-width: 3; }
+    .graph-svg rect.hot { stroke: var(--accent); }
+    .graph-svg text.hot { fill: #ffffff; }
     .gnode { position: absolute; min-width: 148px; max-width: 220px; background: var(--panel); border: 2px solid var(--border); border-radius: 14px; padding: 0.55rem 0.8rem; text-align: center; cursor: grab; user-select: none; box-shadow: 0 2px 10px rgba(0,0,0,0.3); display: flex; flex-direction: column; justify-content: center; }
     .gnode.sel { outline: 2px solid var(--accent); outline-offset: 2px; }
     .gnode__cat { font-size: 0.62rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; }
@@ -1524,10 +1530,10 @@
         const my = (y1 + y2) / 2;
         const d = `M ${x1} ${y1} C ${x1} ${my}, ${x2} ${my}, ${x2} ${y2}`;
         svg.insertAdjacentHTML("beforeend",
-          `<path d="${d}" fill="none" stroke="#64748b" stroke-width="2"></path>
-           <path class="edge-hit" data-edge="${e.id}" d="${d}" fill="none" stroke="transparent" stroke-width="14"></path>`);
+          `<path data-eid="${e.id}" d="${d}" fill="none" stroke="#64748b" stroke-width="2"></path>
+           <path class="edge-hit" data-eid="${e.id}" data-edge="${e.id}" d="${d}" fill="none" stroke="transparent" stroke-width="14"></path>`);
         const text = (e.percentage % 1 === 0 ? e.percentage : Number(e.percentage).toFixed(2)) + "%";
-        labels.push({ x1, y1, x2, y2, my, text, w: Math.max(32, text.length * 7 + 10) });
+        labels.push({ id: e.id, x1, y1, x2, y2, my, text, w: Math.max(32, text.length * 7 + 10) });
       }
       // Labels stay ON their own curve: when the midpoint collides with an
       // already-placed label or a box, slide along the curve to the first
@@ -1552,10 +1558,26 @@
         for (const t of T_CANDIDATES) { const p = at(t); if (clear(p)) { pos = p; break; } }
         placed.push({ x: pos.x, y: pos.y, w: l.w });
         svg.insertAdjacentHTML("beforeend",
-          `<rect x="${pos.x - l.w / 2}" y="${pos.y - 9}" width="${l.w}" height="18" rx="4" fill="#141414" stroke="#334155"></rect>
-           <text x="${pos.x}" y="${pos.y + 4}" text-anchor="middle" font-size="11" fill="#cbd5e1">${l.text}</text>`);
+          `<rect data-eid="${l.id}" x="${pos.x - l.w / 2}" y="${pos.y - 9}" width="${l.w}" height="18" rx="4" fill="#141414" stroke="#334155"></rect>
+           <text data-eid="${l.id}" x="${pos.x}" y="${pos.y + 4}" text-anchor="middle" font-size="11" fill="#cbd5e1">${l.text}</text>`);
       }
       svg.querySelectorAll(".edge-hit").forEach((h) => h.addEventListener("click", () => editEdge(h.dataset.edge)));
+      // Hover highlight: pointing at an edge or its % label lights that
+      // connection up and fades the rest, so crossings stay readable.
+      svg.querySelectorAll("[data-eid]").forEach((el) => {
+        el.addEventListener("mouseenter", () => edgeHover(new Set([el.dataset.eid])));
+        el.addEventListener("mouseleave", () => edgeHover(null));
+        if (el.tagName !== "path") el.addEventListener("click", () => editEdge(el.dataset.eid));
+      });
+    }
+
+    // Highlight the given edge ids (null clears). Applies to the visible
+    // paths and labels; the transparent hit paths keep full hover area.
+    function edgeHover(ids) {
+      $("ownSvg").querySelectorAll("[data-eid]").forEach((el) => {
+        el.classList.toggle("dim", !!ids && !ids.has(el.dataset.eid));
+        el.classList.toggle("hot", !!ids && ids.has(el.dataset.eid));
+      });
     }
 
     function wireNode(node, e) {
@@ -1584,8 +1606,10 @@
         document.addEventListener("pointermove", mv); document.addEventListener("pointerup", up);
       });
 
-      // Hover: the viewer's calculated stake in this box.
+      // Hover: highlight every connection touching this box, plus the
+      // viewer's calculated stake tooltip.
       node.addEventListener("mouseenter", () => {
+        edgeHover(new Set(gEdge.filter((x) => x.parent_id === e.id || x.child_id === e.id).map((x) => x.id)));
         const me = myGraphBox(); if (!me) return;
         if (e.id === me.id) { showTip(node, "This is you"); return; }
         const eff = effOf(e.id, me.id) * 100;
@@ -1593,7 +1617,7 @@
         const fmt = (n) => (Math.round(n * 100) / 100) % 1 === 0 ? Math.round(n) : (Math.round(n * 100) / 100).toFixed(2);
         showTip(node, `Your ownership: ${fmt(eff)}%`);
       });
-      node.addEventListener("mouseleave", hideTip);
+      node.addEventListener("mouseleave", () => { hideTip(); edgeHover(null); });
 
       // Drag to move, or click to open the pane.
       node.addEventListener("pointerdown", (ev) => {
