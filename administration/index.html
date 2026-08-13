@@ -546,6 +546,15 @@
         </div>
         <div class="muted" id="suAddStatus" style="margin-top:0.4rem;"></div>
       </div>
+
+      <h3 style="margin-top:1.5rem;">Roles</h3>
+      <p class="muted" style="margin-bottom:0.75rem;">A role sets the default tabs and data scope for its users; the per-user tab checkboxes above override the defaults. <strong>All data</strong> roles see every unit (like accountants); <strong>ownership slice</strong> roles see only what's downstream of their box.</p>
+      <div id="srList"><p class="muted">Loading…</p></div>
+      <div class="row" style="align-items:flex-end;margin-top:0.75rem;">
+        <div style="flex:2;"><label>New role name</label><input type="text" id="srNewName" placeholder="e.g. Property Manager"></div>
+        <button class="btn" id="srAddBtn" style="flex:0 0 auto;">Add role</button>
+        <span class="muted" id="srAddStatus"></span>
+      </div>
       <div class="row" style="align-items:center;margin-top:1rem;">
         <button class="btn btn--ghost" id="settingsCloseBtn" style="flex:0 0 auto;">Close</button>
       </div>
@@ -610,6 +619,14 @@
     });
 
     let profile = null;
+    let rolesList = []; // from the roles table; empty until migration 0016
+    const roleInfo = (key) => rolesList.find((r) => r.key === key) || null;
+    async function refreshRoles() {
+      try {
+        const { data } = await supabase.from("roles").select("*").order("created_at");
+        if (data) rolesList = data;
+      } catch (_) { /* table may not exist yet */ }
+    }
     let currentEmail = null; // signed-in email; links the user to their graph box
     let currentUserId; // undefined until first route; guards redundant re-entry (null = signed-out, already rendered)
     const isAdmin = () => profile && profile.role === "admin";
@@ -658,12 +675,21 @@
       const rows = aoRes.data || [], profs = profRes.data || [];
       const profByEmail = {}; for (const p of profs) profByEmail[(p.email || "").toLowerCase()] = p;
       const boxByEmail = {}; for (const e of gEnt) if (e.email) boxByEmail[e.email.toLowerCase()] = e;
+      // Role rows drive every role dropdown + the Roles section below.
+      const roleRows = rolesList.length ? rolesList
+        : [{ key: "owner", name: "Member" }, { key: "accountant", name: "Accountant" }, { key: "admin", name: "Admin" }];
+      const roleCounts = {}; for (const r of rows) roleCounts[r.role] = (roleCounts[r.role] || 0) + 1;
+      const sel = $("suNewRole");
+      if (sel) { const keep = sel.value; sel.innerHTML = roleRows.map((r) => `<option value="${escapeHtml(r.key)}">${escapeHtml(r.name)}</option>`).join(""); if (roleRows.some((r) => r.key === keep)) sel.value = keep; }
+      renderSettingsRoles(roleRows, roleCounts);
       if (!rows.length) { box.innerHTML = '<p class="muted">No users yet — add someone below, or grant access from an ownership box.</p>'; return; }
       box.innerHTML = rows.map((r, i) => {
         const em = (r.email || "").toLowerCase();
         const p = profByEmail[em], b = boxByEmail[em];
         const who = p?.full_name || b?.name || "";
-        const tabs = Array.isArray(r.tabs) && r.tabs.length ? r.tabs : (ROLE_DEFAULT_TABS[r.role] || null);
+        const roleTabs = roleInfo(r.role)?.tabs;
+        const tabs = Array.isArray(r.tabs) && r.tabs.length ? r.tabs
+          : (Array.isArray(roleTabs) && roleTabs.length ? roleTabs : (ROLE_DEFAULT_TABS[r.role] || null));
         const checks = TAB_META.map(([k, label]) =>
           `<label style="display:inline-flex;align-items:center;gap:0.3rem;margin:0 0.75rem 0.25rem 0;font-size:0.8rem;color:var(--text);cursor:pointer;">
              <input type="checkbox" data-sutab="${i}" value="${k}" style="width:auto;"${!tabs || tabs.includes(k) ? " checked" : ""}> ${label}
@@ -677,7 +703,7 @@
           </div>
           <div class="row" style="align-items:center;margin-top:0.6rem;">
             <div style="flex:0 0 auto;"><select data-surole="${i}" class="inline-select">
-              ${["owner", "accountant", "admin"].map((ro) => `<option value="${ro}"${r.role === ro ? " selected" : ""}>${ROLE_LABEL[ro]}</option>`).join("")}
+              ${roleRows.map((ro) => `<option value="${escapeHtml(ro.key)}"${r.role === ro.key ? " selected" : ""}>${escapeHtml(ro.name)}</option>`).join("")}
             </select></div>
             <button class="btn btn--sm" data-susave="${i}" style="flex:0 0 auto;">Save</button>
             <button class="btn btn--danger btn--sm" data-suremove="${i}" style="flex:0 0 auto;">Remove</button>
@@ -718,6 +744,69 @@
       }));
     }
 
+    // Settings → Roles: rename, default tabs, data scope, add/remove.
+    function renderSettingsRoles(roleRows, counts) {
+      const box = $("srList"); if (!box) return;
+      if (!rolesList.length) { box.innerHTML = '<p class="muted">Role management activates once migration 0016 is applied.</p>'; return; }
+      box.innerHTML = roleRows.map((r, i) => {
+        const inUse = counts[r.key] || 0;
+        const usersNote = `${inUse} user${inUse === 1 ? "" : "s"} with this role`;
+        if (r.key === "admin") {
+          return `<div class="section-card" style="margin-bottom:0.6rem;padding:0.9rem 1rem;">
+            <strong>Admin</strong> <span class="muted">— full control, always every tab. ${usersNote}.</span></div>`;
+        }
+        const tabs = Array.isArray(r.tabs) && r.tabs.length ? r.tabs : [];
+        const checks = TAB_META.map(([k, label]) =>
+          `<label style="display:inline-flex;align-items:center;gap:0.3rem;margin:0 0.75rem 0.25rem 0;font-size:0.8rem;color:var(--text);cursor:pointer;">
+             <input type="checkbox" data-srtab="${i}" value="${k}" style="width:auto;"${tabs.includes(k) ? " checked" : ""}> ${label}
+           </label>`).join("");
+        return `<div class="section-card" data-srrow="${i}" data-srkey="${escapeHtml(r.key)}" style="margin-bottom:0.6rem;padding:0.9rem 1rem;">
+          <div class="row" style="align-items:center;">
+            <input type="text" data-srname="${i}" value="${escapeHtml(r.name)}" style="flex:1;min-width:8rem;">
+            <select data-srscope="${i}" class="inline-select" style="flex:0 0 auto;" title="What data this role can read">
+              <option value="slice"${r.read_all ? "" : " selected"}>Their ownership slice</option>
+              <option value="all"${r.read_all ? " selected" : ""}>All data</option>
+            </select>
+            <button class="btn btn--sm" data-srsave="${i}" style="flex:0 0 auto;">Save</button>
+            ${r.builtin ? "" : `<button class="btn btn--danger btn--sm" data-srdel="${i}" style="flex:0 0 auto;"${inUse ? ` disabled title="Reassign its ${inUse} user(s) first"` : ""}>Delete</button>`}
+            <span class="muted" data-srstatus="${i}"></span>
+          </div>
+          <div style="margin-top:0.55rem;"><label style="margin-bottom:0.3rem;">Default tabs</label>${checks}</div>
+          <div class="muted" style="margin-top:0.35rem;font-size:0.78rem;">${usersNote}${r.builtin ? " · built-in role" : ""}</div>
+        </div>`;
+      }).join("");
+      box.querySelectorAll("[data-srsave]").forEach((btn) => btn.addEventListener("click", async () => {
+        const i = btn.dataset.srsave;
+        const row = box.querySelector(`[data-srrow="${i}"]`);
+        const key = row.dataset.srkey;
+        const name = box.querySelector(`[data-srname="${i}"]`).value.trim() || key;
+        const read_all = box.querySelector(`[data-srscope="${i}"]`).value === "all";
+        const picked = [...box.querySelectorAll(`[data-srtab="${i}"]:checked`)].map((c) => c.value);
+        const st = box.querySelector(`[data-srstatus="${i}"]`); st.textContent = "Saving…";
+        const { error } = await supabase.from("roles").update({ name, read_all, tabs: picked.length ? picked : null }).eq("key", key);
+        st.textContent = error ? error.message : "Saved ✓ (applies at their next sign-in or refresh)";
+        if (!error) { await refreshRoles(); loadSettingsUsers(); }
+      }));
+      box.querySelectorAll("[data-srdel]").forEach((btn) => btn.addEventListener("click", async () => {
+        const key = box.querySelector(`[data-srrow="${btn.dataset.srdel}"]`).dataset.srkey;
+        if (!confirm(`Delete the "${key}" role?`)) return;
+        const { error } = await supabase.from("roles").delete().eq("key", key);
+        if (error) { alert(error.message); return; }
+        await refreshRoles(); loadSettingsUsers();
+      }));
+    }
+
+    $("srAddBtn")?.addEventListener("click", async () => {
+      const name = ($("srNewName").value || "").trim();
+      const st = $("srAddStatus");
+      if (!name) { st.textContent = "Enter a role name."; return; }
+      const key = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+      if (!key) { st.textContent = "Name needs letters or numbers."; return; }
+      const { error } = await supabase.from("roles").insert({ key, name, tabs: ["financials"], read_all: false });
+      st.textContent = error ? error.message : "Added ✓ — set its tabs and scope below.";
+      if (!error) { $("srNewName").value = ""; await refreshRoles(); loadSettingsUsers(); }
+    });
+
     $("suAddBtn")?.addEventListener("click", async () => {
       const email = ($("suNewEmail").value || "").trim().toLowerCase();
       const st = $("suAddStatus");
@@ -755,6 +844,7 @@
         return;
       }
       profile = data;
+      await refreshRoles();
       enterApp(session);
     }
 
@@ -769,14 +859,17 @@
     function allowedTabs() {
       if (isAdmin()) return ALL_TABS;
       const assigned = profile && Array.isArray(profile.tabs) && profile.tabs.length ? profile.tabs : null;
-      return (assigned || ROLE_DEFAULT_TABS[profile?.role] || ROLE_DEFAULT_TABS.owner).filter((t) => t !== "site");
+      const role = roleInfo(profile?.role);
+      const roleTabs = role && Array.isArray(role.tabs) && role.tabs.length ? role.tabs : null;
+      return (assigned || roleTabs || ROLE_DEFAULT_TABS[profile?.role] || ROLE_DEFAULT_TABS.owner).filter((t) => t !== "site");
     }
 
     function enterApp(session) {
       show($("loginView"), false); show($("checkEmail"), false); show($("appView"), true);
       currentEmail = session.user.email || null;
       $("userEmail").textContent = session.user.email;
-      const rb = $("roleBadge"); rb.textContent = profile.role === "owner" ? "member" : profile.role;
+      const rb = $("roleBadge");
+      rb.textContent = (roleInfo(profile.role)?.name || (profile.role === "owner" ? "member" : profile.role)).toLowerCase();
       rb.classList.toggle("badge--admin", isAdmin());
       document.querySelectorAll(".admin-only").forEach((el) => show(el, isAdmin()));
       const tabs = allowedTabs();
@@ -1850,11 +1943,13 @@
       email = (email || "").trim().toLowerCase();
       if (!email) { box.innerHTML = `<span class="muted">Add an email above and Save to grant this person portal access.</span>`; return; }
       const { data } = await supabase.from("allowed_owners").select("*").eq("email", email).maybeSingle();
-      const roleOpts = (sel) => ["owner", "accountant", "admin"].map((ro) =>
-        `<option value="${ro}"${sel === ro ? " selected" : ""}>${({ owner: "Member", accountant: "Accountant", admin: "Admin" })[ro]}</option>`).join("");
+      const roleRows = rolesList.length ? rolesList
+        : [{ key: "owner", name: "Member" }, { key: "accountant", name: "Accountant" }, { key: "admin", name: "Admin" }];
+      const roleOpts = (sel) => roleRows.map((r) =>
+        `<option value="${escapeHtml(r.key)}"${sel === r.key ? " selected" : ""}>${escapeHtml(r.name)}</option>`).join("");
       if (data) {
         box.innerHTML = `<div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;">
-          <span class="badge badge--admin">access: ${({ owner: "member", accountant: "accountant", admin: "admin" })[data.role] || data.role}</span>
+          <span class="badge badge--admin">access: ${escapeHtml((roleInfo(data.role)?.name || data.role).toLowerCase())}</span>
           <select id="acRole" class="inline-select">${roleOpts(data.role)}</select>
           <button class="btn btn--sm" id="acUpdate" style="flex:0 0 auto;">Update role</button>
           <button class="btn btn--danger btn--sm" id="acRevoke" style="flex:0 0 auto;">Revoke</button></div>
