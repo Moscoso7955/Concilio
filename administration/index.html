@@ -83,7 +83,7 @@
     .stat { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 1.1rem 1.25rem; }
     .stat .k { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.07em; }
     .stat { display: flex; flex-direction: column; justify-content: center; }
-    .stat .v { font-size: 1.5rem; font-weight: 700; margin-top: 0.3rem; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .stat .v { font-size: 1.45rem; font-weight: 700; margin-top: 0.3rem; white-space: nowrap; overflow: hidden; font-variant-numeric: tabular-nums; }
     .v.pos { color: var(--ok); } .v.neg { color: var(--danger); }
 
     /* ---------- Reports: unit cards ---------- */
@@ -868,6 +868,10 @@
       return p > 0 ? p : null;
     }
 
+    // Stat-card money: whole dollars, sign in front (-$107,536) — cents are
+    // noise at dashboard scale and long values were clipping the cards.
+    const statMoney = (n) => (n < 0 ? "-" : "") + "$" + Math.round(Math.abs(Number(n) || 0)).toLocaleString();
+
     function statCards(aggs, share) {
       // Totals across every month in the selected range. The range itself is
       // already shown by the picker, so no period card — four figures only.
@@ -876,14 +880,29 @@
       const exp = has ? aggs.reduce((s, a) => s + a.expenses, 0) : 0;
       const net = rev - exp;
       const cards = [
-        ["Revenue", has ? money(rev) : "—", "pos"],
-        ["Expenses", has ? money(exp) : "—", ""],
-        ["Net", has ? money(net) : "—", net >= 0 ? "pos" : "neg"],
+        ["Revenue", has ? statMoney(rev) : "—", "pos"],
+        ["Expenses", has ? statMoney(exp) : "—", ""],
+        ["Net", has ? statMoney(net) : "—", net >= 0 ? "pos" : "neg"],
         ["Profit %", has ? marginPct(rev, net) : "—", net >= 0 ? "pos" : "neg"],
       ];
-      if (share) cards.push([share.label, has ? money(share.amount) : "—", share.amount >= 0 ? "pos" : "neg"]);
+      if (share) cards.push([share.label, has ? statMoney(share.amount) : "—", share.amount >= 0 ? "pos" : "neg"]);
       return cards.map(([k, v, c]) => `<div class="stat"><div class="k">${k}</div><div class="v ${c}">${v}</div></div>`).join("");
     }
+
+    // Safety net: shrink any stat value that would still overflow its card.
+    function fitStats(el) {
+      if (!el) return;
+      el.querySelectorAll(".stat .v").forEach((v) => {
+        v.style.fontSize = "";
+        let size = parseFloat(getComputedStyle(v).fontSize);
+        while (v.scrollWidth > v.clientWidth && size > 13) { size -= 1; v.style.fontSize = size + "px"; }
+      });
+    }
+    let fitT = null;
+    window.addEventListener("resize", () => {
+      clearTimeout(fitT);
+      fitT = setTimeout(() => { fitStats($("repGroupStats")); fitStats($("repUnitStats")); }, 150);
+    });
 
     async function loadFinancials() {
       const [finRes, entRes] = await Promise.all([
@@ -908,6 +927,7 @@
         if (stake) { shareAny = true; shareSum += stake * unitNet.get(u.id).net; }
       }
       $("repGroupStats").innerHTML = statCards(periodAgg(repFinInRange()), shareAny ? { label: "Your share", amount: shareSum } : null);
+      fitStats($("repGroupStats"));
       const grid = $("repUnits"); grid.innerHTML = "";
       show($("repUnitsEmpty"), repUnits.length === 0);
       for (const u of repUnits) {
@@ -941,6 +961,7 @@
       const unitNet = rows.reduce((s, r) => s + (Number(r.net) || 0), 0);
       $("repUnitStats").innerHTML = statCards(periodAgg(rows),
         stake ? { label: `Your share (${pctFmt(stake * 100)}%)`, amount: stake * unitNet } : null);
+      fitStats($("repUnitStats"));
       const body = $("finBody"); body.innerHTML = "";
       show($("finEmpty"), rows.length === 0);
       for (const r of rows) {
