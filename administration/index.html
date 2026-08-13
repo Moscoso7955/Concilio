@@ -1515,6 +1515,7 @@
       const canvas = $("ownCanvas");
       const nodeEl = {};
       canvas.querySelectorAll(".gnode").forEach((n) => nodeEl[n.dataset.id] = n);
+      const labels = [];
       for (const e of gEdge) {
         const p = nodeEl[e.parent_id], c = nodeEl[e.child_id];
         if (!p || !c) continue;
@@ -1525,11 +1526,35 @@
         svg.insertAdjacentHTML("beforeend",
           `<path d="${d}" fill="none" stroke="#64748b" stroke-width="2"></path>
            <path class="edge-hit" data-edge="${e.id}" d="${d}" fill="none" stroke="transparent" stroke-width="14"></path>`);
-        const lx = (x1 + x2) / 2, ly = my;
-        const label = (e.percentage % 1 === 0 ? e.percentage : Number(e.percentage).toFixed(2)) + "%";
+        const text = (e.percentage % 1 === 0 ? e.percentage : Number(e.percentage).toFixed(2)) + "%";
+        labels.push({ x: (x1 + x2) / 2, y: my, text, w: Math.max(32, text.length * 7 + 10) });
+      }
+      // Labels: size to their text, keep them off the boxes, and nudge
+      // overlapping ones apart so converging edges stay readable.
+      const obstacles = Object.values(nodeEl).map((n) => ({
+        l: n.offsetLeft, t: n.offsetTop, r: n.offsetLeft + n.offsetWidth, b: n.offsetTop + n.offsetHeight,
+      }));
+      for (let pass = 0; pass < 8; pass++) {
+        let moved = false;
+        for (let i = 0; i < labels.length; i++) for (let j = i + 1; j < labels.length; j++) {
+          const a = labels[i], b = labels[j];
+          if (Math.abs(a.x - b.x) < (a.w + b.w) / 2 + 6 && Math.abs(a.y - b.y) < 22) {
+            b.y += 22 - Math.abs(a.y - b.y) + 2; // stack the later label lower
+            moved = true;
+          }
+        }
+        for (const l of labels) for (const o of obstacles) {
+          if (l.x + l.w / 2 > o.l && l.x - l.w / 2 < o.r && l.y + 9 > o.t && l.y - 9 < o.b) {
+            l.y = l.y < (o.t + o.b) / 2 ? o.t - 12 : o.b + 12; // eject to nearer side
+            moved = true;
+          }
+        }
+        if (!moved) break;
+      }
+      for (const l of labels) {
         svg.insertAdjacentHTML("beforeend",
-          `<rect x="${lx - 16}" y="${ly - 9}" width="32" height="18" rx="4" fill="#141414" stroke="#334155"></rect>
-           <text x="${lx}" y="${ly + 4}" text-anchor="middle" font-size="11" fill="#cbd5e1">${label}</text>`);
+          `<rect x="${l.x - l.w / 2}" y="${l.y - 9}" width="${l.w}" height="18" rx="4" fill="#141414" stroke="#334155"></rect>
+           <text x="${l.x}" y="${l.y + 4}" text-anchor="middle" font-size="11" fill="#cbd5e1">${l.text}</text>`);
       }
       svg.querySelectorAll(".edge-hit").forEach((h) => h.addEventListener("click", () => editEdge(h.dataset.edge)));
     }
