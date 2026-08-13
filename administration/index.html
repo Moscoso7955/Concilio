@@ -1527,34 +1527,33 @@
           `<path d="${d}" fill="none" stroke="#64748b" stroke-width="2"></path>
            <path class="edge-hit" data-edge="${e.id}" d="${d}" fill="none" stroke="transparent" stroke-width="14"></path>`);
         const text = (e.percentage % 1 === 0 ? e.percentage : Number(e.percentage).toFixed(2)) + "%";
-        labels.push({ x: (x1 + x2) / 2, y: my, text, w: Math.max(32, text.length * 7 + 10) });
+        labels.push({ x1, y1, x2, y2, my, text, w: Math.max(32, text.length * 7 + 10) });
       }
-      // Labels: size to their text, keep them off the boxes, and nudge
-      // overlapping ones apart so converging edges stay readable.
+      // Labels stay ON their own curve: when the midpoint collides with an
+      // already-placed label or a box, slide along the curve to the first
+      // clear spot — the label always visually tags the edge it belongs to.
+      const bez = (t, a, b, c, d) => { const u = 1 - t; return u * u * u * a + 3 * u * u * t * b + 3 * u * t * t * c + t * t * t * d; };
       const obstacles = Object.values(nodeEl).map((n) => ({
         l: n.offsetLeft, t: n.offsetTop, r: n.offsetLeft + n.offsetWidth, b: n.offsetTop + n.offsetHeight,
       }));
-      for (let pass = 0; pass < 8; pass++) {
-        let moved = false;
-        for (let i = 0; i < labels.length; i++) for (let j = i + 1; j < labels.length; j++) {
-          const a = labels[i], b = labels[j];
-          if (Math.abs(a.x - b.x) < (a.w + b.w) / 2 + 6 && Math.abs(a.y - b.y) < 22) {
-            b.y += 22 - Math.abs(a.y - b.y) + 2; // stack the later label lower
-            moved = true;
-          }
-        }
-        for (const l of labels) for (const o of obstacles) {
-          if (l.x + l.w / 2 > o.l && l.x - l.w / 2 < o.r && l.y + 9 > o.t && l.y - 9 < o.b) {
-            l.y = l.y < (o.t + o.b) / 2 ? o.t - 12 : o.b + 12; // eject to nearer side
-            moved = true;
-          }
-        }
-        if (!moved) break;
-      }
+      const placed = [];
+      const T_CANDIDATES = [0.5, 0.42, 0.58, 0.34, 0.66, 0.26, 0.74, 0.18, 0.82];
       for (const l of labels) {
+        const at = (t) => ({
+          x: bez(t, l.x1, l.x1, l.x2, l.x2),
+          y: bez(t, l.y1, l.my, l.my, l.y2),
+        });
+        const clear = (p) => {
+          for (const o of obstacles) if (p.x + l.w / 2 > o.l && p.x - l.w / 2 < o.r && p.y + 9 > o.t && p.y - 9 < o.b) return false;
+          for (const q of placed) if (Math.abs(p.x - q.x) < (l.w + q.w) / 2 + 6 && Math.abs(p.y - q.y) < 22) return false;
+          return true;
+        };
+        let pos = at(0.5);
+        for (const t of T_CANDIDATES) { const p = at(t); if (clear(p)) { pos = p; break; } }
+        placed.push({ x: pos.x, y: pos.y, w: l.w });
         svg.insertAdjacentHTML("beforeend",
-          `<rect x="${l.x - l.w / 2}" y="${l.y - 9}" width="${l.w}" height="18" rx="4" fill="#141414" stroke="#334155"></rect>
-           <text x="${l.x}" y="${l.y + 4}" text-anchor="middle" font-size="11" fill="#cbd5e1">${l.text}</text>`);
+          `<rect x="${pos.x - l.w / 2}" y="${pos.y - 9}" width="${l.w}" height="18" rx="4" fill="#141414" stroke="#334155"></rect>
+           <text x="${pos.x}" y="${pos.y + 4}" text-anchor="middle" font-size="11" fill="#cbd5e1">${l.text}</text>`);
       }
       svg.querySelectorAll(".edge-hit").forEach((h) => h.addEventListener("click", () => editEdge(h.dataset.edge)));
     }
