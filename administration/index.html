@@ -285,6 +285,10 @@
 
     <!-- Reports -->
     <section class="tab-panel" data-panel="financials">
+      <div id="repViewAsBar" class="hidden" style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;background:rgba(124,132,147,0.12);border:1px solid var(--accent);border-radius:10px;padding:0.55rem 0.8rem;margin-bottom:0.9rem;">
+        <span>👁 Viewing Reports as <strong id="repViewAsName"></strong> — exactly what they see.</span>
+        <button class="btn btn--sm" id="repViewAsExit" style="margin-left:auto;flex:0 0 auto;">Exit</button>
+      </div>
       <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;margin-bottom:0.9rem;">
         <div id="repRangePicker"></div>
       </div>
@@ -858,13 +862,48 @@
     const marginPct = (rev, net) => rev ? (net / rev * 100).toFixed(1) + "%" : "—";
     const pctFmt = (n) => { const r = Math.round(n * 100) / 100; return r % 1 === 0 ? String(Math.round(r)) : r.toFixed(2); };
 
+    // Admin-only impersonation: view Reports exactly as another individual.
+    let repViewAs = null; // entity id of the person being viewed-as
+    function viewAsSet() {
+      if (!repViewAs) return null;
+      const set = new Set([repViewAs]);
+      let grew = true;
+      while (grew) {
+        grew = false;
+        for (const e of gEdge) if (set.has(e.parent_id) && !set.has(e.child_id)) { set.add(e.child_id); grew = true; }
+      }
+      return set;
+    }
+    function shareLabel() {
+      if (!repViewAs) return "Your share";
+      const n = (gEnt.find((x) => x.id === repViewAs)?.name || "Their").trim().split(/\s+/)[0];
+      return `${escapeHtml(n)}'s share`;
+    }
+    function enterViewAs(id) {
+      const e = gEnt.find((x) => x.id === id); if (!e) return;
+      repViewAs = id; repUnit = null;
+      $("repViewAsName").textContent = e.name || "member";
+      show($("repViewAsBar"), true);
+      activateTab("financials");
+      renderGroupView();
+    }
+    function exitViewAs() {
+      repViewAs = null;
+      show($("repViewAsBar"), false);
+      document.querySelectorAll('[data-panel="financials"] .admin-only').forEach((el) => show(el, isAdmin()));
+      renderGroupView();
+    }
+    $("repViewAsExit")?.addEventListener("click", exitViewAs);
+
     // The viewer's effective stake in a unit, from the ownership graph
     // (product of edge %s down each path from their box, summed across
-    // paths). null until the graph is loaded or when there's no path.
+    // paths). While viewing-as, stakes anchor on that person instead.
+    // null until the graph is loaded or when there's no path.
     function myStakeIn(entityId) {
       if (!gEnt.length) return null;
-      const me = myGraphBox(); if (!me) return null;
-      const p = effOf(entityId, me.id);
+      const anchor = repViewAs || myGraphBox()?.id;
+      if (!anchor) return null;
+      const p = effOf(entityId, anchor);
       return p > 0 ? p : null;
     }
 
@@ -917,20 +956,24 @@
 
     function renderGroupView() {
       show($("repGroupView"), true); show($("repUnitView"), false);
-      // Group "Your share": Σ (stake in unit × unit's net over the range).
+      // Viewing-as: only that person's downstream units and figures.
+      const vs = viewAsSet();
+      const finRows = repFinInRange().filter((r) => !vs || vs.has(r.entity_id));
+      const units = repUnits.filter((u) => !vs || vs.has(u.id));
+      // "Your share": Σ (stake in unit × unit's net over the range).
       let shareSum = 0, shareAny = false;
       const unitNet = new Map();
-      for (const u of repUnits) {
-        const aggs = periodAgg(repFinInRange().filter((r) => r.entity_id === u.id));
+      for (const u of units) {
+        const aggs = periodAgg(finRows.filter((r) => r.entity_id === u.id));
         unitNet.set(u.id, { aggs, rev: aggs.reduce((s, a) => s + a.revenue, 0), net: aggs.reduce((s, a) => s + a.net, 0) });
         const stake = myStakeIn(u.id);
         if (stake) { shareAny = true; shareSum += stake * unitNet.get(u.id).net; }
       }
-      $("repGroupStats").innerHTML = statCards(periodAgg(repFinInRange()), shareAny ? { label: "Your share", amount: shareSum } : null);
+      $("repGroupStats").innerHTML = statCards(periodAgg(finRows), shareAny ? { label: shareLabel(), amount: shareSum } : null);
       fitStats($("repGroupStats"));
       const grid = $("repUnits"); grid.innerHTML = "";
-      show($("repUnitsEmpty"), repUnits.length === 0);
-      for (const u of repUnits) {
+      show($("repUnitsEmpty"), units.length === 0);
+      for (const u of units) {
         const { aggs, rev, net } = unitNet.get(u.id);
         const stake = myStakeIn(u.id);
         const meta = !aggs.length ? "No figures in range"
@@ -943,7 +986,7 @@
              <div><span class="k">Revenue</span><span class="v pos">${aggs.length ? money(rev) : "—"}</span></div>
              <div><span class="k">Net</span><span class="v ${aggs.length && net < 0 ? "neg" : "pos"}">${aggs.length ? money(net) : "—"}</span></div>
              <div><span class="k">Profit %</span><span class="v ${aggs.length && net < 0 ? "neg" : "pos"}">${aggs.length ? marginPct(rev, net) : "—"}</span></div>` +
-          (stake ? `<div><span class="k">Your share (${pctFmt(stake * 100)}%)</span><span class="v ${aggs.length && stake * net < 0 ? "neg" : "pos"}">${aggs.length ? money(stake * net) : "—"}</span></div>` : "") +
+          (stake ? `<div><span class="k">${shareLabel()} (${pctFmt(stake * 100)}%)</span><span class="v ${aggs.length && stake * net < 0 ? "neg" : "pos"}">${aggs.length ? money(stake * net) : "—"}</span></div>` : "") +
           `</div>
            <div class="unit-card__meta muted">${meta}</div>`;
         card.addEventListener("click", () => { repUnit = u.id; renderUnitView(); });
@@ -953,14 +996,19 @@
 
     function renderUnitView() {
       const u = repUnits.find((x) => x.id === repUnit);
-      if (!u) { repUnit = null; renderGroupView(); return; }
+      const vs = viewAsSet();
+      if (!u || (vs && !vs.has(repUnit))) { repUnit = null; renderGroupView(); return; }
       show($("repGroupView"), false); show($("repUnitView"), true);
+      // While viewing-as, admin editing controls disappear like they would
+      // for the member (add/update-month card, delete column).
+      const canEdit = isAdmin() && !repViewAs;
+      document.querySelectorAll('[data-panel="financials"] .admin-only').forEach((el) => show(el, canEdit));
       $("repUnitName").textContent = u.name;
       const rows = repFinInRange().filter((r) => r.entity_id === repUnit);
       const stake = myStakeIn(repUnit);
       const unitNet = rows.reduce((s, r) => s + (Number(r.net) || 0), 0);
       $("repUnitStats").innerHTML = statCards(periodAgg(rows),
-        stake ? { label: `Your share (${pctFmt(stake * 100)}%)`, amount: stake * unitNet } : null);
+        stake ? { label: `${shareLabel()} (${pctFmt(stake * 100)}%)`, amount: stake * unitNet } : null);
       fitStats($("repUnitStats"));
       const body = $("finBody"); body.innerHTML = "";
       show($("finEmpty"), rows.length === 0);
@@ -974,12 +1022,12 @@
            <td class="num">${money(r.net)}</td>
            <td>${r.notes ? escapeHtml(r.notes) : ""}</td>
            <td class="num">${hasPnl ? `<button class="btn btn--ghost btn--sm" data-viewpnl="${r.id}">View P&amp;L</button>` : ""}</td>` +
-          (isAdmin() ? `<td class="num"><button class="btn btn--danger btn--sm" data-del="${r.id}">Delete</button></td>` : "");
+          (canEdit ? `<td class="num"><button class="btn btn--danger btn--sm" data-del="${r.id}">Delete</button></td>` : "");
         body.appendChild(tr);
       }
       body.querySelectorAll("[data-viewpnl]").forEach((b) =>
         b.addEventListener("click", () => openPnlModal(b.dataset.viewpnl)));
-      if (isAdmin()) body.querySelectorAll("[data-del]").forEach((b) =>
+      if (canEdit) body.querySelectorAll("[data-del]").forEach((b) =>
         b.addEventListener("click", () => deleteFinancial(b.dataset.del)));
       renderPnlGrid(rows);
     }
@@ -1400,13 +1448,14 @@
     }
     function effOf(id, myId, stack = new Set()) {
       if (id === myId) return 1;
-      if (effMemo.has(id)) return effMemo.get(id);
+      const key = myId + ":" + id; // memo is per-anchor: admin can view-as others
+      if (effMemo.has(key)) return effMemo.get(key);
       if (stack.has(id)) return 0; // cycle guard
       stack.add(id);
       let s = 0;
       for (const e of gEdge) if (e.child_id === id) s += effOf(e.parent_id, myId, stack) * (Number(e.percentage) || 0) / 100;
       stack.delete(id);
-      effMemo.set(id, s);
+      effMemo.set(key, s);
       return s;
     }
     let gTip = null;
@@ -1667,6 +1716,7 @@
           <div id="pAccess" class="muted">…</div>
         </div>
 
+        ${kind === "individual" ? `<button class="btn btn--ghost btn--full" id="pViewAs" style="margin:0.5rem 0 0;">👁 View Reports as this person</button>` : ""}
         <button class="btn btn--ghost btn--full" id="pAddChild" style="margin:0.5rem 0;">+ Add child (connected below)</button>
         <div class="row" style="align-items:center;">
           <button class="btn btn--danger" id="pDelete" style="flex:0 0 auto;">Delete</button>
@@ -1700,6 +1750,7 @@
       $("pColor").addEventListener("input", () => { if (/^#[0-9a-fA-F]{6}$/.test($("pColor").value)) $("pColorP").value = $("pColor").value; });
       $("pColorClear").addEventListener("click", () => { $("pColor").value = ""; });
       $("paneClose").addEventListener("click", () => { gSel = null; closePane(); renderNodes(); });
+      $("pViewAs")?.addEventListener("click", () => { gSel = null; closePane(); renderNodes(); enterViewAs(e.id); });
 
       const collect = () => ({
         name: $("pName").value.trim(), kind: $("pKind").value === "entity" ? "entity" : "individual",
