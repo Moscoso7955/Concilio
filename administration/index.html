@@ -157,6 +157,8 @@
     .modal { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; width: 100%; max-width: 460px; padding: 1.25rem; max-height: 90vh; overflow-y: auto; }
     .modal h3 { margin-bottom: 1rem; }
 
+    .pnlp { display: block; font-size: 0.68rem; color: var(--muted); line-height: 1.2; font-variant-numeric: tabular-nums; }
+
     /* ---------- Per-month P&L statement (View P&L modal) ---------- */
     .pnl-sec { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); margin: 0.9rem 0 0.3rem; }
     .pnl-sec:first-child { margin-top: 0; }
@@ -1135,6 +1137,9 @@
 
     // P&L by month: the classic grid — accounts down the side, months
     // across the top — stitched from each month's stored line detail.
+    // Every amount carries a percentage underneath: COGS lines tie to
+    // their matching sales line (food cost ÷ food sales); everything
+    // else — income mix, expenses, totals, net — is % of gross income.
     function renderPnlGrid(rows) {
       const table = $("pnlGridTable"); if (!table) return;
       const withPnl = rows.filter((r) => r.pnl && Array.isArray(r.pnl.lines) && r.pnl.lines.length)
@@ -1150,32 +1155,72 @@
         for (const l of r.pnl.lines) {
           const sec = l.section || "Other";
           if (!sections.includes(sec)) sections.push(sec);
-          const k = sec + " " + (l.label || "");
+          const k = sec + " " + (l.label || "");
           if (!accts.has(k)) accts.set(k, { section: sec, label: l.label || "", vals: {} });
           accts.get(k).vals[m] = (accts.get(k).vals[m] || 0) + (Number(l.amount) || 0);
         }
       }
-      const cell = (v) => `<td class="num">${v ? money(v) : ""}</td>`;
+      const isIncomeSec = (s) => /income|sales|revenue/i.test(s) && !/other/i.test(s);
+      const isCogsSec = (s) => /cogs|cost of goods|cost of sales/i.test(s);
+      const acctList = [...accts.values()];
+      // Gross income per month (and range total) from the income sections.
+      const gross = {};
+      for (const a of acctList.filter((x) => isIncomeSec(x.section)))
+        for (const m of months) gross[m] = (gross[m] || 0) + (a.vals[m] || 0);
+      const grossTot = months.reduce((s, m) => s + (gross[m] || 0), 0);
+      // Tie a COGS account to its sales line by shared words: "Food Cost"
+      // → "Food Sales". Generic filler words are ignored for matching.
+      const STOP = new Set(["cost", "costs", "cogs", "sales", "sale", "revenue", "income", "purchases", "goods", "of", "and", "the", "total", "expense", "expenses"]);
+      const tokens = (label) => (label || "").toLowerCase().replace(/^[\d\s.-]+/, "")
+        .split(/[^a-z/]+/).filter((t) => t && !STOP.has(t));
+      const incomeAccts = acctList.filter((x) => isIncomeSec(x.section));
+      const cogsBase = (a) => {
+        const tk = tokens(a.label); if (!tk.length) return null;
+        let best = null, bestN = 0;
+        for (const inc of incomeAccts) {
+          const n = tokens(inc.label).filter((t) => tk.includes(t)).length;
+          if (n > bestN) { best = inc; bestN = n; }
+        }
+        return best;
+      };
+      const pctTxt = (v, base, title) => {
+        if (!base) return "";
+        const p = v / base * 100;
+        return `<span class="pnlp"${title ? ` title="${escapeHtml(title)}"` : ""}>${(Math.round(p * 10) / 10).toFixed(1)}%</span>`;
+      };
+      const cell = (v, base, title) => `<td class="num">${v ? money(v) + pctTxt(v, base, title) : ""}</td>`;
       const head = `<thead><tr><th>Account</th>${months.map((m) => `<th class="num">${monthLabel(m + "-01")}</th>`).join("")}<th class="num">Total</th></tr></thead>`;
       let body = "";
       for (const sec of sections) {
         body += `<tr><td colspan="${months.length + 2}" style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);padding-top:0.9rem;">${escapeHtml(sec)}</td></tr>`;
         const secTot = {};
-        for (const a of [...accts.values()].filter((x) => x.section === sec)) {
+        for (const a of acctList.filter((x) => x.section === sec)) {
+          // Percentage base for this account's cells.
+          let baseVals = null, baseTot = grossTot, baseTitle = "of gross income";
+          if (isCogsSec(sec)) {
+            const inc = cogsBase(a);
+            if (inc) {
+              baseVals = inc.vals;
+              baseTot = months.reduce((s, m) => s + (inc.vals[m] || 0), 0);
+              baseTitle = "of " + inc.label;
+            }
+          }
           let tot = 0;
           body += `<tr><td>${escapeHtml(a.label)}</td>${months.map((m) => {
-            const v = a.vals[m] || 0; tot += v; secTot[m] = (secTot[m] || 0) + v; return cell(v);
-          }).join("")}<td class="num"><strong>${money(tot)}</strong></td></tr>`;
+            const v = a.vals[m] || 0; tot += v; secTot[m] = (secTot[m] || 0) + v;
+            return cell(v, baseVals ? (baseVals[m] || 0) : (gross[m] || 0), baseTitle);
+          }).join("")}<td class="num"><strong>${money(tot)}</strong>${pctTxt(tot, baseTot, baseTitle)}</td></tr>`;
         }
         const secSum = months.reduce((s, m) => s + (secTot[m] || 0), 0);
-        body += `<tr style="font-weight:650;"><td>Total ${escapeHtml(sec)}</td>${months.map((m) => cell(secTot[m] || 0)).join("")}<td class="num">${money(secSum)}</td></tr>`;
+        body += `<tr style="font-weight:650;"><td>Total ${escapeHtml(sec)}</td>${months.map((m) =>
+          cell(secTot[m] || 0, gross[m] || 0, "of gross income")).join("")}<td class="num">${money(secSum)}${pctTxt(secSum, grossTot, "of gross income")}</td></tr>`;
       }
       // Net income from the saved monthly totals (the source of truth).
       const netBy = {};
       for (const r of withPnl) netBy[String(r.period).slice(0, 7)] = Number(r.net) || 0;
       const netSum = months.reduce((s, m) => s + (netBy[m] || 0), 0);
-      const netCell = (v) => `<td class="num"><span class="${v < 0 ? "v neg" : "v pos"}" style="font-size:inherit;">${money(v)}</span></td>`;
-      body += `<tr style="font-weight:700;"><td>Net income</td>${months.map((m) => netCell(netBy[m] || 0)).join("")}${netCell(netSum)}</tr>`;
+      const netCell = (v, base) => `<td class="num"><span class="${v < 0 ? "v neg" : "v pos"}" style="font-size:inherit;">${money(v)}</span>${pctTxt(v, base, "of gross income")}</td>`;
+      body += `<tr style="font-weight:700;"><td>Net income</td>${months.map((m) => netCell(netBy[m] || 0, gross[m] || 0)).join("")}${netCell(netSum, grossTot)}</tr>`;
       table.innerHTML = head + `<tbody>${body}</tbody>`;
     }
 
