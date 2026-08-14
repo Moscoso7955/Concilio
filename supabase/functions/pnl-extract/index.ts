@@ -6,6 +6,7 @@
 // server-side.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import * as XLSX from "npm:xlsx@0.18.5";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -94,6 +95,14 @@ function buildContent(bytes: Uint8Array, mime: string): unknown[] {
   if (mime.startsWith("image/")) {
     const media = ["image/png", "image/jpeg", "image/gif", "image/webp"].includes(mime) ? mime : "image/png";
     return [{ type: "image", source: { type: "base64", media_type: media, data: b64 } }];
+  }
+  // Excel exports (QuickBooks "Export to Excel") → CSV text. The xlsx
+  // sheet keeps the row indentation as leading spaces in cell text, which
+  // is exactly what the group extraction needs.
+  if (/spreadsheetml|ms-excel/.test(mime)) {
+    const wb = XLSX.read(bytes, { type: "array" });
+    const csv = wb.SheetNames.map((n) => XLSX.utils.sheet_to_csv(wb.Sheets[n], { blankrows: false })).join("\n\n").slice(0, 200_000);
+    return [{ type: "text", text: `P&L contents (converted from Excel):\n${csv}` }];
   }
   const text = new TextDecoder().decode(bytes).slice(0, 200_000);
   return [{ type: "text", text: `P&L contents:\n${text}` }];
