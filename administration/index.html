@@ -1329,12 +1329,12 @@
         rowsHtml += `<tr class="pnl-totalrow"><td>Total for ${escapeHtml(s.name)}</td><td class="num">${money(secTot)}</td>${pctCell(secTot, gross, "of gross income")}</tr>`;
         if (pnlIsIncomeSec(s.name)) incomeTotal += secTot;
         if (isCogs) {
-          sawCogs = true; cogsTotal += secTot;
+          cogsTotal += secTot;
           const gp = incomeTotal - cogsTotal;
           rowsHtml += `<tr class="pnl-totalrow"><td>Gross Profit</td><td class="num">${money(gp)}</td>${pctCell(gp, gross, "of gross income")}</tr>`;
         }
         if (isExpensesSec(s.name)) {
-          sawExpenses = true; expenseTotal += secTot;
+          expenseTotal += secTot;
           const noi = incomeTotal - cogsTotal - expenseTotal;
           rowsHtml += `<tr class="pnl-totalrow"><td>Net Operating Income</td><td class="num"><span class="${noi < 0 ? "v neg" : "v pos"}" style="font-size:inherit;">${money(noi)}</span></td>${pctCell(noi, gross, "of gross income")}</tr>`;
         }
