@@ -158,14 +158,6 @@
     .modal h3 { margin-bottom: 1rem; }
 
     .pnlp { display: block; font-size: 0.68rem; color: var(--muted); line-height: 1.2; font-variant-numeric: tabular-nums; }
-
-    /* ---------- Per-month P&L statement (View P&L modal) ---------- */
-    .pnl-sec { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); margin: 0.9rem 0 0.3rem; }
-    .pnl-sec:first-child { margin-top: 0; }
-    .pnl-line { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; padding: 0.22rem 0; font-size: 0.9rem; }
-    .pnl-line span:last-child { font-variant-numeric: tabular-nums; white-space: nowrap; }
-    .pnl-total { border-top: 1px solid var(--border); font-weight: 650; }
-    .pnl-net { border-top: 1px solid var(--border); margin-top: 0.9rem; padding-top: 0.55rem; font-weight: 700; font-size: 0.95rem; }
     .inline-select { background: var(--panel-2); border: 1px solid var(--border); color: var(--text); border-radius: 7px; padding: 0.25rem 0.4rem; font-size: 0.85rem; font-family: inherit; }
     a.filelink { color: var(--accent); text-decoration: none; }
     a.filelink:hover { text-decoration: underline; }
@@ -341,7 +333,7 @@
           <div class="table-wrap">
             <table id="finTable">
               <thead><tr>
-                <th>Month</th><th class="num">Revenue</th><th class="num">Expenses</th><th class="num">Net</th><th>Notes</th><th></th><th class="admin-only hidden"></th>
+                <th>Month</th><th class="num">Revenue</th><th class="num">Expenses</th><th class="num">Net</th><th>Notes</th><th class="admin-only hidden"></th>
               </tr></thead>
               <tbody id="finBody"></tbody>
             </table>
@@ -559,16 +551,6 @@
       </div>
       <div class="row" style="align-items:center;margin-top:1rem;">
         <button class="btn btn--ghost" id="settingsCloseBtn" style="flex:0 0 auto;">Close</button>
-      </div>
-    </div>
-  </div>
-
-  <div class="modal-overlay hidden" id="pnlModal">
-    <div class="modal" style="max-width:520px;">
-      <h3 id="pnlModalTitle">P&amp;L</h3>
-      <div id="pnlModalBody"></div>
-      <div class="row" style="align-items:center;margin-top:1rem;">
-        <button class="btn btn--ghost" id="pnlCloseBtn" style="flex:0 0 auto;">Close</button>
       </div>
     </div>
   </div>
@@ -1115,19 +1097,15 @@
       show($("finEmpty"), rows.length === 0);
       for (const r of rows) {
         const tr = document.createElement("tr");
-        const hasPnl = r.pnl && Array.isArray(r.pnl.lines) && r.pnl.lines.length;
         tr.innerHTML =
           `<td>${monthLabel(r.period)}</td>
            <td class="num">${money(r.revenue)}</td>
            <td class="num">${money(r.expenses)}</td>
            <td class="num">${money(r.net)}</td>
-           <td>${r.notes ? escapeHtml(r.notes) : ""}</td>
-           <td class="num">${hasPnl ? `<button class="btn btn--ghost btn--sm" data-viewpnl="${r.id}">View P&amp;L</button>` : ""}</td>` +
+           <td>${r.notes ? escapeHtml(r.notes) : ""}</td>` +
           (canEdit ? `<td class="num"><button class="btn btn--danger btn--sm" data-del="${r.id}">Delete</button></td>` : "");
         body.appendChild(tr);
       }
-      body.querySelectorAll("[data-viewpnl]").forEach((b) =>
-        b.addEventListener("click", () => openPnlModal(b.dataset.viewpnl)));
       if (canEdit) body.querySelectorAll("[data-del]").forEach((b) =>
         b.addEventListener("click", () => deleteFinancial(b.dataset.del)));
       renderPnlGrid(rows);
@@ -1223,32 +1201,6 @@
       body += `<tr style="font-weight:700;"><td>Net income</td>${months.map((m) => netCell(netBy[m] || 0, gross[m] || 0)).join("")}${netCell(netSum, grossTot)}</tr>`;
       table.innerHTML = head + `<tbody>${body}</tbody>`;
     }
-
-    // "View P&L": render the stored line detail as a statement.
-    function openPnlModal(finId) {
-      const r = repFin.find((x) => x.id === finId); if (!r) return;
-      const u = repUnits.find((x) => x.id === r.entity_id);
-      $("pnlModalTitle").textContent = `${u ? u.name + " — " : ""}${monthLabel(r.period)}`;
-      const lines = (r.pnl && Array.isArray(r.pnl.lines)) ? r.pnl.lines : [];
-      const secs = [];
-      for (const l of lines) {
-        let s = secs.find((x) => x.name === (l.section || "Other"));
-        if (!s) secs.push(s = { name: l.section || "Other", lines: [] });
-        s.lines.push(l);
-      }
-      let html = "";
-      for (const s of secs) {
-        const tot = s.lines.reduce((a, l) => a + (Number(l.amount) || 0), 0);
-        html += `<div class="pnl-sec">${escapeHtml(s.name)}</div>`;
-        for (const l of s.lines) html += `<div class="pnl-line"><span>${escapeHtml(l.label)}</span><span>${money(l.amount)}</span></div>`;
-        html += `<div class="pnl-line pnl-total"><span>Total ${escapeHtml(s.name)}</span><span>${money(tot)}</span></div>`;
-      }
-      html += `<div class="pnl-line pnl-net"><span>Net income</span><span class="${Number(r.net) < 0 ? "v neg" : "v pos"}" style="font-size:inherit;">${money(r.net)}</span></div>`;
-      $("pnlModalBody").innerHTML = html || '<p class="muted">No line detail stored for this month — re-import its P&L to capture it.</p>';
-      show($("pnlModal"), true);
-    }
-    $("pnlCloseBtn")?.addEventListener("click", () => show($("pnlModal"), false));
-    $("pnlModal")?.addEventListener("click", (e) => { if (e.target === $("pnlModal")) show($("pnlModal"), false); });
 
     // Range picker (defaults to this year) + custom month picker for the form.
     let finMonthPicker = null, finPendingPnl = null;
