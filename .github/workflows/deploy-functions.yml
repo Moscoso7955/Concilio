@@ -44,3 +44,8 @@ jobs:
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: supabase functions deploy pnl-extract --project-ref "$SUPABASE_PROJECT_ID" --no-verify-jwt
+
+      - name: Deploy invite-user (JWT off — does its own admin auth)
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: supabase functions deploy invite-user --project-ref "$SUPABASE_PROJECT_ID" --no-verify-jwt

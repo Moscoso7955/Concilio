@@ -351,6 +351,9 @@
             </table>
           </div>
           <p class="muted" id="finEmpty">No figures yet.</p>
+          <div class="row" style="margin-top:0.75rem;">
+            <button class="btn btn--ghost hidden" id="ytdBtn" style="flex:0 0 auto;">View YTD</button>
+          </div>
         </div>
       </div>
     </section>
@@ -533,30 +536,49 @@
   <!-- Add-invoice modal -->
   <div class="modal-overlay hidden" id="settingsModal">
     <div class="modal" style="max-width:680px;">
-      <h3>Settings — users &amp; access</h3>
-      <p class="muted" style="margin-bottom:1rem;">Everyone here signs in with a magic link at their email. Roles: <strong>Admin</strong> — full control; <strong>Accountant</strong> — view-only, sees everything; <strong>Member</strong> — view-only, sees their ownership slice. Tabs control what shows in their menu.</p>
-      <div id="suList"><p class="muted">Loading…</p></div>
-      <div class="section-card" style="margin:1rem 0 0;padding:1rem;">
-        <h2 style="font-size:0.95rem;">Add someone</h2>
-        <div class="row" style="align-items:flex-end;">
-          <div style="flex:2;"><label>Email</label><input type="email" id="suNewEmail" placeholder="name@company.com"></div>
-          <div style="flex:1;"><label>Role</label><select id="suNewRole" class="inline-select" style="width:100%;padding:0.6rem 0.7rem;">
-            <option value="owner">Member</option><option value="accountant">Accountant</option><option value="admin">Admin</option></select></div>
-          <button class="btn" id="suAddBtn" style="flex:0 0 auto;">Add</button>
-        </div>
-        <div class="muted" id="suAddStatus" style="margin-top:0.4rem;"></div>
+      <h3>Settings</h3>
+      <div class="tabs" style="margin-bottom:1rem;">
+        <button class="tab active" data-stab="users">Users</button>
+        <button class="tab" data-stab="roles">Roles</button>
       </div>
 
-      <h3 style="margin-top:1.5rem;">Roles</h3>
-      <p class="muted" style="margin-bottom:0.75rem;">A role sets the default tabs and data scope for its users; the per-user tab checkboxes above override the defaults. <strong>All data</strong> roles see every unit (like accountants); <strong>ownership slice</strong> roles see only what's downstream of their box.</p>
-      <div id="srList"><p class="muted">Loading…</p></div>
-      <div class="row" style="align-items:flex-end;margin-top:0.75rem;">
-        <div style="flex:2;"><label>New role name</label><input type="text" id="srNewName" placeholder="e.g. Property Manager"></div>
-        <button class="btn" id="srAddBtn" style="flex:0 0 auto;">Add role</button>
-        <span class="muted" id="srAddStatus"></span>
+      <div id="settingsUsersPane">
+        <p class="muted" style="margin-bottom:1rem;">Everyone signs in with a magic link at their email. Adding someone sends them an invite email from the portal. Tabs control what shows in their menu.</p>
+        <div id="suList"><p class="muted">Loading…</p></div>
+        <div class="section-card" style="margin:1rem 0 0;padding:1rem;">
+          <h2 style="font-size:0.95rem;">Add someone</h2>
+          <div class="row" style="align-items:flex-end;">
+            <div style="flex:2;"><label>Email</label><input type="email" id="suNewEmail" placeholder="name@company.com"></div>
+            <div style="flex:1;"><label>Role</label><select id="suNewRole" class="inline-select" style="width:100%;padding:0.6rem 0.7rem;">
+              <option value="owner">Member</option><option value="accountant">Accountant</option><option value="admin">Admin</option></select></div>
+            <button class="btn" id="suAddBtn" style="flex:0 0 auto;">Add &amp; invite</button>
+          </div>
+          <div class="muted" id="suAddStatus" style="margin-top:0.4rem;"></div>
+        </div>
+      </div>
+
+      <div id="settingsRolesPane" class="hidden">
+        <p class="muted" style="margin-bottom:0.75rem;">A role sets the default tabs and data scope for its users; per-user tab checkboxes (Users tab) override the defaults. <strong>All data</strong> roles see every unit (like accountants); <strong>ownership slice</strong> roles see only what's downstream of their box.</p>
+        <div id="srList"><p class="muted">Loading…</p></div>
+        <div class="row" style="align-items:flex-end;margin-top:0.75rem;">
+          <div style="flex:2;"><label>New role name</label><input type="text" id="srNewName" placeholder="e.g. Property Manager"></div>
+          <button class="btn" id="srAddBtn" style="flex:0 0 auto;">Add role</button>
+          <span class="muted" id="srAddStatus"></span>
+        </div>
       </div>
       <div class="row" style="align-items:center;margin-top:1rem;">
         <button class="btn btn--ghost" id="settingsCloseBtn" style="flex:0 0 auto;">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay hidden" id="ytdModal">
+    <div class="modal" style="max-width:min(1200px, 94vw);">
+      <h3 id="ytdModalTitle" style="margin-bottom:0.1rem;">P&amp;L</h3>
+      <div class="muted" id="ytdModalSub" style="margin-bottom:1rem;font-size:0.85rem;"></div>
+      <div class="table-wrap" id="ytdModalBody"></div>
+      <div class="row" style="align-items:center;margin-top:1rem;">
+        <button class="btn btn--ghost" id="ytdCloseBtn" style="flex:0 0 auto;">Close</button>
       </div>
     </div>
   </div>
@@ -664,6 +686,31 @@
     const ROLE_LABEL = { owner: "Member", accountant: "Accountant", admin: "Admin" };
 
     $("settingsBtn")?.addEventListener("click", () => { show($("settingsModal"), true); loadSettingsUsers(); });
+    document.querySelectorAll("[data-stab]").forEach((b) => b.addEventListener("click", () => {
+      document.querySelectorAll("[data-stab]").forEach((x) => x.classList.toggle("active", x === b));
+      show($("settingsUsersPane"), b.dataset.stab === "users");
+      show($("settingsRolesPane"), b.dataset.stab === "roles");
+    }));
+
+    // Send the branded invite email (or a fresh sign-in link for people
+    // who already have an account) via the invite-user function.
+    async function sendInvite(email) {
+      let session = null;
+      try { session = (await supabase.auth.getSession()).data.session; } catch (_) {}
+      const res = await fetch(cfg.SUPABASE_URL + "/functions/v1/invite-user", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: cfg.SUPABASE_ANON_KEY,
+          Authorization: "Bearer " + (session?.access_token || cfg.SUPABASE_ANON_KEY),
+        },
+        body: JSON.stringify({ email }),
+      });
+      let data = {};
+      try { data = await res.json(); } catch (_) {}
+      if (!res.ok || data.ok === false) throw new Error(data.error || ("HTTP " + res.status));
+      return data;
+    }
     $("settingsCloseBtn")?.addEventListener("click", () => show($("settingsModal"), false));
     $("settingsModal")?.addEventListener("click", (e) => { if (e.target === $("settingsModal")) show($("settingsModal"), false); });
 
@@ -707,6 +754,7 @@
               ${roleRows.map((ro) => `<option value="${escapeHtml(ro.key)}"${r.role === ro.key ? " selected" : ""}>${escapeHtml(ro.name)}</option>`).join("")}
             </select></div>
             <button class="btn btn--sm" data-susave="${i}" style="flex:0 0 auto;">Save</button>
+            <button class="btn btn--ghost btn--sm" data-suinvite="${i}" style="flex:0 0 auto;">${p ? "Send sign-in link" : "Send invite"}</button>
             <button class="btn btn--danger btn--sm" data-suremove="${i}" style="flex:0 0 auto;">Remove</button>
             <span class="muted" data-sustatus="${i}"></span>
           </div>
@@ -734,6 +782,15 @@
         // Mirror onto the live profile if they've already signed up.
         if (!error) await supabase.from("profiles").update({ role, tabs }).ilike("email", email);
         st.textContent = error ? error.message : "Saved ✓ (applies at their next sign-in or refresh)";
+      }));
+      box.querySelectorAll("[data-suinvite]").forEach((btn) => btn.addEventListener("click", async () => {
+        const i = btn.dataset.suinvite;
+        const email = box.querySelector(`[data-surow="${i}"]`).dataset.suemail;
+        const st = box.querySelector(`[data-sustatus="${i}"]`); st.textContent = "Sending…";
+        try {
+          const inv = await sendInvite(email);
+          st.textContent = inv.note || (inv.already ? "Sign-in link sent ✓" : "Invite email sent ✓");
+        } catch (e) { st.textContent = "Invite failed: " + e.message; }
       }));
       box.querySelectorAll("[data-suremove]").forEach((btn) => btn.addEventListener("click", async () => {
         const i = btn.dataset.suremove;
@@ -813,8 +870,13 @@
       const st = $("suAddStatus");
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { st.textContent = "Enter a valid email."; return; }
       const { error } = await supabase.from("allowed_owners").upsert({ email, role: $("suNewRole").value }, { onConflict: "email" });
-      st.textContent = error ? error.message : `Added — ${email} can now sign in at this page.`;
-      if (!error) { $("suNewEmail").value = ""; loadSettingsUsers(); }
+      if (error) { st.textContent = error.message; return; }
+      st.textContent = "Added — sending invite…";
+      try {
+        const inv = await sendInvite(email);
+        st.textContent = inv.already ? `Added — they already have an account; sent a fresh sign-in link.` : `Added — invite email sent to ${email}.`;
+      } catch (e) { st.textContent = `Added, but the invite email failed: ${e.message}`; }
+      $("suNewEmail").value = ""; loadSettingsUsers();
     });
 
     supabase.auth.onAuthStateChange((event, session) => {
@@ -900,6 +962,7 @@
     }
     document.querySelectorAll(".tab").forEach((t) => {
       t.addEventListener("click", () => {
+        if (!t.dataset.tab) return; // settings-modal pills wire themselves
         activateTab(t.dataset.tab);
         try { localStorage.setItem("callidus_tab", t.dataset.tab); } catch (_) {}
       });
@@ -1112,6 +1175,7 @@
       fitStats($("repUnitStats"));
       const body = $("finBody"); body.innerHTML = "";
       show($("finEmpty"), rows.length === 0);
+      show($("ytdBtn"), rows.some((x) => x.pnl && Array.isArray(x.pnl.lines) && x.pnl.lines.length));
       for (const r of rows) {
         const tr = document.createElement("tr");
         const hasPnl = r.pnl && Array.isArray(r.pnl.lines) && r.pnl.lines.length;
@@ -1234,6 +1298,102 @@
     }
     $("pnlCloseBtn")?.addEventListener("click", () => show($("pnlModal"), false));
     $("pnlModal")?.addEventListener("click", (e) => { if (e.target === $("pnlModal")) show($("pnlModal"), false); });
+
+    // "View YTD": the whole selected range, months as columns, same
+    // QuickBooks structure — percentages only in the final summary column.
+    function openYtdModal() {
+      const u = repUnits.find((x) => x.id === repUnit); if (!u) return;
+      const withPnl = repFinInRange().filter((r) => r.entity_id === repUnit && r.pnl && Array.isArray(r.pnl.lines) && r.pnl.lines.length)
+        .sort((a, b) => String(a.period).localeCompare(String(b.period)));
+      if (!withPnl.length) return;
+      const months = withPnl.map((r) => String(r.period).slice(0, 7));
+      $("ytdModalTitle").textContent = u.name;
+      $("ytdModalSub").textContent = `Profit and Loss · ${monthLabel(months[0] + "-01")} – ${monthLabel(months[months.length - 1] + "-01")}`;
+      // Hierarchy in first-seen statement order: sections → direct
+      // accounts and groups → group accounts; values keyed per month.
+      const sections = [];
+      const getSec = (name) => { let s = sections.find((x) => x.name === name); if (!s) sections.push(s = { name, items: [] }); return s; };
+      for (const r of withPnl) {
+        const m = String(r.period).slice(0, 7);
+        for (const l of r.pnl.lines) {
+          const sec = getSec(l.section || "Other");
+          let holder;
+          if (l.group) {
+            let grp = sec.items.find((x) => x.type === "group" && x.name === l.group);
+            if (!grp) sec.items.push(grp = { type: "group", name: l.group, accts: [] });
+            holder = grp.accts.find((x) => x.label === l.label);
+            if (!holder) grp.accts.push(holder = { label: l.label, vals: {} });
+          } else {
+            holder = sec.items.find((x) => x.type === "acct" && x.label === l.label);
+            if (!holder) sec.items.push(holder = { type: "acct", label: l.label, vals: {} });
+          }
+          holder.vals[m] = (holder.vals[m] || 0) + (Number(l.amount) || 0);
+        }
+      }
+      const sumVals = (vals) => months.reduce((s, m) => s + (vals[m] || 0), 0);
+      const allIncomeAccts = [];
+      for (const sec of sections) if (pnlIsIncomeSec(sec.name))
+        for (const it of sec.items) (it.type === "acct" ? [it] : it.accts).forEach((a) => allIncomeAccts.push({ label: a.label, amount: sumVals(a.vals) }));
+      const grossTot = allIncomeAccts.reduce((s, a) => s + a.amount, 0);
+      const pctEnd = (v, base, title) =>
+        `<td class="num pnl-pct"${title ? ` title="${escapeHtml(title)}"` : ""}>${base ? (Math.round(v / base * 1000) / 10).toFixed(1) + "%" : ""}</td>`;
+      const mCells = (vals) => months.map((m) => `<td class="num">${vals[m] ? money(vals[m]) : ""}</td>`).join("");
+      const totCells = (vals, base, title, bold) => {
+        const t = sumVals(vals);
+        return `${mCells(vals)}<td class="num">${bold ? "<strong>" + money(t) + "</strong>" : money(t)}</td>${pctEnd(t, base, title)}`;
+      };
+      const rowOf = (vals) => { const o = {}; for (const m of months) o[m] = vals[m] || 0; return o; };
+      const addTo = (agg, vals) => { for (const m of months) agg[m] = (agg[m] || 0) + (vals[m] || 0); };
+      let body = "", incomeAgg = {}, cogsAgg = {}, expenseAgg = {};
+      const span = months.length + 3;
+      for (const sec of sections) {
+        const isCogs = pnlIsCogsSec(sec.name);
+        const secAgg = {};
+        body += `<tr class="pnl-sechead"><td colspan="${span}">${escapeHtml(sec.name)}</td></tr>`;
+        const acctRow = (a, indent, group) => {
+          addTo(secAgg, a.vals);
+          let base = grossTot, title = "of gross income";
+          if (isCogs) {
+            const inc = pnlMatchIncome(a.label, allIncomeAccts) || (group ? pnlMatchIncome(group, allIncomeAccts) : null);
+            if (inc) { base = inc.amount; title = "of " + inc.label; }
+          }
+          return `<tr><td class="${indent}">${escapeHtml(a.label)}</td>${totCells(rowOf(a.vals), base, title, true)}</tr>`;
+        };
+        for (const it of sec.items) {
+          if (it.type === "acct") { body += acctRow(it, "pnl-acct", null); continue; }
+          const gAgg = {};
+          it.accts.forEach((a) => addTo(gAgg, a.vals));
+          body += `<tr><td class="pnl-acct" style="font-weight:600;">${escapeHtml(it.name)}</td><td colspan="${span - 1}"></td></tr>`;
+          for (const a of it.accts) body += acctRow(a, "pnl-acct2", it.name);
+          body += `<tr class="pnl-grptotal"><td class="pnl-acct">Total for ${escapeHtml(it.name)}</td>${totCells(gAgg, grossTot, "of gross income", true)}</tr>`;
+        }
+        body += `<tr class="pnl-totalrow"><td>Total for ${escapeHtml(sec.name)}</td>${totCells(secAgg, grossTot, "of gross income", true)}</tr>`;
+        if (pnlIsIncomeSec(sec.name)) addTo(incomeAgg, secAgg);
+        if (isCogs) {
+          addTo(cogsAgg, secAgg);
+          const gp = {}; addTo(gp, incomeAgg); for (const m of months) gp[m] = (gp[m] || 0) - (cogsAgg[m] || 0);
+          body += `<tr class="pnl-totalrow"><td>Gross Profit</td>${totCells(gp, grossTot, "of gross income", true)}</tr>`;
+        }
+        if (/^expenses?$/i.test((sec.name || "").trim())) {
+          addTo(expenseAgg, secAgg);
+          const noi = {}; addTo(noi, incomeAgg);
+          for (const m of months) noi[m] = (noi[m] || 0) - (cogsAgg[m] || 0) - (expenseAgg[m] || 0);
+          body += `<tr class="pnl-totalrow"><td>Net Operating Income</td>${totCells(noi, grossTot, "of gross income", true)}</tr>`;
+        }
+      }
+      const netVals = {};
+      for (const r of withPnl) netVals[String(r.period).slice(0, 7)] = Number(r.net) || 0;
+      const netTot = sumVals(netVals);
+      body += `<tr class="pnl-netrow"><td>Net Income</td>${months.map((m) =>
+        `<td class="num"><span class="${(netVals[m] || 0) < 0 ? "v neg" : "v pos"}" style="font-size:inherit;">${money(netVals[m] || 0)}</span></td>`).join("")
+        }<td class="num"><span class="${netTot < 0 ? "v neg" : "v pos"}" style="font-size:inherit;">${money(netTot)}</span></td>${pctEnd(netTot, grossTot, "of gross income")}</tr>`;
+      $("ytdModalBody").innerHTML =
+        `<table class="pnl-table"><thead><tr><th style="min-width:13rem;"></th>${months.map((m) => `<th class="num">${monthLabel(m + "-01")}</th>`).join("")}<th class="num">Total</th><th class="num">%</th></tr></thead><tbody>${body}</tbody></table>`;
+      show($("ytdModal"), true);
+    }
+    $("ytdBtn")?.addEventListener("click", openYtdModal);
+    $("ytdCloseBtn")?.addEventListener("click", () => show($("ytdModal"), false));
+    $("ytdModal")?.addEventListener("click", (e) => { if (e.target === $("ytdModal")) show($("ytdModal"), false); });
 
     // Range picker (defaults to this year) + custom month picker for the form.
     let finMonthPicker = null, finPendingPnl = null;
@@ -1936,7 +2096,31 @@
         Object.assign(gEnt.find((z) => z.id === id), patch);
         render();
       }
-      $("pSave").addEventListener("click", async () => { $("pStatus").textContent = "Saving…"; try { await persist(); $("pStatus").textContent = "Saved ✓"; } catch (err) { $("pStatus").textContent = err.message; } });
+      $("pSave").addEventListener("click", async () => {
+        $("pStatus").textContent = "Saving…";
+        try {
+          await persist();
+          // Saving an individual with an email IS the invite: make sure
+          // they're allowlisted (→ they appear in ⚙ Settings → Users)
+          // and send the invite email if they're new.
+          const em = ($("pEmail")?.value || "").trim().toLowerCase();
+          if ($("pKind").value !== "entity" && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) {
+            const { data: existing } = await supabase.from("allowed_owners").select("email").ilike("email", em).maybeSingle();
+            if (!existing) {
+              await supabase.from("allowed_owners").upsert({ email: em, role: "owner" }, { onConflict: "email" });
+              try {
+                await sendInvite(em);
+                $("pStatus").textContent = "Saved ✓ — invite email sent";
+              } catch (err) {
+                $("pStatus").textContent = "Saved ✓ — access granted, but the invite email failed: " + err.message;
+              }
+              renderAccess(id, em);
+              return;
+            }
+          }
+          $("pStatus").textContent = "Saved ✓";
+        } catch (err) { $("pStatus").textContent = err.message; }
+      });
       $("pDelete").addEventListener("click", async () => {
         if (!confirm("Delete this box? Connected edges are also removed.")) return;
         await gStore.deleteEntity(id);
@@ -1982,12 +2166,21 @@
           <span class="badge badge--admin">access: ${escapeHtml((roleInfo(data.role)?.name || data.role).toLowerCase())}</span>
           <select id="acRole" class="inline-select">${roleOpts(data.role)}</select>
           <button class="btn btn--sm" id="acUpdate" style="flex:0 0 auto;">Update role</button>
-          <button class="btn btn--danger btn--sm" id="acRevoke" style="flex:0 0 auto;">Revoke</button></div>
+          <button class="btn btn--ghost btn--sm" id="acInvite" style="flex:0 0 auto;">Email invite</button>
+          <button class="btn btn--danger btn--sm" id="acRevoke" style="flex:0 0 auto;">Revoke</button>
+          <span class="muted" id="acStatus"></span></div>
           <div class="muted" style="margin-top:0.4rem;">Tabs and roles are also managed in ⚙ Settings (top right).</div>`;
         $("acUpdate").addEventListener("click", async () => {
           await supabase.from("allowed_owners").update({ role: $("acRole").value }).eq("email", email);
           await supabase.from("profiles").update({ role: $("acRole").value }).ilike("email", email);
           renderAccess(id, email);
+        });
+        $("acInvite").addEventListener("click", async () => {
+          $("acStatus").textContent = "Sending…";
+          try {
+            const v = await sendInvite(email);
+            $("acStatus").textContent = v.note || (v.already ? "Sign-in link sent ✓" : "Invite email sent ✓");
+          } catch (err) { $("acStatus").textContent = "Failed: " + err.message; }
         });
         $("acRevoke").addEventListener("click", async () => {
           if (!confirm("Revoke portal access for " + email + "?")) return;
@@ -2001,7 +2194,14 @@
           <select id="acRole" class="inline-select">${roleOpts("owner")}</select>
           <button class="btn btn--sm" id="acGrant" style="flex:0 0 auto;">Grant access</button></div>
           <div class="muted" style="margin-top:0.4rem;">They'll sign in with a magic link or Google at this email.</div>`;
-        $("acGrant").addEventListener("click", async () => { await supabase.from("allowed_owners").upsert({ email, role: $("acRole").value }, { onConflict: "email" }); renderAccess(id, email); });
+        $("acGrant").addEventListener("click", async () => {
+          await supabase.from("allowed_owners").upsert({ email, role: $("acRole").value }, { onConflict: "email" });
+          let note = "";
+          try { const v = await sendInvite(email); note = v.already ? "Sign-in link sent ✓" : "Invite email sent ✓"; }
+          catch (err) { note = "Invite email failed: " + err.message; }
+          await renderAccess(id, email);
+          const st = $("acStatus"); if (st) st.textContent = note;
+        });
       }
     }
 
