@@ -936,7 +936,9 @@
       rb.classList.toggle("badge--admin", isAdmin());
       document.querySelectorAll(".admin-only").forEach((el) => show(el, isAdmin()));
       const tabs = allowedTabs();
-      document.querySelectorAll(".tab").forEach((b) => show(b, tabs.includes(b.dataset.tab)));
+      // Only the main nav — the Settings modal's Users/Roles pills are
+      // .tab styled but carry data-stab, not data-tab.
+      document.querySelectorAll(".tab[data-tab]").forEach((b) => show(b, tabs.includes(b.dataset.tab)));
       restoreTab(); // land on the tab the user was on before the reload
       loadFinancials(); loadMemos();
       if (tabs.includes("documents")) loadDocuments();
