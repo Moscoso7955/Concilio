@@ -158,6 +158,14 @@
     .modal h3 { margin-bottom: 1rem; }
 
     .pnlp { display: block; font-size: 0.68rem; color: var(--muted); line-height: 1.2; font-variant-numeric: tabular-nums; }
+
+    /* ---------- Per-month P&L statement (View P&L modal) ---------- */
+    .pnl-sec { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); margin: 0.9rem 0 0.3rem; }
+    .pnl-sec:first-child { margin-top: 0; }
+    .pnl-line { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; padding: 0.22rem 0; font-size: 0.9rem; }
+    .pnl-line span:last-child { font-variant-numeric: tabular-nums; white-space: nowrap; text-align: right; }
+    .pnl-total { border-top: 1px solid var(--border); font-weight: 650; }
+    .pnl-net { border-top: 1px solid var(--border); margin-top: 0.9rem; padding-top: 0.55rem; font-weight: 700; font-size: 0.95rem; }
     .inline-select { background: var(--panel-2); border: 1px solid var(--border); color: var(--text); border-radius: 7px; padding: 0.25rem 0.4rem; font-size: 0.85rem; font-family: inherit; }
     a.filelink { color: var(--accent); text-decoration: none; }
     a.filelink:hover { text-decoration: underline; }
@@ -333,18 +341,12 @@
           <div class="table-wrap">
             <table id="finTable">
               <thead><tr>
-                <th>Month</th><th class="num">Revenue</th><th class="num">Expenses</th><th class="num">Net</th><th>Notes</th><th class="admin-only hidden"></th>
+                <th>Month</th><th class="num">Revenue</th><th class="num">Expenses</th><th class="num">Net</th><th>Notes</th><th></th><th class="admin-only hidden"></th>
               </tr></thead>
               <tbody id="finBody"></tbody>
             </table>
           </div>
           <p class="muted" id="finEmpty">No figures yet.</p>
-        </div>
-
-        <div class="section-card">
-          <h2>P&amp;L by month</h2>
-          <div class="table-wrap"><table id="pnlGridTable"></table></div>
-          <p class="muted" id="pnlGridEmpty">Account-level detail appears here once P&amp;Ls are imported with the AI reader.</p>
         </div>
       </div>
     </section>
@@ -551,6 +553,16 @@
       </div>
       <div class="row" style="align-items:center;margin-top:1rem;">
         <button class="btn btn--ghost" id="settingsCloseBtn" style="flex:0 0 auto;">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay hidden" id="pnlModal">
+    <div class="modal" style="max-width:540px;">
+      <h3 id="pnlModalTitle">P&amp;L</h3>
+      <div id="pnlModalBody"></div>
+      <div class="row" style="align-items:center;margin-top:1rem;">
+        <button class="btn btn--ghost" id="pnlCloseBtn" style="flex:0 0 auto;">Close</button>
       </div>
     </div>
   </div>
@@ -1097,110 +1109,82 @@
       show($("finEmpty"), rows.length === 0);
       for (const r of rows) {
         const tr = document.createElement("tr");
+        const hasPnl = r.pnl && Array.isArray(r.pnl.lines) && r.pnl.lines.length;
         tr.innerHTML =
           `<td>${monthLabel(r.period)}</td>
            <td class="num">${money(r.revenue)}</td>
            <td class="num">${money(r.expenses)}</td>
            <td class="num">${money(r.net)}</td>
-           <td>${r.notes ? escapeHtml(r.notes) : ""}</td>` +
+           <td>${r.notes ? escapeHtml(r.notes) : ""}</td>
+           <td class="num">${hasPnl ? `<button class="btn btn--ghost btn--sm" data-viewpnl="${r.id}">View P&amp;L</button>` : ""}</td>` +
           (canEdit ? `<td class="num"><button class="btn btn--danger btn--sm" data-del="${r.id}">Delete</button></td>` : "");
         body.appendChild(tr);
       }
+      body.querySelectorAll("[data-viewpnl]").forEach((b) =>
+        b.addEventListener("click", () => openPnlModal(b.dataset.viewpnl)));
       if (canEdit) body.querySelectorAll("[data-del]").forEach((b) =>
         b.addEventListener("click", () => deleteFinancial(b.dataset.del)));
-      renderPnlGrid(rows);
     }
 
     $("repBack")?.addEventListener("click", () => { repUnit = null; renderGroupView(); });
 
     // P&L by month: the classic grid — accounts down the side, months
     // across the top — stitched from each month's stored line detail.
-    // Every amount carries a percentage underneath: COGS lines tie to
-    // their matching sales line (food cost ÷ food sales); everything
-    // else — income mix, expenses, totals, net — is % of gross income.
-    function renderPnlGrid(rows) {
-      const table = $("pnlGridTable"); if (!table) return;
-      const withPnl = rows.filter((r) => r.pnl && Array.isArray(r.pnl.lines) && r.pnl.lines.length)
-        .sort((a, b) => String(a.period).localeCompare(String(b.period)));
-      show($("pnlGridEmpty"), withPnl.length === 0);
-      table.innerHTML = "";
-      if (!withPnl.length) return;
-      const months = withPnl.map((r) => String(r.period).slice(0, 7));
-      // Accounts in first-seen order, grouped by statement section.
-      const sections = [], accts = new Map();
-      for (const r of withPnl) {
-        const m = String(r.period).slice(0, 7);
-        for (const l of r.pnl.lines) {
-          const sec = l.section || "Other";
-          if (!sections.includes(sec)) sections.push(sec);
-          const k = sec + " " + (l.label || "");
-          if (!accts.has(k)) accts.set(k, { section: sec, label: l.label || "", vals: {} });
-          accts.get(k).vals[m] = (accts.get(k).vals[m] || 0) + (Number(l.amount) || 0);
-        }
+    // P&L percentage helpers: COGS lines tie to their matching sales
+    // line by shared words (501 Food Purchases ÷ 401 Sales - Food);
+    // everything else — income mix, totals, net — is % of gross income.
+    const pnlIsIncomeSec = (s) => /income|sales|revenue/i.test(s || "") && !/other/i.test(s || "");
+    const pnlIsCogsSec = (s) => /cogs|cost of goods|cost of sales/i.test(s || "");
+    const PNL_STOP = new Set(["cost", "costs", "cogs", "sales", "sale", "revenue", "income", "purchases", "goods", "of", "and", "the", "total", "expense", "expenses"]);
+    const pnlTokens = (label) => (label || "").toLowerCase().replace(/^[\d\s.-]+/, "")
+      .split(/[^a-z/]+/).filter((t) => t && !PNL_STOP.has(t));
+    function pnlMatchIncome(label, incomeItems) {
+      const tk = pnlTokens(label); if (!tk.length) return null;
+      let best = null, bestN = 0;
+      for (const inc of incomeItems) {
+        const n = pnlTokens(inc.label).filter((t) => tk.includes(t)).length;
+        if (n > bestN) { best = inc; bestN = n; }
       }
-      const isIncomeSec = (s) => /income|sales|revenue/i.test(s) && !/other/i.test(s);
-      const isCogsSec = (s) => /cogs|cost of goods|cost of sales/i.test(s);
-      const acctList = [...accts.values()];
-      // Gross income per month (and range total) from the income sections.
-      const gross = {};
-      for (const a of acctList.filter((x) => isIncomeSec(x.section)))
-        for (const m of months) gross[m] = (gross[m] || 0) + (a.vals[m] || 0);
-      const grossTot = months.reduce((s, m) => s + (gross[m] || 0), 0);
-      // Tie a COGS account to its sales line by shared words: "Food Cost"
-      // → "Food Sales". Generic filler words are ignored for matching.
-      const STOP = new Set(["cost", "costs", "cogs", "sales", "sale", "revenue", "income", "purchases", "goods", "of", "and", "the", "total", "expense", "expenses"]);
-      const tokens = (label) => (label || "").toLowerCase().replace(/^[\d\s.-]+/, "")
-        .split(/[^a-z/]+/).filter((t) => t && !STOP.has(t));
-      const incomeAccts = acctList.filter((x) => isIncomeSec(x.section));
-      const cogsBase = (a) => {
-        const tk = tokens(a.label); if (!tk.length) return null;
-        let best = null, bestN = 0;
-        for (const inc of incomeAccts) {
-          const n = tokens(inc.label).filter((t) => tk.includes(t)).length;
-          if (n > bestN) { best = inc; bestN = n; }
-        }
-        return best;
-      };
-      const pctTxt = (v, base, title) => {
-        if (!base) return "";
-        const p = v / base * 100;
-        return `<span class="pnlp"${title ? ` title="${escapeHtml(title)}"` : ""}>${(Math.round(p * 10) / 10).toFixed(1)}%</span>`;
-      };
-      const cell = (v, base, title) => `<td class="num">${v ? money(v) + pctTxt(v, base, title) : ""}</td>`;
-      const head = `<thead><tr><th>Account</th>${months.map((m) => `<th class="num">${monthLabel(m + "-01")}</th>`).join("")}<th class="num">Total</th></tr></thead>`;
-      let body = "";
-      for (const sec of sections) {
-        body += `<tr><td colspan="${months.length + 2}" style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);padding-top:0.9rem;">${escapeHtml(sec)}</td></tr>`;
-        const secTot = {};
-        for (const a of acctList.filter((x) => x.section === sec)) {
-          // Percentage base for this account's cells.
-          let baseVals = null, baseTot = grossTot, baseTitle = "of gross income";
-          if (isCogsSec(sec)) {
-            const inc = cogsBase(a);
-            if (inc) {
-              baseVals = inc.vals;
-              baseTot = months.reduce((s, m) => s + (inc.vals[m] || 0), 0);
-              baseTitle = "of " + inc.label;
-            }
-          }
-          let tot = 0;
-          body += `<tr><td>${escapeHtml(a.label)}</td>${months.map((m) => {
-            const v = a.vals[m] || 0; tot += v; secTot[m] = (secTot[m] || 0) + v;
-            return cell(v, baseVals ? (baseVals[m] || 0) : (gross[m] || 0), baseTitle);
-          }).join("")}<td class="num"><strong>${money(tot)}</strong>${pctTxt(tot, baseTot, baseTitle)}</td></tr>`;
-        }
-        const secSum = months.reduce((s, m) => s + (secTot[m] || 0), 0);
-        body += `<tr style="font-weight:650;"><td>Total ${escapeHtml(sec)}</td>${months.map((m) =>
-          cell(secTot[m] || 0, gross[m] || 0, "of gross income")).join("")}<td class="num">${money(secSum)}${pctTxt(secSum, grossTot, "of gross income")}</td></tr>`;
-      }
-      // Net income from the saved monthly totals (the source of truth).
-      const netBy = {};
-      for (const r of withPnl) netBy[String(r.period).slice(0, 7)] = Number(r.net) || 0;
-      const netSum = months.reduce((s, m) => s + (netBy[m] || 0), 0);
-      const netCell = (v, base) => `<td class="num"><span class="${v < 0 ? "v neg" : "v pos"}" style="font-size:inherit;">${money(v)}</span>${pctTxt(v, base, "of gross income")}</td>`;
-      body += `<tr style="font-weight:700;"><td>Net income</td>${months.map((m) => netCell(netBy[m] || 0, gross[m] || 0)).join("")}${netCell(netSum, grossTot)}</tr>`;
-      table.innerHTML = head + `<tbody>${body}</tbody>`;
+      return best;
     }
+    const pnlPctSpan = (v, base, title) => base
+      ? `<span class="pnlp"${title ? ` title="${escapeHtml(title)}"` : ""}>${(Math.round(v / base * 1000) / 10).toFixed(1)}%</span>` : "";
+
+    // "View P&L": one month's statement in a modal, with percentages.
+    function openPnlModal(finId) {
+      const r = repFin.find((x) => x.id === finId); if (!r) return;
+      const u = repUnits.find((x) => x.id === r.entity_id);
+      $("pnlModalTitle").textContent = `${u ? u.name + " — " : ""}${monthLabel(r.period)}`;
+      const lines = (r.pnl && Array.isArray(r.pnl.lines)) ? r.pnl.lines : [];
+      const secs = [];
+      for (const l of lines) {
+        let s = secs.find((x) => x.name === (l.section || "Other"));
+        if (!s) secs.push(s = { name: l.section || "Other", lines: [] });
+        s.lines.push(l);
+      }
+      const incomeLines = lines.filter((l) => pnlIsIncomeSec(l.section));
+      const gross = incomeLines.reduce((a, l) => a + (Number(l.amount) || 0), 0);
+      let html = "";
+      for (const s of secs) {
+        const tot = s.lines.reduce((a, l) => a + (Number(l.amount) || 0), 0);
+        const isCogs = pnlIsCogsSec(s.name);
+        html += `<div class="pnl-sec">${escapeHtml(s.name)}</div>`;
+        for (const l of s.lines) {
+          let base = gross, title = "of gross income";
+          if (isCogs) {
+            const inc = pnlMatchIncome(l.label, incomeLines);
+            if (inc) { base = Number(inc.amount) || 0; title = "of " + inc.label; }
+          }
+          html += `<div class="pnl-line"><span>${escapeHtml(l.label)}</span><span>${money(l.amount)}${pnlPctSpan(Number(l.amount) || 0, base, title)}</span></div>`;
+        }
+        html += `<div class="pnl-line pnl-total"><span>Total ${escapeHtml(s.name)}</span><span>${money(tot)}${pnlPctSpan(tot, gross, "of gross income")}</span></div>`;
+      }
+      html += `<div class="pnl-line pnl-net"><span>Net income</span><span><span class="${Number(r.net) < 0 ? "v neg" : "v pos"}" style="font-size:inherit;">${money(r.net)}</span>${pnlPctSpan(Number(r.net) || 0, gross, "of gross income")}</span></div>`;
+      $("pnlModalBody").innerHTML = html || '<p class="muted">No line detail stored for this month — re-import its P&L to capture it.</p>';
+      show($("pnlModal"), true);
+    }
+    $("pnlCloseBtn")?.addEventListener("click", () => show($("pnlModal"), false));
+    $("pnlModal")?.addEventListener("click", (e) => { if (e.target === $("pnlModal")) show($("pnlModal"), false); });
 
     // Range picker (defaults to this year) + custom month picker for the form.
     let finMonthPicker = null, finPendingPnl = null;
