@@ -1222,6 +1222,35 @@
     const pnlPctSpan = (v, base, title) => base
       ? `<span class="pnlp"${title ? ` title="${escapeHtml(title)}"` : ""}>${(Math.round(v / base * 1000) / 10).toFixed(1)}%</span>` : "";
 
+    // COGS grouping is the portal's rule, not the upload's: every cost
+    // line is classified by what it is, so statements group consistently
+    // no matter how the source file was structured.
+    function cogsGroupOf(label) {
+      const l = (label || "").toLowerCase();
+      if (/comp|discount/.test(l)) return "Comps & Discounts";
+      if (/wage|hourly|salar|payroll|labor|barback|bartender|server|host|kitchen|security/.test(l)) return "Wages & Labor";
+      if (/liquor|beer|wine/.test(l)) return "Liquor, Beer & Wine";
+      if (/food/.test(l)) return "Food";
+      return null; // sits directly in the section
+    }
+    // Bucket a section's lines: grouped lines merge by name in first-seen
+    // order; ungrouped runs keep their place in the statement.
+    function pnlBucket(lines, isCogs) {
+      const groups = [];
+      for (const l of lines) {
+        const g = isCogs ? cogsGroupOf(l.label) : (l.group || null);
+        if (g === null) {
+          const last = groups[groups.length - 1];
+          if (last && last.name === null) last.lines.push(l);
+          else groups.push({ name: null, lines: [l] });
+        } else {
+          let grp = groups.find((x) => x.name === g);
+          if (grp) grp.lines.push(l); else groups.push({ name: g, lines: [l] });
+        }
+      }
+      return groups;
+    }
+
     // "View P&L": one month's statement, laid out like the uploaded
     // QuickBooks P&L — sub-account groups with their own totals, "Total
     // for" rows, Gross Profit after COGS, Net Operating Income after
@@ -1248,16 +1277,10 @@
         const secTot = s.lines.reduce((a, l) => a + (Number(l.amount) || 0), 0);
         const isCogs = pnlIsCogsSec(s.name);
         rowsHtml += `<tr class="pnl-sechead"><td colspan="3">${escapeHtml(s.name)}</td></tr>`;
-        // Sub-account groups (e.g. "510 COGS -Liquor Beer Wine") render as
-        // a nested block with their own "Total for" row, in statement
-        // order — consecutive lines sharing a group form one block.
-        const groups = [];
-        for (const l of s.lines) {
-          const g = l.group || null;
-          const last = groups[groups.length - 1];
-          if (last && last.name === g) last.lines.push(l);
-          else groups.push({ name: g, lines: [l] });
-        }
+        // Groups render as nested blocks with their own "Total for" row.
+        // COGS groups by the portal's classification; other sections use
+        // the statement's own nesting when captured.
+        const groups = pnlBucket(s.lines, isCogs);
         const lineRow = (l, indent) => {
           let base = gross, title = "of gross income";
           if (isCogs) {
@@ -1322,10 +1345,14 @@
         const m = String(r.period).slice(0, 7);
         for (const l of r.pnl.lines) {
           const sec = getSec(l.section || "Other");
+          // COGS groups by the portal's classification, independent of
+          // how the upload was structured; other sections keep the
+          // statement's own nesting when captured.
+          const gName = pnlIsCogsSec(l.section) ? cogsGroupOf(l.label) : (l.group || null);
           let holder;
-          if (l.group) {
-            let grp = sec.items.find((x) => x.type === "group" && x.name === l.group);
-            if (!grp) sec.items.push(grp = { type: "group", name: l.group, accts: [] });
+          if (gName) {
+            let grp = sec.items.find((x) => x.type === "group" && x.name === gName);
+            if (!grp) sec.items.push(grp = { type: "group", name: gName, accts: [] });
             holder = grp.accts.find((x) => x.label === l.label);
             if (!holder) grp.accts.push(holder = { label: l.label, vals: {} });
           } else {
