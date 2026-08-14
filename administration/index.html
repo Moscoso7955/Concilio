@@ -1272,8 +1272,13 @@
         for (const grp of groups) {
           if (!grp.name) { for (const l of grp.lines) rowsHtml += lineRow(l, "pnl-acct"); continue; }
           const gTot = grp.lines.reduce((a, l) => a + (Number(l.amount) || 0), 0);
-          rowsHtml += `<tr><td class="pnl-acct" style="font-weight:600;">${escapeHtml(grp.name)}</td><td></td><td></td></tr>`;
-          for (const l of grp.lines) rowsHtml += lineRow(l, "pnl-acct2");
+          // A parent account can carry its own amount on its header row
+          // (e.g. "520 COGS -Wages" $461.37) alongside its children.
+          const own = grp.lines.find((l) => (l.label || "") === grp.name);
+          rowsHtml += own
+            ? `<tr><td class="pnl-acct" style="font-weight:600;">${escapeHtml(grp.name)}</td><td class="num">${money(own.amount)}</td>${pctCell(Number(own.amount) || 0, gross, "of gross income")}</tr>`
+            : `<tr><td class="pnl-acct" style="font-weight:600;">${escapeHtml(grp.name)}</td><td></td><td></td></tr>`;
+          for (const l of grp.lines) if (l !== own) rowsHtml += lineRow(l, "pnl-acct2");
           rowsHtml += `<tr class="pnl-grptotal"><td class="pnl-acct">Total for ${escapeHtml(grp.name)}</td><td class="num">${money(gTot)}</td>${pctCell(gTot, gross, "of gross income")}</tr>`;
         }
         rowsHtml += `<tr class="pnl-totalrow"><td>Total for ${escapeHtml(s.name)}</td><td class="num">${money(secTot)}</td>${pctCell(secTot, gross, "of gross income")}</tr>`;
@@ -1363,8 +1368,15 @@
           if (it.type === "acct") { body += acctRow(it, "pnl-acct", null); continue; }
           const gAgg = {};
           it.accts.forEach((a) => addTo(gAgg, a.vals));
-          body += `<tr><td class="pnl-acct" style="font-weight:600;">${escapeHtml(it.name)}</td><td colspan="${span - 1}"></td></tr>`;
-          for (const a of it.accts) body += acctRow(a, "pnl-acct2", it.name);
+          // Parent accounts may carry their own amount on the header row.
+          const own = it.accts.find((a) => a.label === it.name);
+          if (own) {
+            addTo(secAgg, own.vals);
+            body += `<tr><td class="pnl-acct" style="font-weight:600;">${escapeHtml(it.name)}</td>${totCells(rowOf(own.vals), grossTot, "of gross income", false)}</tr>`;
+          } else {
+            body += `<tr><td class="pnl-acct" style="font-weight:600;">${escapeHtml(it.name)}</td><td colspan="${span - 1}"></td></tr>`;
+          }
+          for (const a of it.accts) if (a !== own) body += acctRow(a, "pnl-acct2", it.name);
           body += `<tr class="pnl-grptotal"><td class="pnl-acct">Total for ${escapeHtml(it.name)}</td>${totCells(gAgg, grossTot, "of gross income", true)}</tr>`;
         }
         body += `<tr class="pnl-totalrow"><td>Total for ${escapeHtml(sec.name)}</td>${totCells(secAgg, grossTot, "of gross income", true)}</tr>`;
