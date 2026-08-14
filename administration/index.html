@@ -157,15 +157,19 @@
     .modal { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; width: 100%; max-width: 460px; padding: 1.25rem; max-height: 90vh; overflow-y: auto; }
     .modal h3 { margin-bottom: 1rem; }
 
-    .pnlp { display: block; font-size: 0.68rem; color: var(--muted); line-height: 1.2; font-variant-numeric: tabular-nums; }
-
     /* ---------- Per-month P&L statement (View P&L modal) ---------- */
-    .pnl-sec { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); margin: 0.9rem 0 0.3rem; }
-    .pnl-sec:first-child { margin-top: 0; }
-    .pnl-line { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; padding: 0.22rem 0; font-size: 0.9rem; }
-    .pnl-line span:last-child { font-variant-numeric: tabular-nums; white-space: nowrap; text-align: right; }
-    .pnl-total { border-top: 1px solid var(--border); font-weight: 650; }
-    .pnl-net { border-top: 1px solid var(--border); margin-top: 0.9rem; padding-top: 0.55rem; font-weight: 700; font-size: 0.95rem; }
+    .pnl-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    .pnl-table th { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); text-align: left; padding: 0.25rem 0.4rem 0.4rem; border-bottom: 1px solid var(--border); font-weight: 600; }
+    .pnl-table th.num { text-align: right; }
+    .pnl-table td { padding: 0.28rem 0.4rem; }
+    .pnl-table td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .pnl-sechead td { font-weight: 700; padding-top: 0.75rem; }
+    .pnl-acct { padding-left: 1.4rem !important; }
+    .pnl-totalrow td { font-weight: 650; border-top: 1px solid var(--border); }
+    .pnl-netrow td { font-weight: 700; border-top: 1px solid var(--border); font-size: 0.95rem; padding-top: 0.45rem; }
+    .pnl-pct { color: var(--muted); font-size: 0.8rem; width: 3.8rem; }
+    .pnl-acct2 { padding-left: 2.7rem !important; }
+    .pnl-grptotal td { font-weight: 600; }
     .inline-select { background: var(--panel-2); border: 1px solid var(--border); color: var(--text); border-radius: 7px; padding: 0.25rem 0.4rem; font-size: 0.85rem; font-family: inherit; }
     a.filelink { color: var(--accent); text-decoration: none; }
     a.filelink:hover { text-decoration: underline; }
@@ -559,7 +563,8 @@
 
   <div class="modal-overlay hidden" id="pnlModal">
     <div class="modal" style="max-width:540px;">
-      <h3 id="pnlModalTitle">P&amp;L</h3>
+      <h3 id="pnlModalTitle" style="margin-bottom:0.1rem;">P&amp;L</h3>
+      <div class="muted" id="pnlModalSub" style="margin-bottom:1rem;font-size:0.85rem;"></div>
       <div id="pnlModalBody"></div>
       <div class="row" style="align-items:center;margin-top:1rem;">
         <button class="btn btn--ghost" id="pnlCloseBtn" style="flex:0 0 auto;">Close</button>
@@ -1140,21 +1145,28 @@
       .split(/[^a-z/]+/).filter((t) => t && !PNL_STOP.has(t));
     function pnlMatchIncome(label, incomeItems) {
       const tk = pnlTokens(label); if (!tk.length) return null;
-      let best = null, bestN = 0;
+      let best = null, bestN = 0, ties = 0;
       for (const inc of incomeItems) {
         const n = pnlTokens(inc.label).filter((t) => tk.includes(t)).length;
-        if (n > bestN) { best = inc; bestN = n; }
+        if (n > bestN) { best = inc; bestN = n; ties = 1; }
+        else if (n === bestN && n > 0) ties++;
       }
-      return best;
+      // Ambiguous (e.g. "Comps- Liquor Beer Wine" matching three sales
+      // lines equally) → no single base; caller falls back to gross.
+      return ties === 1 ? best : null;
     }
     const pnlPctSpan = (v, base, title) => base
       ? `<span class="pnlp"${title ? ` title="${escapeHtml(title)}"` : ""}>${(Math.round(v / base * 1000) / 10).toFixed(1)}%</span>` : "";
 
-    // "View P&L": one month's statement in a modal, with percentages.
+    // "View P&L": one month's statement, laid out like the uploaded
+    // QuickBooks P&L — sub-account groups with their own totals, "Total
+    // for" rows, Gross Profit after COGS, Net Operating Income after
+    // Expenses — with the percentage in its own right-hand column.
     function openPnlModal(finId) {
       const r = repFin.find((x) => x.id === finId); if (!r) return;
       const u = repUnits.find((x) => x.id === r.entity_id);
-      $("pnlModalTitle").textContent = `${u ? u.name + " — " : ""}${monthLabel(r.period)}`;
+      $("pnlModalTitle").textContent = u ? u.name : "P&L";
+      $("pnlModalSub").textContent = "Profit and Loss · " + monthLabel(r.period);
       const lines = (r.pnl && Array.isArray(r.pnl.lines)) ? r.pnl.lines : [];
       const secs = [];
       for (const l of lines) {
@@ -1164,23 +1176,60 @@
       }
       const incomeLines = lines.filter((l) => pnlIsIncomeSec(l.section));
       const gross = incomeLines.reduce((a, l) => a + (Number(l.amount) || 0), 0);
-      let html = "";
+      const pctCell = (v, base, title) =>
+        `<td class="num pnl-pct"${title ? ` title="${escapeHtml(title)}"` : ""}>${base ? (Math.round(v / base * 1000) / 10).toFixed(1) + "%" : ""}</td>`;
+      let rowsHtml = "", incomeTotal = 0, cogsTotal = 0, expenseTotal = 0, sawCogs = false, sawExpenses = false;
+      const isExpensesSec = (n) => /^expenses?$/i.test((n || "").trim());
       for (const s of secs) {
-        const tot = s.lines.reduce((a, l) => a + (Number(l.amount) || 0), 0);
+        const secTot = s.lines.reduce((a, l) => a + (Number(l.amount) || 0), 0);
         const isCogs = pnlIsCogsSec(s.name);
-        html += `<div class="pnl-sec">${escapeHtml(s.name)}</div>`;
+        rowsHtml += `<tr class="pnl-sechead"><td colspan="3">${escapeHtml(s.name)}</td></tr>`;
+        // Sub-account groups (e.g. "510 COGS -Liquor Beer Wine") render as
+        // a nested block with their own "Total for" row, in statement
+        // order — consecutive lines sharing a group form one block.
+        const groups = [];
         for (const l of s.lines) {
+          const g = l.group || null;
+          const last = groups[groups.length - 1];
+          if (last && last.name === g) last.lines.push(l);
+          else groups.push({ name: g, lines: [l] });
+        }
+        const lineRow = (l, indent) => {
           let base = gross, title = "of gross income";
           if (isCogs) {
-            const inc = pnlMatchIncome(l.label, incomeLines);
+            // Match on the account's own name; the group name only as a
+            // fallback (so Beer Purchases finds Beer Sales, not the
+            // group's first word).
+            const inc = pnlMatchIncome(l.label, incomeLines) || (l.group ? pnlMatchIncome(l.group, incomeLines) : null);
             if (inc) { base = Number(inc.amount) || 0; title = "of " + inc.label; }
           }
-          html += `<div class="pnl-line"><span>${escapeHtml(l.label)}</span><span>${money(l.amount)}${pnlPctSpan(Number(l.amount) || 0, base, title)}</span></div>`;
+          return `<tr><td class="${indent}">${escapeHtml(l.label)}</td><td class="num">${money(l.amount)}</td>${pctCell(Number(l.amount) || 0, base, title)}</tr>`;
+        };
+        for (const grp of groups) {
+          if (!grp.name) { for (const l of grp.lines) rowsHtml += lineRow(l, "pnl-acct"); continue; }
+          const gTot = grp.lines.reduce((a, l) => a + (Number(l.amount) || 0), 0);
+          rowsHtml += `<tr><td class="pnl-acct" style="font-weight:600;">${escapeHtml(grp.name)}</td><td></td><td></td></tr>`;
+          for (const l of grp.lines) rowsHtml += lineRow(l, "pnl-acct2");
+          rowsHtml += `<tr class="pnl-grptotal"><td class="pnl-acct">Total for ${escapeHtml(grp.name)}</td><td class="num">${money(gTot)}</td>${pctCell(gTot, gross, "of gross income")}</tr>`;
         }
-        html += `<div class="pnl-line pnl-total"><span>Total ${escapeHtml(s.name)}</span><span>${money(tot)}${pnlPctSpan(tot, gross, "of gross income")}</span></div>`;
+        rowsHtml += `<tr class="pnl-totalrow"><td>Total for ${escapeHtml(s.name)}</td><td class="num">${money(secTot)}</td>${pctCell(secTot, gross, "of gross income")}</tr>`;
+        if (pnlIsIncomeSec(s.name)) incomeTotal += secTot;
+        if (isCogs) {
+          sawCogs = true; cogsTotal += secTot;
+          const gp = incomeTotal - cogsTotal;
+          rowsHtml += `<tr class="pnl-totalrow"><td>Gross Profit</td><td class="num">${money(gp)}</td>${pctCell(gp, gross, "of gross income")}</tr>`;
+        }
+        if (isExpensesSec(s.name)) {
+          sawExpenses = true; expenseTotal += secTot;
+          const noi = incomeTotal - cogsTotal - expenseTotal;
+          rowsHtml += `<tr class="pnl-totalrow"><td>Net Operating Income</td><td class="num"><span class="${noi < 0 ? "v neg" : "v pos"}" style="font-size:inherit;">${money(noi)}</span></td>${pctCell(noi, gross, "of gross income")}</tr>`;
+        }
       }
-      html += `<div class="pnl-line pnl-net"><span>Net income</span><span><span class="${Number(r.net) < 0 ? "v neg" : "v pos"}" style="font-size:inherit;">${money(r.net)}</span>${pnlPctSpan(Number(r.net) || 0, gross, "of gross income")}</span></div>`;
-      $("pnlModalBody").innerHTML = html || '<p class="muted">No line detail stored for this month — re-import its P&L to capture it.</p>';
+      const net = Number(r.net) || 0;
+      rowsHtml += `<tr class="pnl-netrow"><td>Net Income</td><td class="num"><span class="${net < 0 ? "v neg" : "v pos"}" style="font-size:inherit;">${money(net)}</span></td>${pctCell(net, gross, "of gross income")}</tr>`;
+      $("pnlModalBody").innerHTML = lines.length
+        ? `<table class="pnl-table"><thead><tr><th></th><th class="num">Total</th><th class="num">%</th></tr></thead><tbody>${rowsHtml}</tbody></table>`
+        : '<p class="muted">No line detail stored for this month — re-import its P&L to capture it.</p>';
       show($("pnlModal"), true);
     }
     $("pnlCloseBtn")?.addEventListener("click", () => show($("pnlModal"), false));
