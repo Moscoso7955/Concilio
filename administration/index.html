@@ -1233,21 +1233,37 @@
       if (/food/.test(l)) return "Food";
       return null; // sits directly in the section
     }
-    // Bucket a section's lines: grouped lines merge by name in first-seen
-    // order; ungrouped runs keep their place in the statement.
+    // Bucket a section's lines: grouped lines merge by name; ungrouped
+    // lines stand alone. Everything then sorts like the QuickBooks sheet
+    // — by account number, with groups keyed at their family number.
+    const acctNum = (s) => { const m = /^\s*(\d{3,4})/.exec(s || ""); return m ? +m[1] : null; };
+    const COGS_GROUP_NUM = { "Food": 501, "Liquor, Beer & Wine": 510, "Wages & Labor": 520, "Comps & Discounts": 590 };
+    function sectionRank(name) {
+      const n = (name || "").trim().toLowerCase();
+      if (/^other income/.test(n)) return 3;
+      if (/^other expense/.test(n)) return 4;
+      if (pnlIsCogsSec(name)) return 1;
+      if (/income|sales|revenue/.test(n)) return 0;
+      if (/^expenses?$/.test(n)) return 2;
+      return 5;
+    }
     function pnlBucket(lines, isCogs) {
       const groups = [];
       for (const l of lines) {
         const g = isCogs ? cogsGroupOf(l.label) : (l.group || null);
-        if (g === null) {
-          const last = groups[groups.length - 1];
-          if (last && last.name === null) last.lines.push(l);
-          else groups.push({ name: null, lines: [l] });
-        } else {
+        if (g === null) groups.push({ name: null, lines: [l] });
+        else {
           let grp = groups.find((x) => x.name === g);
           if (grp) grp.lines.push(l); else groups.push({ name: g, lines: [l] });
         }
       }
+      const key = (g) => g.name === null
+        ? (acctNum(g.lines[0].label) ?? 997)
+        : (COGS_GROUP_NUM[g.name] ?? acctNum(g.name) ?? Math.min(...g.lines.map((l) => acctNum(l.label) ?? 996)));
+      groups.forEach((g, i) => g._i = i);
+      groups.sort((a, b) => key(a) - key(b) || a._i - b._i);
+      for (const g of groups) if (g.name)
+        g.lines.sort((a, b) => ((acctNum(a.label) ?? 9999) - (acctNum(b.label) ?? 9999)) || String(a.label).localeCompare(String(b.label)));
       return groups;
     }
 
@@ -1271,11 +1287,15 @@
       const gross = incomeLines.reduce((a, l) => a + (Number(l.amount) || 0), 0);
       const pctCell = (v, base, title) =>
         `<td class="num pnl-pct"${title ? ` title="${escapeHtml(title)}"` : ""}>${base ? (Math.round(v / base * 1000) / 10).toFixed(1) + "%" : ""}</td>`;
-      let rowsHtml = "", incomeTotal = 0, cogsTotal = 0, expenseTotal = 0, sawCogs = false, sawExpenses = false;
+      secs.sort((a, b) => sectionRank(a.name) - sectionRank(b.name));
+      let rowsHtml = "", incomeTotal = 0, cogsTotal = 0, expenseTotal = 0, otherInc = 0, otherExp = 0, sawOther = false;
       const isExpensesSec = (n) => /^expenses?$/i.test((n || "").trim());
       for (const s of secs) {
         const secTot = s.lines.reduce((a, l) => a + (Number(l.amount) || 0), 0);
         const isCogs = pnlIsCogsSec(s.name);
+        const rank = sectionRank(s.name);
+        if (rank === 3) { otherInc += secTot; sawOther = true; }
+        if (rank === 4) { otherExp += secTot; sawOther = true; }
         rowsHtml += `<tr class="pnl-sechead"><td colspan="3">${escapeHtml(s.name)}</td></tr>`;
         // Groups render as nested blocks with their own "Total for" row.
         // COGS groups by the portal's classification; other sections use
@@ -1316,6 +1336,10 @@
           const noi = incomeTotal - cogsTotal - expenseTotal;
           rowsHtml += `<tr class="pnl-totalrow"><td>Net Operating Income</td><td class="num"><span class="${noi < 0 ? "v neg" : "v pos"}" style="font-size:inherit;">${money(noi)}</span></td>${pctCell(noi, gross, "of gross income")}</tr>`;
         }
+      }
+      if (sawOther) {
+        const nei = otherInc - otherExp;
+        rowsHtml += `<tr class="pnl-totalrow"><td>Net Other Income</td><td class="num"><span class="${nei < 0 ? "v neg" : "v pos"}" style="font-size:inherit;">${money(nei)}</span></td>${pctCell(nei, gross, "of gross income")}</tr>`;
       }
       const net = Number(r.net) || 0;
       rowsHtml += `<tr class="pnl-netrow"><td>Net Income</td><td class="num"><span class="${net < 0 ? "v neg" : "v pos"}" style="font-size:inherit;">${money(net)}</span></td>${pctCell(net, gross, "of gross income")}</tr>`;
@@ -1362,6 +1386,18 @@
           holder.vals[m] = (holder.vals[m] || 0) + (Number(l.amount) || 0);
         }
       }
+      // Order like the sheet: sections in statement order, accounts and
+      // groups by account number within each section.
+      sections.sort((a, b) => sectionRank(a.name) - sectionRank(b.name));
+      for (const sec of sections) {
+        const key = (it) => it.type === "group"
+          ? (COGS_GROUP_NUM[it.name] ?? acctNum(it.name) ?? Math.min(...it.accts.map((a) => acctNum(a.label) ?? 996)))
+          : (acctNum(it.label) ?? 997);
+        sec.items.forEach((it, i) => it._i = i);
+        sec.items.sort((a, b) => key(a) - key(b) || a._i - b._i);
+        for (const it of sec.items) if (it.type === "group")
+          it.accts.sort((a, b) => ((acctNum(a.label) ?? 9999) - (acctNum(b.label) ?? 9999)) || String(a.label).localeCompare(String(b.label)));
+      }
       const sumVals = (vals) => months.reduce((s, m) => s + (vals[m] || 0), 0);
       const allIncomeAccts = [];
       for (const sec of sections) if (pnlIsIncomeSec(sec.name))
@@ -1376,7 +1412,7 @@
       };
       const rowOf = (vals) => { const o = {}; for (const m of months) o[m] = vals[m] || 0; return o; };
       const addTo = (agg, vals) => { for (const m of months) agg[m] = (agg[m] || 0) + (vals[m] || 0); };
-      let body = "", incomeAgg = {}, cogsAgg = {}, expenseAgg = {};
+      let body = "", incomeAgg = {}, cogsAgg = {}, expenseAgg = {}, otherIncAgg = {}, otherExpAgg = {}, sawOther = false;
       const span = months.length + 3;
       for (const sec of sections) {
         const isCogs = pnlIsCogsSec(sec.name);
@@ -1419,6 +1455,14 @@
           for (const m of months) noi[m] = (noi[m] || 0) - (cogsAgg[m] || 0) - (expenseAgg[m] || 0);
           body += `<tr class="pnl-totalrow"><td>Net Operating Income</td>${totCells(noi, grossTot, "of gross income", true)}</tr>`;
         }
+        const rank = sectionRank(sec.name);
+        if (rank === 3) { addTo(otherIncAgg, secAgg); sawOther = true; }
+        if (rank === 4) { addTo(otherExpAgg, secAgg); sawOther = true; }
+      }
+      if (sawOther) {
+        const nei = {}; addTo(nei, otherIncAgg);
+        for (const m of months) nei[m] = (nei[m] || 0) - (otherExpAgg[m] || 0);
+        body += `<tr class="pnl-totalrow"><td>Net Other Income</td>${totCells(nei, grossTot, "of gross income", true)}</tr>`;
       }
       const netVals = {};
       for (const r of withPnl) netVals[String(r.period).slice(0, 7)] = Number(r.net) || 0;
