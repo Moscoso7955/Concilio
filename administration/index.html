@@ -103,6 +103,10 @@
 
     /* ---------- Tables ---------- */
     .table-wrap, #pnlModalBody { overflow-x: auto; }
+    /* Documents: long titles wrap, descriptions truncate to one line
+       (full text on hover) — actions stay visible without side-scrolling. */
+    #docBody td:first-child { white-space: normal; max-width: 19rem; }
+    .doc-desc { display: block; max-width: 19rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     /* Keep a visible scrollbar so wide tables read as scrollable, not cut off. */
     .table-wrap::-webkit-scrollbar, #pnlModalBody::-webkit-scrollbar { height: 8px; }
     .table-wrap::-webkit-scrollbar-thumb, #pnlModalBody::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
@@ -1809,7 +1813,7 @@
       for (const d of rows) {
         const tr = document.createElement("tr");
         tr.innerHTML =
-          `<td><strong>${escapeHtml(d.title)}</strong>${d.description ? `<br><span class="muted">${escapeHtml(d.description)}</span>` : ""}</td>
+          `<td><strong>${escapeHtml(d.title)}</strong>${d.description ? `<span class="muted doc-desc" title="${escapeHtml(d.description)}">${escapeHtml(d.description)}</span>` : ""}</td>
            <td>${escapeHtml(d.category || "")}</td>
            <td>${docScopeLabel(d)}</td>
            <td title="Uploaded ${new Date(d.created_at).toLocaleDateString()}">${d.doc_date ? new Date(d.doc_date + "T00:00:00").toLocaleDateString() : new Date(d.created_at).toLocaleDateString()}</td>
