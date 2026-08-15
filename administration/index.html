@@ -6,6 +6,9 @@
   <meta name="robots" content="noindex, nofollow">
   <title>Callidus Co. — Owner Portal</title>
   <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="manifest" href="/administration/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png">
+  <meta name="theme-color" content="#111111">
   <style>
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
     :root {
@@ -228,6 +231,24 @@
     .btn--google:hover { background: #f1f5f9; }
     .divider-or { display: flex; align-items: center; gap: 0.6rem; color: var(--muted); font-size: 0.78rem; margin: 1rem 0; }
     .divider-or::before, .divider-or::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+
+    /* ---------- Small screens ---------- */
+    @media (max-width: 640px) {
+      .shell { padding: 0.75rem 0.75rem 3rem; }
+      .tabs { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+      .tabs::-webkit-scrollbar { display: none; }
+      .tab { white-space: nowrap; flex: 0 0 auto; }
+      .stats { grid-template-columns: repeat(2, 1fr); gap: 0.6rem; }
+      .stat { padding: 0.8rem 0.9rem; }
+      .stat .v { font-size: 1.15rem; }
+      .section-card { padding: 0.9rem; border-radius: 12px; }
+      .unit-grid { grid-template-columns: 1fr; }
+      .modal { padding: 1rem; max-height: 94vh; }
+      .modal-overlay { padding: 0.5rem; align-items: flex-start; }
+      th, td { padding: 0.45rem 0.5rem; font-size: 0.84rem; }
+      .topbar { gap: 0.5rem; }
+      .gpane { width: 100%; max-width: 100%; }
+    }
   </style>
 </head>
 <body>
@@ -553,6 +574,7 @@
       <div class="tabs" style="margin-bottom:1rem;">
         <button class="tab active" data-stab="users">Users</button>
         <button class="tab" data-stab="roles">Roles</button>
+        <button class="tab" data-stab="activity">Activity</button>
       </div>
 
       <div id="settingsUsersPane">
@@ -578,6 +600,11 @@
           <button class="btn" id="srAddBtn" style="flex:0 0 auto;">Add role</button>
           <span class="muted" id="srAddStatus"></span>
         </div>
+      </div>
+
+      <div id="settingsActivityPane" class="hidden">
+        <p class="muted" style="margin-bottom:0.75rem;">Who signed in and what they downloaded — most recent first.</p>
+        <div class="table-wrap" id="saList"><p class="muted">Loading…</p></div>
       </div>
       <div class="row" style="align-items:center;margin-top:1rem;">
         <button class="btn btn--ghost" id="settingsCloseBtn" style="flex:0 0 auto;">Close</button>
@@ -703,7 +730,37 @@
       document.querySelectorAll("[data-stab]").forEach((x) => x.classList.toggle("active", x === b));
       show($("settingsUsersPane"), b.dataset.stab === "users");
       show($("settingsRolesPane"), b.dataset.stab === "roles");
+      show($("settingsActivityPane"), b.dataset.stab === "activity");
+      if (b.dataset.stab === "activity") loadActivity();
     }));
+
+    /* ---------------- Settings: activity log (admin) ---------------- */
+    // Best-effort writes: never let logging break sign-in or downloads
+    // (e.g. before the access_log migration has run).
+    async function logAccess(event, detail) {
+      try {
+        const uid = (await supabase.auth.getUser()).data?.user?.id || null;
+        await supabase.from("access_log").insert({ user_id: uid, email: currentEmail, event, detail: detail || null });
+      } catch (_) {}
+    }
+
+    async function loadActivity() {
+      const box = $("saList"); if (!box) return;
+      const { data, error } = await supabase.from("access_log")
+        .select("email, event, detail, created_at")
+        .order("created_at", { ascending: false }).limit(100);
+      if (error) { box.innerHTML = '<p class="muted">No activity yet.</p>'; return; }
+      if (!data || !data.length) { box.innerHTML = '<p class="muted">No activity yet.</p>'; return; }
+      box.innerHTML =
+        `<table><thead><tr><th>When</th><th>Who</th><th>What</th></tr></thead><tbody>` +
+        data.map((r) => {
+          const when = new Date(r.created_at).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+          const what = r.event === "download"
+            ? `Downloaded <strong>${escapeHtml(r.detail?.title || "a document")}</strong>`
+            : "Signed in";
+          return `<tr><td>${when}</td><td>${escapeHtml(r.email || "—")}</td><td>${what}</td></tr>`;
+        }).join("") + "</tbody></table>";
+    }
 
     // Send the branded invite email (or a fresh sign-in link for people
     // who already have an account) via the invite-user function.
@@ -958,6 +1015,13 @@
       if (tabs.includes("invoices")) loadInvoices();
       if (tabs.includes("coa")) loadChart();
       if (isAdmin()) loadSite();
+      // One sign-in event per browser session, not per reload.
+      try {
+        if (!sessionStorage.getItem("callidus_logged_in")) {
+          sessionStorage.setItem("callidus_logged_in", "1");
+          logAccess("sign_in");
+        }
+      } catch (_) { logAccess("sign_in"); }
       // Everyone gets the graph — it powers "Your share" in Reports, and
       // RLS scopes non-staff to their own box plus everything downstream.
       if (!isAdmin()) { const h = $("ownHint"); if (h) h.textContent = "Your ownership — the boxes you own and everything downstream. Click a box for details. Ctrl/⌘+scroll to zoom."; }
@@ -1708,12 +1772,12 @@
            <td>${new Date(d.created_at).toLocaleDateString()}</td>
            <td class="num">${fmtSize(d.size_bytes)}</td>
            <td class="num">
-             <button class="btn btn--ghost btn--sm" data-dl="${d.file_path}" data-name="${escapeHtml(d.file_name)}">Download</button>
+             <button class="btn btn--ghost btn--sm" data-dl="${d.file_path}" data-dltitle="${escapeHtml(d.title)}" data-name="${escapeHtml(d.file_name)}">Download</button>
              ${isAdmin() ? `<button class="btn btn--danger btn--sm" data-deldoc="${d.id}" data-path="${d.file_path}">Delete</button>` : ""}
            </td>`;
         body.appendChild(tr);
       }
-      body.querySelectorAll("[data-dl]").forEach((b) => b.addEventListener("click", () => downloadDoc(b.dataset.dl)));
+      body.querySelectorAll("[data-dl]").forEach((b) => b.addEventListener("click", () => downloadDoc(b.dataset.dl, b.dataset.dltitle)));
       body.querySelectorAll("[data-deldoc]").forEach((b) => b.addEventListener("click", () => deleteDoc(b.dataset.deldoc, b.dataset.path)));
       // Admin pickers: units from the graph, people from the allowlist.
       if (isAdmin()) {
@@ -1738,9 +1802,10 @@
 
     $("doc_vis")?.addEventListener("change", () => show($("docPeopleField"), $("doc_vis").value === "people"));
 
-    async function downloadDoc(path) {
+    async function downloadDoc(path, title) {
       const { data, error } = await supabase.storage.from(cfg.BUCKET_DOCS || "documents").createSignedUrl(path, 120);
       if (error || !data) { alert("Could not generate download link."); return; }
+      logAccess("download", { title: title || path });
       window.open(data.signedUrl, "_blank", "noopener");
     }
 
