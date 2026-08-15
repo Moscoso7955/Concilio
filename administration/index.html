@@ -414,6 +414,7 @@
         <div class="row">
           <div style="flex:2;"><label>Title</label><input type="text" id="doc_title" placeholder="e.g. Employee Handbook"></div>
           <div><label>Category</label><input type="text" id="doc_category" placeholder="e.g. HR, Legal, SOP"></div>
+          <div><label>Document date</label><input type="date" id="doc_date"></div>
         </div>
         <div class="field" style="margin-top:0.75rem;"><label>Description</label><input type="text" id="doc_description" placeholder="Optional short summary"></div>
         <div class="row" style="margin-top:0.25rem;">
@@ -430,18 +431,20 @@
           <div id="docPeople" style="display:flex;flex-wrap:wrap;gap:0.25rem 1.1rem;"></div>
         </div>
         <div class="row" style="align-items:center;margin-top:0.75rem;">
-          <button class="btn" id="docUploadBtn" style="flex:0 0 auto;">Choose file &amp; upload…</button>
+          <button class="btn" id="docUploadBtn" style="flex:0 0 auto;">Choose file…</button>
+          <button class="btn hidden" id="docSaveBtn" style="flex:0 0 auto;">Save document</button>
+          <button class="btn btn--ghost hidden" id="docCancelBtn" style="flex:0 0 auto;">Cancel</button>
           <input type="file" class="file-input" id="docFileInput">
           <span class="muted" id="docStatus"></span>
         </div>
-        <p class="muted" style="margin-top:0.5rem;">PDF, images, or Office files, stored privately with secure download links. <strong>Unit owners</strong> shares with every partner who has the unit downstream of them (monthly packets, insurance, licenses). <strong>Specific people</strong> is for governance documents like operating agreements — only the people you check (plus staff) ever see it, regardless of ownership. No unit and no people = staff only.</p>
+        <p class="muted" style="margin-top:0.5rem;">Pick a file and AI reads it — title, category, date, description, and unit are pre-filled for you to check before saving. PDF, images, or Office files, stored privately with secure download links. <strong>Unit owners</strong> shares with every partner who has the unit downstream of them (monthly packets, insurance, licenses). <strong>Specific people</strong> is for governance documents like operating agreements — only the people you check (plus staff) ever see it, regardless of ownership. No unit and no people = staff only.</p>
       </div>
 
       <div class="section-card">
         <h2>Documents</h2>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Title</th><th>Category</th><th>Shared with</th><th>Added</th><th class="num">Size</th><th></th></tr></thead>
+            <thead><tr><th>Title</th><th>Category</th><th>Shared with</th><th>Date</th><th class="num">Size</th><th></th></tr></thead>
             <tbody id="docBody"></tbody>
           </table>
         </div>
@@ -1809,7 +1812,7 @@
           `<td><strong>${escapeHtml(d.title)}</strong>${d.description ? `<br><span class="muted">${escapeHtml(d.description)}</span>` : ""}</td>
            <td>${escapeHtml(d.category || "")}</td>
            <td>${docScopeLabel(d)}</td>
-           <td>${new Date(d.created_at).toLocaleDateString()}</td>
+           <td title="Uploaded ${new Date(d.created_at).toLocaleDateString()}">${d.doc_date ? new Date(d.doc_date + "T00:00:00").toLocaleDateString() : new Date(d.created_at).toLocaleDateString()}</td>
            <td class="num">${fmtSize(d.size_bytes)}</td>
            <td class="num">
              <button class="btn btn--ghost btn--sm" data-dl="${d.file_path}" data-dltitle="${escapeHtml(d.title)}" data-name="${escapeHtml(d.file_name)}">Download</button>
@@ -1849,15 +1852,67 @@
       window.open(data.signedUrl, "_blank", "noopener");
     }
 
+    // Document intake: picking a file no longer uploads it straight away.
+    // AI reads the document and pre-fills the fields; nothing is stored
+    // until the admin checks the details and hits Save.
+    let docPendingFile = null;
+    function docResetForm() {
+      docPendingFile = null;
+      $("doc_title").value = ""; $("doc_description").value = ""; $("doc_category").value = "";
+      if ($("doc_date")) $("doc_date").value = "";
+      $("docFileInput").value = "";
+      if ($("doc_entity")) $("doc_entity").value = "";
+      if ($("doc_vis")) { $("doc_vis").value = "unit"; show($("docPeopleField"), false); }
+      document.querySelectorAll("[data-docperson]:checked").forEach((c) => c.checked = false);
+      show($("docSaveBtn"), false); show($("docCancelBtn"), false);
+    }
+    async function docAiRead(file) {
+      let session = null;
+      try { session = (await supabase.auth.getSession()).data.session; } catch (_) {}
+      const fd = new FormData(); fd.append("file", file, file.name);
+      const res = await fetch(cfg.SUPABASE_URL + "/functions/v1/doc-extract", {
+        method: "POST",
+        headers: { apikey: cfg.SUPABASE_ANON_KEY, Authorization: "Bearer " + (session?.access_token || cfg.SUPABASE_ANON_KEY) },
+        body: fd,
+      });
+      const data = await res.json();
+      if (!res.ok || data.ok === false) throw new Error(data.error || ("HTTP " + res.status));
+      return data.extracted || {};
+    }
     $("docUploadBtn")?.addEventListener("click", () => $("docFileInput").click());
     $("docFileInput")?.addEventListener("change", async () => {
       const file = $("docFileInput").files[0]; if (!file) return;
+      const st = $("docStatus");
+      docPendingFile = file;
+      show($("docSaveBtn"), true); show($("docCancelBtn"), true);
+      st.textContent = "Reading “" + file.name + "” with AI…";
+      try {
+        const x = await docAiRead(file);
+        // Pre-fill only what the admin hasn't typed themselves.
+        if (x.title && !$("doc_title").value.trim()) $("doc_title").value = x.title;
+        if (x.category && !$("doc_category").value.trim()) $("doc_category").value = x.category;
+        if (x.description && !$("doc_description").value.trim()) $("doc_description").value = x.description;
+        if (x.docDate && $("doc_date") && !$("doc_date").value && /^\d{4}-\d{2}-\d{2}$/.test(x.docDate)) $("doc_date").value = x.docDate;
+        if (x.entityName && $("doc_entity") && !$("doc_entity").value && typeof gEnt !== "undefined") {
+          const want = x.entityName.toLowerCase();
+          const hit = gEnt.find((e) => e.kind === "entity" &&
+            (want.includes(e.name.toLowerCase()) || e.name.toLowerCase().includes(want.replace(/,?\s*(llc|inc|corp|l\.l\.c\.)\.?$/i, "").trim())));
+          if (hit) $("doc_entity").value = hit.id;
+        }
+        st.textContent = "Check the details, then Save.";
+      } catch (e) {
+        st.textContent = "AI couldn't read it (" + (e.message || e) + ") — fill in the details and Save.";
+      }
+    });
+    $("docCancelBtn")?.addEventListener("click", () => { docResetForm(); $("docStatus").textContent = ""; });
+    $("docSaveBtn")?.addEventListener("click", async () => {
+      const file = docPendingFile; if (!file) return;
       const st = $("docStatus");
       const title = $("doc_title").value.trim() || file.name;
       const picked = [...document.querySelectorAll("[data-docperson]:checked")].map((c) => c.value.toLowerCase());
       if ($("doc_vis")?.value === "people" && !picked.length) {
         st.textContent = "Check at least one person, or switch visibility to Unit owners.";
-        $("docFileInput").value = ""; return;
+        return;
       }
       try {
         st.textContent = "Uploading…";
@@ -1868,24 +1923,21 @@
         const row = {
           title, description: $("doc_description").value.trim() || null,
           category: $("doc_category").value.trim() || null,
+          doc_date: $("doc_date")?.value || null,
           entity_id: $("doc_entity")?.value || null,
           recipients: $("doc_vis")?.value === "people" ? picked : null,
           file_path: path, file_name: file.name, mime: file.type || null, size_bytes: file.size,
           uploaded_by: profile.id, uploaded_by_name: profile.full_name || profile.email
         };
         let { error: insErr } = await supabase.from("documents").insert(row);
-        if (insErr && /recipients|entity_id/i.test(insErr.message || "")) {
-          // Migrations 0017/0018 not applied yet — save the file, scope later.
-          delete row.recipients; delete row.entity_id;
+        if (insErr && /recipients|entity_id|doc_date/i.test(insErr.message || "")) {
+          // Migrations 0017/0018/0021 not applied yet — save the file, scope later.
+          delete row.recipients; delete row.entity_id; delete row.doc_date;
           ({ error: insErr } = await supabase.from("documents").insert(row));
         }
         if (insErr) throw insErr;
-        $("doc_title").value = ""; $("doc_description").value = ""; $("doc_category").value = ""; $("docFileInput").value = "";
-        // Full reset — a lingering unit/visibility choice mis-files the next upload.
-        if ($("doc_entity")) $("doc_entity").value = "";
-        if ($("doc_vis")) { $("doc_vis").value = "unit"; show($("docPeopleField"), false); }
-        document.querySelectorAll("[data-docperson]:checked").forEach((c) => c.checked = false);
-        st.textContent = "Uploaded ✓"; loadDocuments();
+        docResetForm();
+        st.textContent = "Saved ✓"; loadDocuments();
       } catch (e) { st.textContent = "Upload failed: " + (e.message || e); }
     });
 

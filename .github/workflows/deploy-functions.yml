@@ -49,3 +49,8 @@ jobs:
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: supabase functions deploy invite-user --project-ref "$SUPABASE_PROJECT_ID" --no-verify-jwt
+
+      - name: Deploy doc-extract (JWT off — does its own auth)
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: supabase functions deploy doc-extract --project-ref "$SUPABASE_PROJECT_ID" --no-verify-jwt
