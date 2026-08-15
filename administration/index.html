@@ -385,19 +385,24 @@
           <div><label>Category</label><input type="text" id="doc_category" placeholder="e.g. HR, Legal, SOP"></div>
         </div>
         <div class="field" style="margin-top:0.75rem;"><label>Description</label><input type="text" id="doc_description" placeholder="Optional short summary"></div>
-        <div class="row" style="align-items:center;">
+        <div class="row" style="margin-top:0.25rem;">
+          <div><label>Unit (optional)</label><select id="doc_entity" class="inline-select" style="width:100%;padding:0.6rem 0.7rem;">
+            <option value="">— No unit: staff only —</option>
+          </select></div>
+        </div>
+        <div class="row" style="align-items:center;margin-top:0.75rem;">
           <button class="btn" id="docUploadBtn" style="flex:0 0 auto;">Choose file &amp; upload…</button>
           <input type="file" class="file-input" id="docFileInput">
           <span class="muted" id="docStatus"></span>
         </div>
-        <p class="muted" style="margin-top:0.5rem;">PDF, images, or Office files. Stored privately — owners download via secure links.</p>
+        <p class="muted" style="margin-top:0.5rem;">PDF, images, or Office files, stored privately with secure download links. Assign a <strong>unit</strong> and every partner with that unit downstream of them sees the document; leave unassigned and it stays between you and your accountants.</p>
       </div>
 
       <div class="section-card">
         <h2>Documents</h2>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Title</th><th>Category</th><th>Added</th><th class="num">Size</th><th></th></tr></thead>
+            <thead><tr><th>Title</th><th>Category</th><th>Shared with</th><th>Added</th><th class="num">Size</th><th></th></tr></thead>
             <tbody id="docBody"></tbody>
           </table>
         </div>
@@ -916,7 +921,7 @@
     // Content is never assignable — it edits the public site.
     const ALL_TABS = ["financials", "memos", "documents", "invoices", "coa", "site", "owners"];
     const ROLE_DEFAULT_TABS = {
-      owner: ["financials", "memos", "owners"],
+      owner: ["financials", "memos", "documents", "owners"],
       accountant: ["financials", "documents", "invoices", "coa"],
     };
     function allowedTabs() {
@@ -1667,6 +1672,15 @@
       if (b < 1048576) return (b / 1024).toFixed(0) + " KB";
       return (b / 1048576).toFixed(1) + " MB";
     }
+    // "Shared with" for a document row: its unit's owners, or staff.
+    function docScopeLabel(d) {
+      if (d.entity_id) {
+        const e = (typeof gEnt !== "undefined" && gEnt.find((x) => x.id === d.entity_id)) || null;
+        return escapeHtml(e ? e.name : "Unit");
+      }
+      return '<span class="muted">Staff only</span>';
+    }
+
     async function loadDocuments() {
       const { data, error } = await supabase.from("documents").select("*").order("created_at", { ascending: false });
       const rows = (!error && data) || [];
@@ -1677,6 +1691,7 @@
         tr.innerHTML =
           `<td><strong>${escapeHtml(d.title)}</strong>${d.description ? `<br><span class="muted">${escapeHtml(d.description)}</span>` : ""}</td>
            <td>${escapeHtml(d.category || "")}</td>
+           <td>${docScopeLabel(d)}</td>
            <td>${new Date(d.created_at).toLocaleDateString()}</td>
            <td class="num">${fmtSize(d.size_bytes)}</td>
            <td class="num">
@@ -1687,6 +1702,17 @@
       }
       body.querySelectorAll("[data-dl]").forEach((b) => b.addEventListener("click", () => downloadDoc(b.dataset.dl)));
       body.querySelectorAll("[data-deldoc]").forEach((b) => b.addEventListener("click", () => deleteDoc(b.dataset.deldoc, b.dataset.path)));
+      // Admin unit picker: entities from the ownership graph.
+      if (isAdmin()) {
+        const es = $("doc_entity");
+        if (es && typeof gEnt !== "undefined") {
+          const keep = es.value;
+          es.innerHTML = '<option value="">— No unit: staff only —</option>' +
+            gEnt.filter((e) => e.kind === "entity").sort((a, b) => String(a.name).localeCompare(String(b.name)))
+              .map((e) => `<option value="${e.id}">${escapeHtml(e.name)}</option>`).join("");
+          if (keep) es.value = keep;
+        }
+      }
     }
 
     async function downloadDoc(path) {
@@ -1706,12 +1732,19 @@
         const path = "docs/" + Date.now() + "-" + Math.random().toString(36).slice(2, 8) + "-" + clean;
         const { error: upErr } = await supabase.storage.from("documents").upload(path, file, { contentType: file.type || undefined });
         if (upErr) throw upErr;
-        const { error: insErr } = await supabase.from("documents").insert({
+        const row = {
           title, description: $("doc_description").value.trim() || null,
           category: $("doc_category").value.trim() || null,
+          entity_id: $("doc_entity")?.value || null,
           file_path: path, file_name: file.name, mime: file.type || null, size_bytes: file.size,
           uploaded_by: profile.id, uploaded_by_name: profile.full_name || profile.email
-        });
+        };
+        let { error: insErr } = await supabase.from("documents").insert(row);
+        if (insErr && /entity_id/i.test(insErr.message || "")) {
+          // Migration 0017 not applied yet — save without the unit.
+          delete row.entity_id;
+          ({ error: insErr } = await supabase.from("documents").insert(row));
+        }
         if (insErr) throw insErr;
         $("doc_title").value = ""; $("doc_description").value = ""; $("doc_category").value = ""; $("docFileInput").value = "";
         st.textContent = "Uploaded ✓"; loadDocuments();
@@ -1805,8 +1838,10 @@
       render();
       if (!gInit) { gInit = true; wireGraphChrome(); }
       // Ownership stakes feed the Reports "Your share" figures, and the
-      // graph usually loads after financials — refresh Reports now.
+      // graph usually loads after financials — refresh Reports now. The
+      // Documents unit names/picker come from the graph too.
       if (repUnit) renderUnitView(); else renderGroupView();
+      if (allowedTabs().includes("documents")) loadDocuments();
     }
 
     function render() { effMemo.clear(); renderNodes(); renderEdges(); }
