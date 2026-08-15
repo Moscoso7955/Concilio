@@ -2395,11 +2395,6 @@
           <div class="field" style="flex:1;"><label>Parent label</label><input type="text" id="pCat" value="${escapeHtml(e.category || "")}" placeholder="Owner / Product / IP"></div>
           <div class="field" style="flex:1;"><label>Sub</label><input type="text" id="pSub" value="${escapeHtml(e.subcategory || "")}" placeholder="SaaS / Patent / LLC"></div>
         </div>
-        <div class="field"><label>Color</label>
-          <div class="color-row"><input type="color" id="pColorP" value="${/^#[0-9a-fA-F]{6}$/.test(e.color || "") ? e.color : "#3b82f6"}">
-            <input type="text" id="pColor" value="${escapeHtml(e.color || "")}" placeholder="#3b82f6" style="max-width:120px;">
-            <button class="iconbtn" id="pColorClear">Clear</button></div>
-        </div>
         <div class="field" id="pEmailField"><label>Email</label><input type="email" id="pEmail" value="${escapeHtml(e.email || "")}" placeholder="optional"></div>
         <div class="field">
           <div style="display:flex;justify-content:space-between;align-items:center;"><label>Links (<span id="pLinkN">${(e.links || []).length}</span>/${MAX_LINKS})</label>
@@ -2442,10 +2437,6 @@
       wireLinks();
       $("pAddLink").addEventListener("click", () => { if (links.length >= MAX_LINKS) return; links.push({ label: "", url: "" }); rerenderLinks(); });
 
-      // Color
-      $("pColorP").addEventListener("input", () => $("pColor").value = $("pColorP").value);
-      $("pColor").addEventListener("input", () => { if (/^#[0-9a-fA-F]{6}$/.test($("pColor").value)) $("pColorP").value = $("pColor").value; });
-      $("pColorClear").addEventListener("click", () => { $("pColor").value = ""; });
       $("paneClose").addEventListener("click", () => { gSel = null; closePane(); renderNodes(); });
       $("pViewAs")?.addEventListener("click", () => { gSel = null; closePane(); renderNodes(); enterViewAs(e.id); });
 
@@ -2453,7 +2444,7 @@
         name: $("pName").value.trim(), kind: $("pKind").value === "entity" ? "entity" : "individual",
         in_reports: $("pKind").value === "entity" && $("pInReports").checked,
         category: $("pCat").value.trim() || null, subcategory: $("pSub").value.trim() || null,
-        email: $("pEmail").value.trim() || null, notes: $("pNotes").value.trim() || null, color: $("pColor").value.trim() || null,
+        email: $("pEmail").value.trim() || null, notes: $("pNotes").value.trim() || null, color: e.color || null,
         links: links.map((l) => ({ label: l.label.trim(), url: l.url.trim() })).filter((l) => l.url || l.label),
       });
       async function persist() {
