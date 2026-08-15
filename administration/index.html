@@ -414,7 +414,7 @@
     <!-- Documents -->
     <section class="tab-panel hidden" data-panel="documents">
       <div class="section-card admin-only hidden">
-        <h2>Upload a document</h2>
+        <h2 id="docFormHead">Upload a document</h2>
         <div class="row">
           <div style="flex:2;"><label>Title</label><input type="text" id="doc_title" placeholder="e.g. Employee Handbook"></div>
           <div><label>Category</label><input type="text" id="doc_category" placeholder="e.g. HR, Legal, SOP"></div>
@@ -1805,9 +1805,11 @@
       return '<span class="muted">Staff only</span>';
     }
 
+    let docRowsCache = [];
     async function loadDocuments() {
       const { data, error } = await supabase.from("documents").select("*").order("created_at", { ascending: false });
       const rows = (!error && data) || [];
+      docRowsCache = rows;
       const body = $("docBody"); body.innerHTML = "";
       show($("docEmpty"), rows.length === 0);
       for (const d of rows) {
@@ -1820,11 +1822,12 @@
            <td class="num">${fmtSize(d.size_bytes)}</td>
            <td class="num">
              <button class="btn btn--ghost btn--sm" data-dl="${d.file_path}" data-dltitle="${escapeHtml(d.title)}" data-name="${escapeHtml(d.file_name)}">Download</button>
-             ${isAdmin() ? `<button class="btn btn--danger btn--sm" data-deldoc="${d.id}" data-path="${d.file_path}">Delete</button>` : ""}
+             ${isAdmin() ? `<button class="btn btn--ghost btn--sm" data-editdoc="${d.id}">Edit</button><button class="btn btn--danger btn--sm" data-deldoc="${d.id}" data-path="${d.file_path}">Delete</button>` : ""}
            </td>`;
         body.appendChild(tr);
       }
       body.querySelectorAll("[data-dl]").forEach((b) => b.addEventListener("click", () => downloadDoc(b.dataset.dl, b.dataset.dltitle)));
+      body.querySelectorAll("[data-editdoc]").forEach((b) => b.addEventListener("click", () => docStartEdit(b.dataset.editdoc)));
       body.querySelectorAll("[data-deldoc]").forEach((b) => b.addEventListener("click", () => deleteDoc(b.dataset.deldoc, b.dataset.path)));
       // Admin pickers: units from the graph, people from the allowlist.
       if (isAdmin()) {
@@ -1864,15 +1867,36 @@
     // the browser's native input (see CLAUDE.md).
     const docDatePicker = ($("doc_date_mount") && window.createDatePicker)
       ? window.createDatePicker({ mount: $("doc_date_mount"), initial: "" }) : null;
+    let docEditingId = null; // editing an existing row (metadata only, file stays)
     function docResetForm() {
-      docPendingFile = null;
+      docPendingFile = null; docEditingId = null;
       $("doc_title").value = ""; $("doc_description").value = ""; $("doc_category").value = "";
       docDatePicker?.setValue("");
       $("docFileInput").value = "";
       if ($("doc_entity")) $("doc_entity").value = "";
       if ($("doc_vis")) { $("doc_vis").value = "unit"; show($("docPeopleField"), false); }
       document.querySelectorAll("[data-docperson]:checked").forEach((c) => c.checked = false);
-      show($("docSaveBtn"), false); show($("docCancelBtn"), false);
+      show($("docSaveBtn"), false); show($("docCancelBtn"), false); show($("docUploadBtn"), true);
+      if ($("docFormHead")) $("docFormHead").textContent = "Upload a document";
+      if ($("docSaveBtn")) $("docSaveBtn").textContent = "Save document";
+    }
+    function docStartEdit(id) {
+      const d = docRowsCache.find((x) => x.id === id); if (!d) return;
+      docResetForm();
+      docEditingId = id;
+      $("doc_title").value = d.title || "";
+      $("doc_category").value = d.category || "";
+      $("doc_description").value = d.description || "";
+      docDatePicker?.setValue(d.doc_date || "");
+      if ($("doc_entity")) $("doc_entity").value = d.entity_id || "";
+      const people = (Array.isArray(d.recipients) && d.recipients.length) ? d.recipients : null;
+      if ($("doc_vis")) { $("doc_vis").value = people ? "people" : "unit"; show($("docPeopleField"), !!people); }
+      if (people) document.querySelectorAll("[data-docperson]").forEach((c) => c.checked = people.includes(c.value.toLowerCase()));
+      if ($("docFormHead")) $("docFormHead").textContent = "Edit document";
+      $("docSaveBtn").textContent = "Save changes";
+      show($("docSaveBtn"), true); show($("docCancelBtn"), true); show($("docUploadBtn"), false);
+      $("docStatus").textContent = "Editing “" + (d.title || d.file_name) + "” — the file itself stays as uploaded.";
+      $("docFormHead").scrollIntoView({ behavior: "smooth", block: "start" });
     }
     async function docAiRead(file) {
       let session = null;
@@ -1890,6 +1914,7 @@
     $("docUploadBtn")?.addEventListener("click", () => $("docFileInput").click());
     $("docFileInput")?.addEventListener("change", async () => {
       const file = $("docFileInput").files[0]; if (!file) return;
+      if (docEditingId) docResetForm(); // picking a file starts a fresh upload
       const st = $("docStatus");
       docPendingFile = file;
       show($("docSaveBtn"), true); show($("docCancelBtn"), true);
@@ -1914,14 +1939,37 @@
     });
     $("docCancelBtn")?.addEventListener("click", () => { docResetForm(); $("docStatus").textContent = ""; });
     $("docSaveBtn")?.addEventListener("click", async () => {
-      const file = docPendingFile; if (!file) return;
       const st = $("docStatus");
-      const title = $("doc_title").value.trim() || file.name;
       const picked = [...document.querySelectorAll("[data-docperson]:checked")].map((c) => c.value.toLowerCase());
       if ($("doc_vis")?.value === "people" && !picked.length) {
         st.textContent = "Check at least one person, or switch visibility to Unit owners.";
         return;
       }
+      // Edit mode: update the row's metadata; the stored file is untouched.
+      if (docEditingId) {
+        try {
+          st.textContent = "Saving…";
+          const upd = {
+            title: $("doc_title").value.trim() || null,
+            description: $("doc_description").value.trim() || null,
+            category: $("doc_category").value.trim() || null,
+            doc_date: docDatePicker?.getValue() || null,
+            entity_id: $("doc_entity")?.value || null,
+            recipients: $("doc_vis")?.value === "people" ? picked : null,
+          };
+          let { error } = await supabase.from("documents").update(upd).eq("id", docEditingId);
+          if (error && /recipients|entity_id|doc_date/i.test(error.message || "")) {
+            delete upd.recipients; delete upd.entity_id; delete upd.doc_date;
+            ({ error } = await supabase.from("documents").update(upd).eq("id", docEditingId));
+          }
+          if (error) throw error;
+          docResetForm();
+          st.textContent = "Saved ✓"; loadDocuments();
+        } catch (e) { st.textContent = "Save failed: " + (e.message || e); }
+        return;
+      }
+      const file = docPendingFile; if (!file) return;
+      const title = $("doc_title").value.trim() || file.name;
       try {
         st.textContent = "Uploading…";
         const clean = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
