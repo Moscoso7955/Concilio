@@ -414,7 +414,7 @@
         <div class="row">
           <div style="flex:2;"><label>Title</label><input type="text" id="doc_title" placeholder="e.g. Employee Handbook"></div>
           <div><label>Category</label><input type="text" id="doc_category" placeholder="e.g. HR, Legal, SOP"></div>
-          <div><label>Document date</label><input type="date" id="doc_date"></div>
+          <div><label>Document date</label><span id="doc_date_mount"></span></div>
         </div>
         <div class="field" style="margin-top:0.75rem;"><label>Description</label><input type="text" id="doc_description" placeholder="Optional short summary"></div>
         <div class="row" style="margin-top:0.25rem;">
@@ -1856,10 +1856,14 @@
     // AI reads the document and pre-fills the fields; nothing is stored
     // until the admin checks the details and hits Save.
     let docPendingFile = null;
+    // Shared dark picker — all date fields use these components, never
+    // the browser's native input (see CLAUDE.md).
+    const docDatePicker = ($("doc_date_mount") && window.createDatePicker)
+      ? window.createDatePicker({ mount: $("doc_date_mount"), initial: "" }) : null;
     function docResetForm() {
       docPendingFile = null;
       $("doc_title").value = ""; $("doc_description").value = ""; $("doc_category").value = "";
-      if ($("doc_date")) $("doc_date").value = "";
+      docDatePicker?.setValue("");
       $("docFileInput").value = "";
       if ($("doc_entity")) $("doc_entity").value = "";
       if ($("doc_vis")) { $("doc_vis").value = "unit"; show($("docPeopleField"), false); }
@@ -1892,7 +1896,7 @@
         if (x.title && !$("doc_title").value.trim()) $("doc_title").value = x.title;
         if (x.category && !$("doc_category").value.trim()) $("doc_category").value = x.category;
         if (x.description && !$("doc_description").value.trim()) $("doc_description").value = x.description;
-        if (x.docDate && $("doc_date") && !$("doc_date").value && /^\d{4}-\d{2}-\d{2}$/.test(x.docDate)) $("doc_date").value = x.docDate;
+        if (x.docDate && docDatePicker && !docDatePicker.getValue() && /^\d{4}-\d{2}-\d{2}$/.test(x.docDate)) docDatePicker.setValue(x.docDate);
         if (x.entityName && $("doc_entity") && !$("doc_entity").value && typeof gEnt !== "undefined") {
           const want = x.entityName.toLowerCase();
           const hit = gEnt.find((e) => e.kind === "entity" &&
@@ -1923,7 +1927,7 @@
         const row = {
           title, description: $("doc_description").value.trim() || null,
           category: $("doc_category").value.trim() || null,
-          doc_date: $("doc_date")?.value || null,
+          doc_date: docDatePicker?.getValue() || null,
           entity_id: $("doc_entity")?.value || null,
           recipients: $("doc_vis")?.value === "people" ? picked : null,
           file_path: path, file_name: file.name, mime: file.type || null, size_bytes: file.size,
