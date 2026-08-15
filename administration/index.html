@@ -389,13 +389,21 @@
           <div><label>Unit (optional)</label><select id="doc_entity" class="inline-select" style="width:100%;padding:0.6rem 0.7rem;">
             <option value="">— No unit: staff only —</option>
           </select></div>
+          <div><label>Visibility</label><select id="doc_vis" class="inline-select" style="width:100%;padding:0.6rem 0.7rem;">
+            <option value="unit">Unit owners — everyone downstream</option>
+            <option value="people">Specific people only…</option>
+          </select></div>
+        </div>
+        <div class="field hidden" id="docPeopleField" style="margin-top:0.5rem;">
+          <label>Who can see it</label>
+          <div id="docPeople" style="display:flex;flex-wrap:wrap;gap:0.25rem 1.1rem;"></div>
         </div>
         <div class="row" style="align-items:center;margin-top:0.75rem;">
           <button class="btn" id="docUploadBtn" style="flex:0 0 auto;">Choose file &amp; upload…</button>
           <input type="file" class="file-input" id="docFileInput">
           <span class="muted" id="docStatus"></span>
         </div>
-        <p class="muted" style="margin-top:0.5rem;">PDF, images, or Office files, stored privately with secure download links. Assign a <strong>unit</strong> and every partner with that unit downstream of them sees the document; leave unassigned and it stays between you and your accountants.</p>
+        <p class="muted" style="margin-top:0.5rem;">PDF, images, or Office files, stored privately with secure download links. <strong>Unit owners</strong> shares with every partner who has the unit downstream of them (monthly packets, insurance, licenses). <strong>Specific people</strong> is for governance documents like operating agreements — only the people you check (plus staff) ever see it, regardless of ownership. No unit and no people = staff only.</p>
       </div>
 
       <div class="section-card">
@@ -1672,8 +1680,13 @@
       if (b < 1048576) return (b / 1024).toFixed(0) + " KB";
       return (b / 1048576).toFixed(1) + " MB";
     }
-    // "Shared with" for a document row: its unit's owners, or staff.
+    // "Shared with" for a document row: named people, its unit's owners,
+    // or staff — from the viewer's perspective.
     function docScopeLabel(d) {
+      if (Array.isArray(d.recipients) && d.recipients.length) {
+        if (d.recipients.includes((currentEmail || "").toLowerCase())) return '<span class="badge badge--admin">For you</span>';
+        return `<span title="${escapeHtml(d.recipients.join(", "))}">${d.recipients.length} ${d.recipients.length === 1 ? "person" : "people"}</span>`;
+      }
       if (d.entity_id) {
         const e = (typeof gEnt !== "undefined" && gEnt.find((x) => x.id === d.entity_id)) || null;
         return escapeHtml(e ? e.name : "Unit");
@@ -1702,7 +1715,7 @@
       }
       body.querySelectorAll("[data-dl]").forEach((b) => b.addEventListener("click", () => downloadDoc(b.dataset.dl)));
       body.querySelectorAll("[data-deldoc]").forEach((b) => b.addEventListener("click", () => deleteDoc(b.dataset.deldoc, b.dataset.path)));
-      // Admin unit picker: entities from the ownership graph.
+      // Admin pickers: units from the graph, people from the allowlist.
       if (isAdmin()) {
         const es = $("doc_entity");
         if (es && typeof gEnt !== "undefined") {
@@ -1712,8 +1725,18 @@
               .map((e) => `<option value="${e.id}">${escapeHtml(e.name)}</option>`).join("");
           if (keep) es.value = keep;
         }
+        const pp = $("docPeople");
+        if (pp && !pp.children.length) {
+          const { data: ao } = await supabase.from("allowed_owners").select("email").order("email");
+          pp.innerHTML = ((ao || [])).map((r) =>
+            `<label style="display:inline-flex;align-items:center;gap:0.35rem;margin:0;font-size:0.85rem;color:var(--text);cursor:pointer;">
+               <input type="checkbox" data-docperson value="${escapeHtml(r.email)}" style="width:auto;"> ${escapeHtml(r.email)}
+             </label>`).join("");
+        }
       }
     }
+
+    $("doc_vis")?.addEventListener("change", () => show($("docPeopleField"), $("doc_vis").value === "people"));
 
     async function downloadDoc(path) {
       const { data, error } = await supabase.storage.from(cfg.BUCKET_DOCS || "documents").createSignedUrl(path, 120);
@@ -1726,6 +1749,11 @@
       const file = $("docFileInput").files[0]; if (!file) return;
       const st = $("docStatus");
       const title = $("doc_title").value.trim() || file.name;
+      const picked = [...document.querySelectorAll("[data-docperson]:checked")].map((c) => c.value.toLowerCase());
+      if ($("doc_vis")?.value === "people" && !picked.length) {
+        st.textContent = "Check at least one person, or switch visibility to Unit owners.";
+        $("docFileInput").value = ""; return;
+      }
       try {
         st.textContent = "Uploading…";
         const clean = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
@@ -1736,13 +1764,14 @@
           title, description: $("doc_description").value.trim() || null,
           category: $("doc_category").value.trim() || null,
           entity_id: $("doc_entity")?.value || null,
+          recipients: $("doc_vis")?.value === "people" ? picked : null,
           file_path: path, file_name: file.name, mime: file.type || null, size_bytes: file.size,
           uploaded_by: profile.id, uploaded_by_name: profile.full_name || profile.email
         };
         let { error: insErr } = await supabase.from("documents").insert(row);
-        if (insErr && /entity_id/i.test(insErr.message || "")) {
-          // Migration 0017 not applied yet — save without the unit.
-          delete row.entity_id;
+        if (insErr && /recipients|entity_id/i.test(insErr.message || "")) {
+          // Migrations 0017/0018 not applied yet — save the file, scope later.
+          delete row.recipients; delete row.entity_id;
           ({ error: insErr } = await supabase.from("documents").insert(row));
         }
         if (insErr) throw insErr;
