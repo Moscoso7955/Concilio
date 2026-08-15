@@ -1,0 +1,61 @@
+name: Clean up smoke-test residue
+
+# One-off: deletes the leftover "Smoke Test Doc" files through the
+# Storage API (SQL deletes on storage.objects are blocked by Supabase's
+# protect_delete trigger), then runs tools/cleanup-smoke.sql to remove
+# the document rows and the smoke@callidusco.com test account. Manual
+# dispatch; safe to re-run (everything is idempotent).
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    env:
+      TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      REF: ofliuuulagqlbdjwrnjc
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Delete smoke-test files via Storage API
+        run: |
+          # Which storage paths do the smoke docs point at?
+          jq -n '{query: "select coalesce(json_agg(file_path), '"'"'[]'"'"'::json) as paths from documents where title like '"'"'Smoke Test Doc%'"'"'"}' > /tmp/q.json
+          code=$(curl -s -o /tmp/paths.json -w "%{http_code}" -X POST \
+            "https://api.supabase.com/v1/projects/$REF/database/query" \
+            -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+            --data @/tmp/q.json)
+          [ "$code" -ge 200 ] && [ "$code" -lt 300 ] || { echo "::error::path lookup HTTP $code"; cat /tmp/paths.json; exit 1; }
+          jq '[.[0].paths[]]' /tmp/paths.json > /tmp/prefixes.json
+          echo "Files to delete: $(cat /tmp/prefixes.json)"
+          if [ "$(jq 'length' /tmp/prefixes.json)" = "0" ]; then echo "No files to delete."; exit 0; fi
+
+          # Service-role key (revealed at runtime, masked from logs).
+          code=$(curl -s -o /tmp/keys.json -w "%{http_code}" \
+            "https://api.supabase.com/v1/projects/$REF/api-keys?reveal=true" \
+            -H "Authorization: Bearer $TOKEN")
+          [ "$code" -ge 200 ] && [ "$code" -lt 300 ] || { echo "::error::api-keys HTTP $code"; exit 1; }
+          SRK=$(jq -r '.[] | select(.name == "service_role") | .api_key' /tmp/keys.json)
+          [ -n "$SRK" ] && [ "$SRK" != "null" ] || { echo "::error::service_role key not found"; exit 1; }
+          echo "::add-mask::$SRK"
+
+          jq '{prefixes: .}' /tmp/prefixes.json > /tmp/del.json
+          code=$(curl -s -o /tmp/delresp.json -w "%{http_code}" -X DELETE \
+            "https://$REF.supabase.co/storage/v1/object/documents" \
+            -H "Authorization: Bearer $SRK" -H "apikey: $SRK" -H "Content-Type: application/json" \
+            --data @/tmp/del.json)
+          echo "Storage delete HTTP $code"
+          cat /tmp/delresp.json; echo
+          [ "$code" -ge 200 ] && [ "$code" -lt 300 ]
+
+      - name: Run SQL cleanup
+        run: |
+          jq -Rs '{query: .}' tools/cleanup-smoke.sql > /tmp/payload.json
+          code=$(curl -s -o /tmp/resp.json -w "%{http_code}" -X POST \
+            "https://api.supabase.com/v1/projects/$REF/database/query" \
+            -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+            --data @/tmp/payload.json)
+          echo "HTTP $code"
+          cat /tmp/resp.json; echo
+          [ "$code" -ge 200 ] && [ "$code" -lt 300 ]
