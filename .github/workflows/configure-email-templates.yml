@@ -1,0 +1,54 @@
+name: Configure auth email templates
+
+# Brands the invite email (subject + body) via the Management API. The
+# stock Supabase invite ("You have been invited") is generic enough to
+# trip spam filters and gives partners no reason to trust it. Manual
+# dispatch; safe to re-run.
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  templates:
+    runs-on: ubuntu-latest
+    env:
+      TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      REF: ofliuuulagqlbdjwrnjc
+    steps:
+      - name: PATCH invite template
+        run: |
+          cat > /tmp/invite.html <<'HTML'
+          <div style="background:#111111;padding:40px 16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+            <div style="max-width:440px;margin:0 auto;background:#1a1a1a;border:1px solid #2f2f2f;border-radius:14px;padding:32px;text-align:center;">
+              <h1 style="color:#e5e7eb;font-size:20px;margin:0 0 6px;">Callidus Co.</h1>
+              <p style="color:#8a8f98;font-size:13px;margin:0 0 24px;">Owner Portal</p>
+              <p style="color:#e5e7eb;font-size:15px;line-height:1.6;margin:0 0 8px;">
+                Christian Moscoso has invited you to the Callidus Owner Portal
+                &mdash; reports, documents, and ownership for our partners.
+              </p>
+              <p style="color:#8a8f98;font-size:13px;line-height:1.6;margin:0 0 28px;">
+                This invite was sent to {{ .Email }}. The button signs you in
+                directly &mdash; no password to set.
+              </p>
+              <a href="{{ .ConfirmationURL }}"
+                 style="display:inline-block;background:#7c8493;color:#111111;font-weight:600;font-size:15px;text-decoration:none;padding:12px 28px;border-radius:9px;">
+                Open the Owner Portal
+              </a>
+              <p style="color:#8a8f98;font-size:12px;line-height:1.6;margin:28px 0 0;">
+                Didn't expect this? You can ignore this email.<br>
+                Questions &mdash; reply or email christian@callidusco.com.
+              </p>
+            </div>
+          </div>
+          HTML
+          jq -n --rawfile body /tmp/invite.html '{
+            mailer_subjects_invite: "Christian invited you to the Callidus Owner Portal",
+            mailer_templates_invite_content: $body
+          }' > /tmp/p.json
+          code=$(curl -s -o /tmp/r.json -w "%{http_code}" -X PATCH \
+            "https://api.supabase.com/v1/projects/$REF/config/auth" \
+            -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+            --data @/tmp/p.json)
+          echo "HTTP $code"
+          head -c 500 /tmp/r.json; echo
+          [ "$code" -ge 200 ] && [ "$code" -lt 300 ]

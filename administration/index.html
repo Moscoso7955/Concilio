@@ -102,7 +102,11 @@
     .unit-card__meta { margin-top: auto; padding-top: 0.65rem; border-top: 1px solid var(--border); font-size: 0.75rem; }
 
     /* ---------- Tables ---------- */
-    .table-wrap { overflow-x: auto; }
+    .table-wrap, #pnlModalBody { overflow-x: auto; }
+    /* Keep a visible scrollbar so wide tables read as scrollable, not cut off. */
+    .table-wrap::-webkit-scrollbar, #pnlModalBody::-webkit-scrollbar { height: 8px; }
+    .table-wrap::-webkit-scrollbar-thumb, #pnlModalBody::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+    .table-wrap, #pnlModalBody { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
     table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
     th, td { text-align: left; padding: 0.6rem 0.7rem; border-bottom: 1px solid var(--border); white-space: nowrap; }
     th { color: var(--muted); font-weight: 600; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; }
@@ -162,6 +166,10 @@
 
     /* ---------- Per-month P&L statement (View P&L modal) ---------- */
     .pnl-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    /* Wide statements scroll sideways; the account-name column stays put. */
+    .pnl-table td:first-child, .pnl-table th:first-child {
+      position: sticky; left: 0; background: var(--panel); z-index: 1;
+    }
     .pnl-table th { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); text-align: left; padding: 0.25rem 0.4rem 0.4rem; border-bottom: 1px solid var(--border); font-weight: 600; }
     .pnl-table th.num { text-align: right; }
     .pnl-table td { padding: 0.28rem 0.4rem; }
@@ -186,9 +194,9 @@
     .inv-range-row label { margin: 0; flex: 0 0 auto; }
 
     /* Ownership graph */
-    .graph-wrap { position: relative; height: calc(100vh - 210px); min-height: 460px; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: #141414; }
-    .graph-toolbar { display: flex; align-items: center; gap: 0.6rem; padding: 0.55rem 0.7rem; border-bottom: 1px solid var(--border); background: var(--panel); }
-    .graph-viewport { position: absolute; inset: 0; top: 48px; overflow: auto; }
+    .graph-wrap { position: relative; display: flex; flex-direction: column; height: calc(100vh - 210px); min-height: 460px; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: #141414; }
+    .graph-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 0.6rem; padding: 0.55rem 0.7rem; border-bottom: 1px solid var(--border); background: var(--panel); position: relative; z-index: 2; }
+    .graph-viewport { position: relative; flex: 1 1 auto; min-height: 0; overflow: auto; }
     .graph-canvas {
       position: relative; width: 3200px; height: 2200px;
       /* 20px snap grid (matches GRID in JS); scales with the canvas zoom */
@@ -248,6 +256,8 @@
       th, td { padding: 0.45rem 0.5rem; font-size: 0.84rem; }
       .topbar { gap: 0.5rem; }
       .gpane { width: 100%; max-width: 100%; }
+      #ownHint { display: none; }
+      .row > * { flex-basis: 100%; }
     }
   </style>
 </head>
@@ -672,7 +682,11 @@
     const configured = cfg && cfg.SUPABASE_URL && cfg.SUPABASE_URL.indexOf("__") !== 0;
     const $ = (id) => document.getElementById(id);
     const show = (el, on = true) => el.classList.toggle("hidden", !on);
-    const money = (n) => n == null ? "—" : "$" + Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const money = (n) => {
+      if (n == null) return "—";
+      const v = Number(n);
+      return (v < 0 ? "-$" : "$") + Math.abs(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    };
     const monthLabel = (d) => new Date(d + "T00:00:00").toLocaleDateString(undefined, { year: "numeric", month: "short" });
 
     if (!configured) { show($("notConfigured"), true); throw new Error("not configured"); }
@@ -783,6 +797,10 @@
     }
     $("settingsCloseBtn")?.addEventListener("click", () => show($("settingsModal"), false));
     $("settingsModal")?.addEventListener("click", (e) => { if (e.target === $("settingsModal")) show($("settingsModal"), false); });
+    document.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape") return;
+      document.querySelectorAll(".modal-overlay:not(.hidden)").forEach((m) => m.classList.add("hidden"));
+    });
 
     async function loadSettingsUsers() {
       const box = $("suList"); box.innerHTML = '<p class="muted">Loading…</p>';
@@ -790,6 +808,14 @@
         supabase.from("allowed_owners").select("*").order("created_at"),
         supabase.from("profiles").select("id,email,full_name,role,tabs"),
       ]);
+      // "Signed up" means an actual first sign-in, not just the auth record
+      // the invite creates. Admin-only RPC; falls back to profile presence
+      // until migration 0020 has run.
+      let signInMap = null;
+      try {
+        const { data: st, error } = await supabase.rpc("user_sign_in_status");
+        if (!error && Array.isArray(st)) { signInMap = {}; for (const r of st) signInMap[r.email] = r.last_sign_in_at; }
+      } catch (_) {}
       const rows = aoRes.data || [], profs = profRes.data || [];
       const profByEmail = {}; for (const p of profs) profByEmail[(p.email || "").toLowerCase()] = p;
       const boxByEmail = {}; for (const e of gEnt) if (e.email) boxByEmail[e.email.toLowerCase()] = e;
@@ -804,6 +830,7 @@
       box.innerHTML = rows.map((r, i) => {
         const em = (r.email || "").toLowerCase();
         const p = profByEmail[em], b = boxByEmail[em];
+        const signedUp = signInMap ? !!signInMap[em] : !!p;
         const who = p?.full_name || b?.name || "";
         const roleTabs = roleInfo(r.role)?.tabs;
         const tabs = Array.isArray(r.tabs) && r.tabs.length ? r.tabs
@@ -817,14 +844,14 @@
             <strong>${escapeHtml(r.email)}</strong>
             ${who ? `<span class="muted">${escapeHtml(who)}</span>` : ""}
             ${b ? `<span class="badge">in ownership graph</span>` : ""}
-            <span class="badge${p ? " badge--admin" : ""}">${p ? "signed up" : "invited — hasn't signed in"}</span>
+            <span class="badge${signedUp ? " badge--admin" : ""}">${signedUp ? "signed up" : "invited — hasn't signed in"}</span>
           </div>
           <div class="row" style="align-items:center;margin-top:0.6rem;">
             <div style="flex:0 0 auto;"><select data-surole="${i}" class="inline-select">
               ${roleRows.map((ro) => `<option value="${escapeHtml(ro.key)}"${r.role === ro.key ? " selected" : ""}>${escapeHtml(ro.name)}</option>`).join("")}
             </select></div>
             <button class="btn btn--sm" data-susave="${i}" style="flex:0 0 auto;">Save</button>
-            <button class="btn btn--ghost btn--sm" data-suinvite="${i}" style="flex:0 0 auto;">${p ? "Send sign-in link" : "Send invite"}</button>
+            <button class="btn btn--ghost btn--sm" data-suinvite="${i}" style="flex:0 0 auto;">${signedUp ? "Send sign-in link" : "Send invite"}</button>
             <button class="btn btn--danger btn--sm" data-suremove="${i}" style="flex:0 0 auto;">Remove</button>
             <span class="muted" data-sustatus="${i}"></span>
           </div>
@@ -875,6 +902,7 @@
     // Settings → Roles: rename, default tabs, data scope, add/remove.
     function renderSettingsRoles(roleRows, counts) {
       const box = $("srList"); if (!box) return;
+      const ast = $("srAddStatus"); if (ast) ast.textContent = "";
       if (!rolesList.length) { box.innerHTML = '<p class="muted">Role management activates once migration 0016 is applied.</p>'; return; }
       box.innerHTML = roleRows.map((r, i) => {
         const inUse = counts[r.key] || 0;
@@ -1024,7 +1052,12 @@
       } catch (_) { logAccess("sign_in"); }
       // Everyone gets the graph — it powers "Your share" in Reports, and
       // RLS scopes non-staff to their own box plus everything downstream.
-      if (!isAdmin()) { const h = $("ownHint"); if (h) h.textContent = "Your ownership — the boxes you own and everything downstream. Click a box for details. Ctrl/⌘+scroll to zoom."; }
+      if (!isAdmin()) {
+        const h = $("ownHint"); if (h) h.textContent = "Your ownership — the boxes you own and everything downstream. Click a box for details. Ctrl/⌘+scroll to zoom.";
+        // The default empty state tells admins how to surface units —
+        // members can't follow it (their Ownership is read-only).
+        const e = $("repUnitsEmpty"); if (e) e.textContent = "You don't have ownership in any units yet — contact your administrator.";
+      }
       loadGraph();
     }
 
@@ -1034,6 +1067,8 @@
       if (!btn || btn.classList.contains("hidden")) return false;
       document.querySelectorAll(".tab").forEach((x) => x.classList.toggle("active", x === btn));
       document.querySelectorAll(".tab-panel").forEach((p) => show(p, p.dataset.panel === name));
+      // On narrow screens the tab strip scrolls — keep the active tab visible.
+      try { btn.scrollIntoView({ block: "nearest", inline: "nearest" }); } catch (_) {}
       // The graph measures its boxes; re-render now that it's visible so
       // sizes/edges are computed against real dimensions.
       if (name === "owners" && typeof gEnt !== "undefined" && gEnt.length) render();
@@ -1288,15 +1323,20 @@
       .split(/[^a-z/]+/).filter((t) => t && !PNL_STOP.has(t));
     function pnlMatchIncome(label, incomeItems) {
       const tk = pnlTokens(label); if (!tk.length) return null;
-      let best = null, bestN = 0, ties = 0;
+      let bestN = 0, matched = [];
       for (const inc of incomeItems) {
         const n = pnlTokens(inc.label).filter((t) => tk.includes(t)).length;
-        if (n > bestN) { best = inc; bestN = n; ties = 1; }
-        else if (n === bestN && n > 0) ties++;
+        if (n > bestN) { bestN = n; matched = [inc]; }
+        else if (n === bestN && n > 0) matched.push(inc);
       }
-      // Ambiguous (e.g. "Comps- Liquor Beer Wine" matching three sales
-      // lines equally) → no single base; caller falls back to gross.
-      return ties === 1 ? best : null;
+      if (!matched.length) return null;
+      if (matched.length === 1) return { label: matched[0].label, amount: Number(matched[0].amount) || 0 };
+      // A combined line ("Comps- Liquor Beer Wine") ties across several
+      // sales lines — its base is those lines summed.
+      return {
+        label: matched.map((m) => m.label).join(" + "),
+        amount: matched.reduce((s, m) => s + (Number(m.amount) || 0), 0),
+      };
     }
     const pnlPctSpan = (v, base, title) => base
       ? `<span class="pnlp"${title ? ` title="${escapeHtml(title)}"` : ""}>${(Math.round(v / base * 1000) / 10).toFixed(1)}%</span>` : "";
@@ -1841,6 +1881,10 @@
         }
         if (insErr) throw insErr;
         $("doc_title").value = ""; $("doc_description").value = ""; $("doc_category").value = ""; $("docFileInput").value = "";
+        // Full reset — a lingering unit/visibility choice mis-files the next upload.
+        if ($("doc_entity")) $("doc_entity").value = "";
+        if ($("doc_vis")) { $("doc_vis").value = "unit"; show($("docPeopleField"), false); }
+        document.querySelectorAll("[data-docperson]:checked").forEach((c) => c.checked = false);
         st.textContent = "Uploaded ✓"; loadDocuments();
       } catch (e) { st.textContent = "Upload failed: " + (e.message || e); }
     });
