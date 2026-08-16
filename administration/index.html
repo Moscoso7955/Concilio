@@ -376,6 +376,20 @@
           <p class="muted" style="margin-top:0.5rem;"><strong>Import P&amp;L</strong> takes P&amp;L exports (PDF, image, or spreadsheet) — select one file or several. AI reads across them, splits out each month's revenue and expenses, and imports them to this unit. A single month prefills the form for review; several save directly.</p>
         </div>
 
+        <div class="section-card" id="distCard">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:0.6rem;margin-bottom:1rem;">
+            <h2 style="margin:0;">Distributions</h2>
+            <button class="btn btn--sm admin-only hidden" id="distOpenBtn" style="flex:0 0 auto;">Record distribution…</button>
+          </div>
+          <div class="table-wrap">
+            <table id="distTable" class="hidden">
+              <thead><tr><th>Date</th><th class="num">Total</th><th>Recipients</th><th>Notes</th><th></th></tr></thead>
+              <tbody id="distBody"></tbody>
+            </table>
+          </div>
+          <p class="muted" id="distEmpty">No distributions recorded for this unit.</p>
+        </div>
+
         <div class="section-card">
           <h2>Monthly figures</h2>
           <div class="table-wrap">
@@ -626,6 +640,37 @@
       </div>
       <div class="row" style="align-items:center;margin-top:1rem;">
         <button class="btn btn--ghost" id="settingsCloseBtn" style="flex:0 0 auto;">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Record-distribution modal -->
+  <div class="modal-overlay hidden" id="distModal">
+    <div class="modal" style="max-width:560px;">
+      <h3 id="distModalTitle">Record distribution</h3>
+      <div class="row">
+        <div><label>Total amount</label><input type="number" step="0.01" id="distTotal" placeholder="0.00"></div>
+        <div><label>Date</label><span id="dist_date_mount"></span></div>
+      </div>
+      <div class="field" style="margin-top:0.75rem;"><label>Notes</label><input type="text" id="distNotes" placeholder="Optional — e.g. Q2 distribution"></div>
+      <div class="field">
+        <label>Send to (by direct ownership of this unit)</label>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Owner</th><th class="num">%</th><th class="num">Amount</th></tr></thead>
+          <tbody id="distSplitBody"></tbody>
+        </table></div>
+        <div class="muted" id="distSplitNote" style="margin-top:0.35rem;"></div>
+      </div>
+      <div class="field">
+        <label>Flow-through to individuals (effective ownership)</label>
+        <div class="table-wrap"><table>
+          <tbody id="distFlowBody"></tbody>
+        </table></div>
+      </div>
+      <div class="row" style="align-items:center;margin-top:1rem;">
+        <button class="btn" id="distSaveBtn" style="flex:0 0 auto;">Record</button>
+        <button class="btn btn--ghost" id="distCloseBtn" style="flex:0 0 auto;">Cancel</button>
+        <span class="muted" id="distStatus"></span>
       </div>
     </div>
   </div>
@@ -1171,7 +1216,7 @@
     }
 
     /* ---------------- Reports (per-unit financials) ---------------- */
-    let repFin = [], repUnits = [], repUnit = null;
+    let repFin = [], repUnits = [], repUnit = null, repDist = [];
 
     // Reports date range (defaults to this year). Monthly figures are kept
     // when their month overlaps the range; invoices compare by exact date.
@@ -1339,11 +1384,13 @@
     }
 
     async function loadFinancials() {
-      const [finRes, entRes] = await Promise.all([
+      const [finRes, entRes, distRes] = await Promise.all([
         supabase.from("financials").select("*").order("period", { ascending: false }),
         supabase.from("ownership_entities").select("id,name,kind,in_reports").order("name"),
+        supabase.from("distributions").select("*").order("dist_date", { ascending: false }),
       ]);
       repFin = (!finRes.error && finRes.data) || [];
+      repDist = (!distRes.error && distRes.data) || []; // empty pre-0024
       repUnits = ((!entRes.error && entRes.data) || []).filter((e) => e.in_reports);
       if (repUnit && !repUnits.some((u) => u.id === repUnit)) repUnit = null;
       if (repUnit) renderUnitView(); else renderGroupView();
@@ -1408,6 +1455,7 @@
       if (mirrored) {
         canEdit = false;
         show($("finAddCard"), false);
+        show($("distOpenBtn"), false); // distributions are recorded on the home portal
         const from = mirrorLink?.partner_name || rows.find((r) => r.synced_from)?.synced_from || "partner portal";
         const when = mirrorLink?.last_synced_at ? " · synced " + new Date(mirrorLink.last_synced_at).toLocaleString() : "";
         $("finMirrorNote").textContent = `Managed on ${from}'s portal — figures sync automatically and are read-only here.${when}`;
@@ -1438,9 +1486,102 @@
         b.addEventListener("click", () => openPnlModal(b.dataset.viewpnl)));
       if (canEdit) body.querySelectorAll("[data-del]").forEach((b) =>
         b.addEventListener("click", () => deleteFinancial(b.dataset.del)));
+      renderDistributions(canEdit);
     }
 
     $("repBack")?.addEventListener("click", () => { repUnit = null; renderGroupView(); });
+
+    /* ---------------- Distributions ---------------- */
+    function renderDistributions(canEdit) {
+      const rows = repDist.filter((d) => d.entity_id === repUnit);
+      const body = $("distBody"); if (!body) return;
+      body.innerHTML = "";
+      show($("distTable"), rows.length > 0);
+      show($("distEmpty"), rows.length === 0);
+      for (const d of rows) {
+        const direct = (d.splits && Array.isArray(d.splits.direct)) ? d.splits.direct : [];
+        const rec = direct.map((s) => `${s.name} ${money(s.amount)}`).join(" · ");
+        const tr = document.createElement("tr");
+        tr.innerHTML =
+          `<td>${new Date(d.dist_date + "T00:00:00").toLocaleDateString()}</td>
+           <td class="num"><strong>${money(d.total)}</strong></td>
+           <td style="white-space:normal;max-width:22rem;">${escapeHtml(rec)}</td>
+           <td>${d.notes ? escapeHtml(d.notes) : ""}</td>
+           <td class="num">${canEdit ? `<button class="btn btn--danger btn--sm" data-deldist="${d.id}">Delete</button>` : ""}</td>`;
+        body.appendChild(tr);
+      }
+      body.querySelectorAll("[data-deldist]").forEach((b) => b.addEventListener("click", async () => {
+        if (!confirm("Delete this distribution record?")) return;
+        await supabase.from("distributions").delete().eq("id", b.dataset.deldist);
+        repDist = repDist.filter((d) => d.id !== b.dataset.deldist);
+        renderUnitView();
+      }));
+    }
+
+    // The split: direct owners get what the unit actually pays (edges into
+    // the unit); the flow-through shows what ultimately lands with each
+    // individual (effective ownership), for context.
+    function distComputeSplits(total) {
+      const direct = gEdge.filter((ed) => ed.child_id === repUnit).map((ed) => {
+        const p = gEnt.find((x) => x.id === ed.parent_id);
+        return { name: p ? p.name : "?", kind: p?.kind || "entity", pct: Number(ed.percentage) || 0, amount: total * (Number(ed.percentage) || 0) / 100 };
+      }).sort((a, b) => b.pct - a.pct);
+      const individuals = gEnt.filter((x) => x.kind !== "entity").map((ind) => {
+        const eff = effOf(repUnit, ind.id);
+        return { name: ind.name, pct: eff * 100, amount: total * eff };
+      }).filter((x) => x.pct > 0.0001).sort((a, b) => b.pct - a.pct);
+      return { direct, individuals };
+    }
+    let distDatePicker = null;
+    function distRenderPreview() {
+      const total = Number($("distTotal").value) || 0;
+      const { direct, individuals } = distComputeSplits(total);
+      $("distSplitBody").innerHTML = direct.length
+        ? direct.map((s) => `<tr><td>${escapeHtml(s.name)}</td><td class="num">${pctFmt(s.pct)}%</td><td class="num"><strong>${money(s.amount)}</strong></td></tr>`).join("")
+        : '<tr><td colspan="3" class="muted">No owners connected to this unit in the graph.</td></tr>';
+      const pctSum = direct.reduce((a, s) => a + s.pct, 0);
+      const diff = 100 - pctSum;
+      $("distSplitNote").textContent = Math.abs(diff) > 0.01
+        ? `Direct ownership sums to ${pctFmt(pctSum)}% — amounts above ${diff > 0
+            ? `leave ${money(total * diff / 100)} unallocated`
+            : `exceed the total by ${money(total * -diff / 100)}`}. Fix the unit's edges in Ownership, or adjust by hand.`
+        : "";
+      $("distFlowBody").innerHTML = individuals.map((s) =>
+        `<tr><td>${escapeHtml(s.name)}</td><td class="num">${pctFmt(s.pct)}%</td><td class="num">${money(s.amount)}</td></tr>`).join("")
+        || '<tr><td class="muted">No individuals upstream of this unit.</td></tr>';
+    }
+    $("distOpenBtn")?.addEventListener("click", () => {
+      const u = repUnits.find((x) => x.id === repUnit); if (!u) return;
+      $("distModalTitle").textContent = "Record distribution — " + u.name;
+      $("distTotal").value = ""; $("distNotes").value = ""; $("distStatus").textContent = "";
+      if (!distDatePicker && $("dist_date_mount") && window.createDatePicker)
+        distDatePicker = window.createDatePicker({ mount: $("dist_date_mount"), initial: "" });
+      distDatePicker?.setValue(new Date().toISOString().slice(0, 10));
+      distRenderPreview();
+      show($("distModal"), true);
+      $("distTotal").focus();
+    });
+    $("distTotal")?.addEventListener("input", distRenderPreview);
+    $("distCloseBtn")?.addEventListener("click", () => show($("distModal"), false));
+    $("distModal")?.addEventListener("click", (e) => { if (e.target === $("distModal")) show($("distModal"), false); });
+    $("distSaveBtn")?.addEventListener("click", async () => {
+      const st = $("distStatus");
+      const total = Number($("distTotal").value);
+      if (!total || total <= 0) { st.textContent = "Enter the total amount."; return; }
+      const dist_date = distDatePicker?.getValue() || new Date().toISOString().slice(0, 10);
+      st.textContent = "Saving…";
+      const row = {
+        entity_id: repUnit, dist_date, total,
+        notes: $("distNotes").value.trim() || null,
+        splits: distComputeSplits(total),
+        created_by: profile?.full_name || profile?.email || null,
+      };
+      const { data, error } = await supabase.from("distributions").insert(row).select().maybeSingle();
+      if (error) { st.textContent = "Save failed: " + error.message; return; }
+      repDist.unshift(data || row);
+      show($("distModal"), false);
+      renderUnitView();
+    });
 
     // P&L by month: the classic grid — accounts down the side, months
     // across the top — stitched from each month's stored line detail.
