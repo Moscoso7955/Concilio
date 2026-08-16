@@ -280,7 +280,7 @@
   <!-- Login -->
   <div class="center hidden" id="loginView">
     <div class="card auth-card">
-      <h1>Callidus Co.</h1>
+      <h1 data-brandname>Callidus Co.</h1>
       <p class="sub">Owner Portal — sign in</p>
       <button class="btn btn--google btn--full" id="googleBtn" type="button">
         <svg width="16" height="16" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.6l6.7-6.7C35.6 2.7 30.1 0 24 0 14.6 0 6.4 5.4 2.5 13.2l7.9 6.1C12.3 13.3 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.1 24.6c0-1.6-.1-3.1-.4-4.6H24v9.1h12.4c-.5 2.9-2.1 5.3-4.6 7l7.1 5.5c4.1-3.8 6.5-9.5 6.5-16z"/><path fill="#FBBC05" d="M10.4 28.7c-.5-1.5-.8-3-.8-4.7s.3-3.2.8-4.7l-7.9-6.1C.9 16.5 0 20.1 0 24s.9 7.5 2.5 10.8l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.1 0 11.3-2 15-5.5l-7.1-5.5c-2 1.4-4.6 2.2-7.9 2.2-6.3 0-11.7-3.8-13.6-9.3l-7.9 6.1C6.4 42.6 14.6 48 24 48z"/></svg>
@@ -311,7 +311,7 @@
   <!-- App -->
   <div class="shell hidden" id="appView">
     <div class="topbar">
-      <div class="brandmark">Callidus Co. <span>/ Owner Portal</span></div>
+      <div class="brandmark"><span data-brandname>Callidus Co.</span> <span>/ Owner Portal</span></div>
       <div class="whoami">
         <span id="userEmail"></span>
         <span class="badge" id="roleBadge">owner</span>
@@ -414,7 +414,7 @@
 
     <!-- Documents -->
     <section class="tab-panel hidden" data-panel="documents">
-      <div class="section-card admin-only hidden">
+      <div class="section-card admin-only hidden" id="docUploadCard">
         <h2 id="docFormHead">Upload a document</h2>
         <div class="row">
           <div style="flex:2;"><label>Title</label><input type="text" id="doc_title" placeholder="e.g. Employee Handbook"></div>
@@ -815,6 +815,7 @@
       const [aoRes, profRes] = await Promise.all([
         supabase.from("allowed_owners").select("*").order("created_at"),
         supabase.from("profiles").select("id,email,full_name,role,tabs"),
+        loadPrincipals(), // principal cards show org + skin fields
       ]);
       // "Signed up" means an actual first sign-in, not just the auth record
       // the invite creates. Admin-only RPC; falls back to profile presence
@@ -867,6 +868,22 @@
             <label style="margin-bottom:0.3rem;">Tabs</label>${checks}
           </div>
           ${r.role === "admin" ? '<div class="muted" style="margin-top:0.4rem;font-size:0.78rem;">Admins always see every tab.</div>' : ""}
+          ${r.role === "principal" ? (() => {
+            const pr = gPrincipals.find((p) => (p.owner_email || "").toLowerCase() === em) || {};
+            const bb = pr.brand || {};
+            return `<div style="margin-top:0.6rem;">
+              <label style="margin-bottom:0.3rem;">Principal org &amp; skin</label>
+              <div class="row">
+                <div style="flex:1.4;"><label>Org name</label><input type="text" data-prname="${i}" value="${escapeHtml(pr.name || "")}" placeholder="Molzer Development"></div>
+                <div><label>Accent color</label><input type="text" data-praccent="${i}" value="${escapeHtml(bb.accent || "")}" placeholder="#7c8493"></div>
+              </div>
+              <div class="row" style="margin-top:0.4rem;">
+                <div style="flex:1.4;"><label>Portal domain</label><input type="text" data-prdomain="${i}" value="${escapeHtml(pr.domain || "")}" placeholder="portal.molzerdevelopment.com"></div>
+                <div><label>Logo URL</label><input type="text" data-prlogo="${i}" value="${escapeHtml(bb.logo_url || "")}" placeholder="https://…/logo.png"></div>
+              </div>
+              <div class="muted" style="margin-top:0.3rem;font-size:0.78rem;">Saved by the Save button above. Assign their units in Ownership → open a unit box → Managed by.</div>
+            </div>`;
+          })() : ""}
         </div>`;
       }).join("");
 
@@ -886,6 +903,22 @@
         const { error } = await supabase.from("allowed_owners").update({ role, tabs }).eq("email", email);
         // Mirror onto the live profile if they've already signed up.
         if (!error) await supabase.from("profiles").update({ role, tabs }).ilike("email", email);
+        // Principal org + skin, when the card carries those fields.
+        if (!error && role === "principal") {
+          const g = (sel) => box.querySelector(`[data-${sel}="${i}"]`)?.value.trim() || "";
+          const brand = {};
+          if (/^#[0-9a-fA-F]{6}$/.test(g("praccent"))) brand.accent = g("praccent");
+          if (g("prlogo")) brand.logo_url = g("prlogo");
+          try {
+            await supabase.from("principals").upsert({
+              owner_email: email,
+              name: g("prname") || email.split("@")[0],
+              brand: Object.keys(brand).length ? brand : null,
+              domain: g("prdomain").toLowerCase() || null,
+            }, { onConflict: "owner_email" });
+            await loadPrincipals();
+          } catch (_) { /* pre-0023 */ }
+        }
         st.textContent = error ? error.message : "Saved ✓ (applies at their next sign-in or refresh)";
       }));
       box.querySelectorAll("[data-suinvite]").forEach((btn) => btn.addEventListener("click", async () => {
@@ -977,6 +1010,15 @@
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { st.textContent = "Enter a valid email."; return; }
       const { error } = await supabase.from("allowed_owners").upsert({ email, role: $("suNewRole").value }, { onConflict: "email" });
       if (error) { st.textContent = error.message; return; }
+      // Principals get an org record too — name/brand/domain editable on
+      // their user card below.
+      if ($("suNewRole").value === "principal") {
+        try {
+          await supabase.from("principals").upsert(
+            { owner_email: email, name: email.split("@")[0] }, { onConflict: "owner_email" });
+          await loadPrincipals();
+        } catch (_) { /* pre-0023 */ }
+      }
       st.textContent = "Added — sending invite…";
       try {
         const inv = await sendInvite(email);
@@ -984,6 +1026,38 @@
       } catch (e) { st.textContent = `Added, but the invite email failed: ${e.message}`; }
       $("suNewEmail").value = ""; loadSettingsUsers();
     });
+
+    /* ---- Principals: multi-operator skins + managed units ---- */
+    let gPrincipals = [];
+    async function loadPrincipals() {
+      try {
+        const { data, error } = await supabase.from("principals").select("*");
+        if (!error && data) gPrincipals = data;
+      } catch (_) { /* pre-0023 */ }
+    }
+    const myPrincipal = () => currentEmail
+      ? gPrincipals.find((p) => (p.owner_email || "").toLowerCase() === currentEmail.toLowerCase()) || null : null;
+    function managesUnit(id) {
+      const p = myPrincipal(); if (!p) return false;
+      const e = (typeof gEnt !== "undefined" ? gEnt : []).find((x) => x.id === id);
+      return !!(e && e.managed_by === p.id);
+    }
+    // The skin: a principal's own domain shows their brand to everyone on
+    // it (login page included); otherwise a signed-in principal gets
+    // their brand anywhere. Default stays Callidus.
+    function applyBrand() {
+      const host = location.hostname.toLowerCase();
+      const p = gPrincipals.find((x) => (x.domain || "").toLowerCase() === host) || myPrincipal();
+      if (!p) return;
+      const b = p.brand || {};
+      document.querySelectorAll("[data-brandname]").forEach((el) => el.textContent = p.name);
+      document.title = p.name + " — Owner Portal";
+      if (b.accent && /^#[0-9a-fA-F]{6}$/.test(b.accent)) {
+        document.documentElement.style.setProperty("--accent", b.accent);
+        document.documentElement.style.setProperty("--accent-hover", b.accent);
+      }
+    }
+    loadPrincipals().then(applyBrand); // skin the login page by domain
 
     supabase.auth.onAuthStateChange((event, session) => {
       // Defer off the auth-callback lock (calling supabase.auth.* inside the
@@ -1036,6 +1110,7 @@
     function enterApp(session) {
       show($("loginView"), false); show($("checkEmail"), false); show($("appView"), true);
       currentEmail = session.user.email || null;
+      loadPrincipals().then(applyBrand); // signed-in principals get their skin
       $("userEmail").textContent = session.user.email;
       const rb = $("roleBadge");
       rb.textContent = (roleInfo(profile.role)?.name || (profile.role === "owner" ? "member" : profile.role)).toLowerCase();
@@ -1320,8 +1395,9 @@
       if (!u || (vs && !vs.has(repUnit))) { repUnit = null; renderGroupView(); return; }
       show($("repGroupView"), false); show($("repUnitView"), true);
       // While viewing-as, admin editing controls disappear like they would
-      // for the member (add/update-month card, delete column).
-      let canEdit = isAdmin() && !repViewAs;
+      // for the member (add/update-month card, delete column). Principals
+      // get the same editing controls on the units they manage.
+      let canEdit = (isAdmin() && !repViewAs) || managesUnit(repUnit);
       document.querySelectorAll('[data-panel="financials"] .admin-only').forEach((el) => show(el, canEdit));
       $("repUnitName").textContent = u.name;
       const rows = repFinInRange().filter((r) => r.entity_id === repUnit);
@@ -1870,25 +1946,37 @@
            <td class="num">${fmtSize(d.size_bytes)}</td>
            <td class="num">
              <button class="btn btn--ghost btn--sm" data-dl="${d.file_path}" data-dltitle="${escapeHtml(d.title)}" data-name="${escapeHtml(d.file_name)}">Download</button>
-             ${isAdmin() ? `<button class="btn btn--ghost btn--sm" data-editdoc="${d.id}">Edit</button><button class="btn btn--danger btn--sm" data-deldoc="${d.id}" data-path="${d.file_path}">Delete</button>` : ""}
+             ${(isAdmin() || (d.entity_id && managesUnit(d.entity_id))) ? `<button class="btn btn--ghost btn--sm" data-editdoc="${d.id}">Edit</button><button class="btn btn--danger btn--sm" data-deldoc="${d.id}" data-path="${d.file_path}">Delete</button>` : ""}
            </td>`;
         body.appendChild(tr);
       }
       body.querySelectorAll("[data-dl]").forEach((b) => b.addEventListener("click", () => downloadDoc(b.dataset.dl, b.dataset.dltitle)));
       body.querySelectorAll("[data-editdoc]").forEach((b) => b.addEventListener("click", () => docStartEdit(b.dataset.editdoc)));
       body.querySelectorAll("[data-deldoc]").forEach((b) => b.addEventListener("click", () => deleteDoc(b.dataset.deldoc, b.dataset.path)));
-      // Admin pickers: units from the graph, people from the allowlist.
-      if (isAdmin()) {
+      // Pickers. Admin: every unit + staff-only + specific-people options.
+      // A principal uploads too, but only into the units they manage.
+      const prin = myPrincipal();
+      const managed = prin && typeof gEnt !== "undefined"
+        ? gEnt.filter((e) => e.kind === "entity" && e.managed_by === prin.id) : [];
+      if (!isAdmin() && managed.length) show($("docUploadCard"), true);
+      if (isAdmin() || managed.length) {
         const es = $("doc_entity");
         if (es && typeof gEnt !== "undefined") {
           const keep = es.value;
-          es.innerHTML = '<option value="">— No unit: staff only —</option>' +
-            gEnt.filter((e) => e.kind === "entity").sort((a, b) => String(a.name).localeCompare(String(b.name)))
-              .map((e) => `<option value="${e.id}">${escapeHtml(e.name)}</option>`).join("");
+          const opts = isAdmin()
+            ? '<option value="">— No unit: staff only —</option>' +
+              gEnt.filter((e) => e.kind === "entity").sort((a, b) => String(a.name).localeCompare(String(b.name)))
+                .map((e) => `<option value="${e.id}">${escapeHtml(e.name)}</option>`).join("")
+            : managed.sort((a, b) => String(a.name).localeCompare(String(b.name)))
+                .map((e) => `<option value="${e.id}">${escapeHtml(e.name)}</option>`).join("");
+          es.innerHTML = opts;
           if (keep) es.value = keep;
         }
+        // Specific-people visibility needs the allowlist — admin only.
+        const visSel = $("doc_vis");
+        if (visSel && !isAdmin()) { visSel.value = "unit"; show(visSel.closest("div"), false); show($("docPeopleField"), false); }
         const pp = $("docPeople");
-        if (pp && !pp.children.length) {
+        if (isAdmin() && pp && !pp.children.length) {
           const { data: ao } = await supabase.from("allowed_owners").select("email").order("email");
           pp.innerHTML = ((ao || [])).map((r) =>
             `<label style="display:inline-flex;align-items:center;gap:0.35rem;margin:0;font-size:0.85rem;color:var(--text);cursor:pointer;">
@@ -1921,7 +2009,7 @@
       $("doc_title").value = ""; $("doc_description").value = ""; $("doc_category").value = "";
       docDatePicker?.setValue("");
       $("docFileInput").value = "";
-      if ($("doc_entity")) $("doc_entity").value = "";
+      if ($("doc_entity")) { $("doc_entity").value = ""; if (!isAdmin()) $("doc_entity").selectedIndex = 0; }
       if ($("doc_vis")) { $("doc_vis").value = "unit"; show($("docPeopleField"), false); }
       document.querySelectorAll("[data-docperson]:checked").forEach((c) => c.checked = false);
       show($("docSaveBtn"), false); show($("docCancelBtn"), false); show($("docUploadBtn"), true);
@@ -2444,6 +2532,12 @@
             <input type="checkbox" id="pInReports" style="width:auto;"${e.in_reports ? " checked" : ""}> Show this unit in Reports
           </label>
         </div>
+        <div class="field" id="pManagedField"><label>Managed by</label>
+          <select id="pManaged" class="inline-select" style="width:100%;padding:0.6rem 0.7rem;">
+            <option value="">— Admin —</option>
+            ${gPrincipals.map((p) => `<option value="${p.id}"${e.managed_by === p.id ? " selected" : ""}>${escapeHtml(p.name)}</option>`).join("")}
+          </select>
+        </div>
         <div class="row">
           <div class="field" style="flex:1;"><label>Parent label</label><input type="text" id="pCat" value="${escapeHtml(e.category || "")}" placeholder="Owner / Product / IP"></div>
           <div class="field" style="flex:1;"><label>Sub</label><input type="text" id="pSub" value="${escapeHtml(e.subcategory || "")}" placeholder="SaaS / Patent / LLC"></div>
@@ -2503,6 +2597,7 @@
         in_reports: $("pKind").value === "entity" && $("pInReports").checked,
         category: $("pCat").value.trim() || null, subcategory: $("pSub").value.trim() || null,
         email: $("pEmail").value.trim() || null, notes: $("pNotes").value.trim() || null, color: e.color || null,
+        managed_by: ($("pKind").value === "entity" && $("pManaged")?.value) || null,
         links: links.map((l) => ({ label: l.label.trim(), url: l.url.trim() })).filter((l) => l.url || l.label),
       });
       async function persist() {
@@ -2561,6 +2656,7 @@
         show($("pAccessField"), !isEntity);
         show($("pLinkField"), isEntity); // units can federate with a partner portal
         show($("pReportsField"), isEntity); // only entities (units) can appear in Reports
+        show($("pManagedField"), isEntity); // units can be run by a principal
         // Portal access — grant/revoke via the allowlist, keyed on this box's email.
         if (!isEntity) renderAccess(id, $("pEmail").value);
         if (isEntity) renderPartnerLink(id);
