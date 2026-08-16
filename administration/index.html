@@ -661,12 +661,6 @@
         </table></div>
         <div class="muted" id="distSplitNote" style="margin-top:0.35rem;"></div>
       </div>
-      <div class="field">
-        <label>Flow-through to individuals (effective ownership)</label>
-        <div class="table-wrap"><table>
-          <tbody id="distFlowBody"></tbody>
-        </table></div>
-      </div>
       <div class="row" style="align-items:center;margin-top:1rem;">
         <button class="btn" id="distSaveBtn" style="flex:0 0 auto;">Record</button>
         <button class="btn btn--ghost" id="distCloseBtn" style="flex:0 0 auto;">Cancel</button>
@@ -1518,24 +1512,20 @@
       }));
     }
 
-    // The split: direct owners get what the unit actually pays (edges into
-    // the unit); the flow-through shows what ultimately lands with each
-    // individual (effective ownership), for context.
+    // The split: direct owners get what the unit actually pays (edges
+    // into the unit). Distributions cascade — when a holding company
+    // later pays ITS owners, that's recorded on that unit.
     function distComputeSplits(total) {
       const direct = gEdge.filter((ed) => ed.child_id === repUnit).map((ed) => {
         const p = gEnt.find((x) => x.id === ed.parent_id);
         return { name: p ? p.name : "?", kind: p?.kind || "entity", pct: Number(ed.percentage) || 0, amount: total * (Number(ed.percentage) || 0) / 100 };
       }).sort((a, b) => b.pct - a.pct);
-      const individuals = gEnt.filter((x) => x.kind !== "entity").map((ind) => {
-        const eff = effOf(repUnit, ind.id);
-        return { name: ind.name, pct: eff * 100, amount: total * eff };
-      }).filter((x) => x.pct > 0.0001).sort((a, b) => b.pct - a.pct);
-      return { direct, individuals };
+      return { direct };
     }
     let distDatePicker = null;
     function distRenderPreview() {
       const total = Number($("distTotal").value) || 0;
-      const { direct, individuals } = distComputeSplits(total);
+      const { direct } = distComputeSplits(total);
       $("distSplitBody").innerHTML = direct.length
         ? direct.map((s) => `<tr><td>${escapeHtml(s.name)}</td><td class="num">${pctFmt(s.pct)}%</td><td class="num"><strong>${money(s.amount)}</strong></td></tr>`).join("")
         : '<tr><td colspan="3" class="muted">No owners connected to this unit in the graph.</td></tr>';
@@ -1546,9 +1536,6 @@
             ? `leave ${money(total * diff / 100)} unallocated`
             : `exceed the total by ${money(total * -diff / 100)}`}. Fix the unit's edges in Ownership, or adjust by hand.`
         : "";
-      $("distFlowBody").innerHTML = individuals.map((s) =>
-        `<tr><td>${escapeHtml(s.name)}</td><td class="num">${pctFmt(s.pct)}%</td><td class="num">${money(s.amount)}</td></tr>`).join("")
-        || '<tr><td class="muted">No individuals upstream of this unit.</td></tr>';
     }
     $("distOpenBtn")?.addEventListener("click", () => {
       const u = repUnits.find((x) => x.id === repUnit); if (!u) return;
