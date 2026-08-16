@@ -358,7 +358,8 @@
         </div>
         <div class="stats" id="repUnitStats"></div>
 
-        <div class="section-card admin-only hidden">
+        <div class="banner-info hidden" id="finMirrorNote"></div>
+        <div class="section-card admin-only hidden" id="finAddCard">
           <h2>Add / update a month</h2>
           <div class="row">
             <div><label>Month</label><div id="fin_period_mount"></div></div>
@@ -1227,6 +1228,41 @@
       fitT = setTimeout(() => { fitStats($("repGroupStats")); fitStats($("repUnitStats")); }, 150);
     });
 
+    /* ---- Partner links (unit federation between portals) ---- */
+    let gUnitLinks = []; // admin-only rows; empty for members / pre-0022
+    async function loadUnitLinks() {
+      if (!isAdmin()) return;
+      try {
+        const { data, error } = await supabase.from("unit_links").select("*");
+        if (!error && data) gUnitLinks = data;
+      } catch (_) { /* table may not exist yet */ }
+    }
+    // Pull fresh figures for subscribed units. force=false respects the
+    // server's 15-minute throttle (used by the on-load ping).
+    async function partnerSync(force = false) {
+      let session = null;
+      try { session = (await supabase.auth.getSession()).data.session; } catch (_) {}
+      const res = await fetch(cfg.SUPABASE_URL + "/functions/v1/partner-sync", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: cfg.SUPABASE_ANON_KEY,
+          Authorization: "Bearer " + (session?.access_token || cfg.SUPABASE_ANON_KEY),
+        },
+        body: JSON.stringify({ force }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.ok === false) throw new Error(data.error || ("HTTP " + res.status));
+      return data.results || [];
+    }
+    async function partnerSyncPing() {
+      if (!gUnitLinks.some((l) => l.direction === "subscribe")) return;
+      try {
+        const results = await partnerSync(false);
+        if (results.some((r) => Number(r.months) > 0)) { await loadFinancials(); await loadUnitLinks(); }
+      } catch (_) { /* quiet — next load retries */ }
+    }
+
     async function loadFinancials() {
       const [finRes, entRes] = await Promise.all([
         supabase.from("financials").select("*").order("period", { ascending: false }),
@@ -1285,10 +1321,22 @@
       show($("repGroupView"), false); show($("repUnitView"), true);
       // While viewing-as, admin editing controls disappear like they would
       // for the member (add/update-month card, delete column).
-      const canEdit = isAdmin() && !repViewAs;
+      let canEdit = isAdmin() && !repViewAs;
       document.querySelectorAll('[data-panel="financials"] .admin-only').forEach((el) => show(el, canEdit));
       $("repUnitName").textContent = u.name;
       const rows = repFinInRange().filter((r) => r.entity_id === repUnit);
+      // Mirrored units live on a partner portal — figures arrive via
+      // partner-sync and are read-only here (the home portal is truth).
+      const mirrorLink = gUnitLinks.find((l) => l.entity_id === repUnit && l.direction === "subscribe");
+      const mirrored = !!mirrorLink || rows.some((r) => r.synced_from);
+      if (mirrored) {
+        canEdit = false;
+        show($("finAddCard"), false);
+        const from = mirrorLink?.partner_name || rows.find((r) => r.synced_from)?.synced_from || "partner portal";
+        const when = mirrorLink?.last_synced_at ? " · synced " + new Date(mirrorLink.last_synced_at).toLocaleString() : "";
+        $("finMirrorNote").textContent = `Managed on ${from}'s portal — figures sync automatically and are read-only here.${when}`;
+      }
+      show($("finMirrorNote"), mirrored);
       const stake = myStakeIn(repUnit);
       const unitNet = rows.reduce((s, r) => s + (Number(r.net) || 0), 0);
       $("repUnitStats").innerHTML = statCards(periodAgg(rows),
@@ -2088,6 +2136,8 @@
       // Documents unit names/picker come from the graph too.
       if (repUnit) renderUnitView(); else renderGroupView();
       if (allowedTabs().includes("documents")) loadDocuments();
+      // Partner links drive mirrored-unit UI; ping pulls fresh mirrors.
+      loadUnitLinks().then(partnerSyncPing);
     }
 
     function render() { effMemo.clear(); renderNodes(); renderEdges(); }
@@ -2411,6 +2461,11 @@
           <div id="pAccess" class="muted">…</div>
         </div>
 
+        <div class="field access-box hidden" id="pLinkField">
+          <label style="margin-bottom:0.5rem;">Partner link</label>
+          <div id="pLink" class="muted">…</div>
+        </div>
+
         ${kind === "individual" ? `<button class="btn btn--ghost btn--full" id="pViewAs" style="margin:0.5rem 0 0;">👁 View Reports as this person</button>` : ""}
         <button class="btn btn--ghost btn--full" id="pAddChild" style="margin:0.5rem 0;">+ Add child (connected below)</button>
         <div class="row" style="align-items:center;">
@@ -2504,12 +2559,88 @@
         const isEntity = $("pKind").value === "entity";
         show($("pEmailField"), !isEntity);
         show($("pAccessField"), !isEntity);
+        show($("pLinkField"), isEntity); // units can federate with a partner portal
         show($("pReportsField"), isEntity); // only entities (units) can appear in Reports
         // Portal access — grant/revoke via the allowlist, keyed on this box's email.
         if (!isEntity) renderAccess(id, $("pEmail").value);
+        if (isEntity) renderPartnerLink(id);
       };
       $("pKind").addEventListener("change", applyKind);
       applyKind();
+    }
+
+    // Partner link section (entities): publish this unit's feed, or
+    // mirror it from the partner portal that manages it.
+    function renderPartnerLink(entityId) {
+      const box = $("pLink"); if (!box) return;
+      const link = gUnitLinks.find((l) => l.entity_id === entityId);
+      if (!link) {
+        box.innerHTML = `
+          <div style="margin-bottom:0.5rem;">Not linked. A unit lives on its manager's portal — publish a feed to share its figures with a partner portal, or mirror it if the partner manages it.</div>
+          <div class="row" style="align-items:center;">
+            <button class="btn btn--ghost btn--sm" id="plPub" style="flex:0 0 auto;">Publish feed…</button>
+            <button class="btn btn--ghost btn--sm" id="plSub" style="flex:0 0 auto;">Mirror from partner…</button>
+          </div>
+          <div id="plForm" style="margin-top:0.5rem;"></div>`;
+        $("plPub").addEventListener("click", () => {
+          $("plForm").innerHTML = `
+            <div class="field"><label>Partner name</label><input type="text" id="plName" placeholder="e.g. Zach"></div>
+            <div class="row" style="align-items:center;"><button class="btn btn--sm" id="plGo" style="flex:0 0 auto;">Create feed key</button> <span class="muted" id="plSt"></span></div>`;
+          $("plGo").addEventListener("click", async () => {
+            const name = $("plName").value.trim(); if (!name) { $("plSt").textContent = "Name the partner."; return; }
+            const key = (crypto.randomUUID() + crypto.randomUUID()).replace(/-/g, "");
+            const { error } = await supabase.from("unit_links").insert({ entity_id: entityId, direction: "publish", partner_name: name, link_key: key });
+            if (error) { $("plSt").textContent = error.message; return; }
+            await loadUnitLinks(); renderPartnerLink(entityId);
+          });
+        });
+        $("plSub").addEventListener("click", () => {
+          $("plForm").innerHTML = `
+            <div class="field"><label>Partner name</label><input type="text" id="plName" placeholder="e.g. Zach"></div>
+            <div class="field"><label>Partner portal URL</label><input type="url" id="plUrl" placeholder="https://xxxx.supabase.co"></div>
+            <div class="field"><label>Feed key</label><input type="text" id="plKey" placeholder="from their Publish feed panel"></div>
+            <div class="row" style="align-items:center;"><button class="btn btn--sm" id="plGo" style="flex:0 0 auto;">Link &amp; sync</button> <span class="muted" id="plSt"></span></div>`;
+          $("plGo").addEventListener("click", async () => {
+            const name = $("plName").value.trim(), url = $("plUrl").value.trim().replace(/\/+$/, ""), key = $("plKey").value.trim();
+            if (!name || !/^https:\/\//.test(url) || key.length < 20) { $("plSt").textContent = "Need a name, an https URL, and the feed key."; return; }
+            const { error } = await supabase.from("unit_links").insert({ entity_id: entityId, direction: "subscribe", partner_name: name, remote_url: url, link_key: key });
+            if (error) { $("plSt").textContent = error.message; return; }
+            $("plSt").textContent = "Linked — syncing…";
+            try { await partnerSync(true); await loadFinancials(); } catch (_) { /* status shows on the link panel */ }
+            await loadUnitLinks(); renderPartnerLink(entityId);
+          });
+        });
+        return;
+      }
+      if (link.direction === "publish") {
+        box.innerHTML = `
+          <div style="margin-bottom:0.4rem;">Publishing this unit's figures to <strong style="color:var(--text);">${escapeHtml(link.partner_name)}</strong>. On their portal, they open this unit's box and pick <em>Mirror from partner</em> with these two values:</div>
+          <div class="field"><label>Portal URL</label><input type="text" readonly value="${escapeHtml(cfg.SUPABASE_URL)}" onclick="this.select()"></div>
+          <div class="field"><label>Feed key</label><input type="text" readonly value="${escapeHtml(link.link_key)}" onclick="this.select()"></div>
+          <button class="btn btn--danger btn--sm" id="plDel">Remove link</button>`;
+      } else {
+        box.innerHTML = `
+          <div style="margin-bottom:0.4rem;">Mirroring from <strong style="color:var(--text);">${escapeHtml(link.partner_name)}</strong>${link.last_synced_at ? " · last synced " + new Date(link.last_synced_at).toLocaleString() : ""}. Figures are read-only here.</div>
+          <div class="row" style="align-items:center;">
+            <button class="btn btn--sm" id="plSync" style="flex:0 0 auto;">Sync now</button>
+            <button class="btn btn--danger btn--sm" id="plDel" style="flex:0 0 auto;">Remove link</button>
+            <span class="muted" id="plSt"></span>
+          </div>`;
+        $("plSync").addEventListener("click", async () => {
+          $("plSt").textContent = "Syncing…";
+          try {
+            const results = await partnerSync(true);
+            const r = results.find((x) => x.link === link.partner_name);
+            $("plSt").textContent = r?.error ? "Failed: " + r.error : `Synced ✓${r?.months != null ? ` (${r.months} months)` : ""}`;
+            await loadFinancials(); await loadUnitLinks();
+          } catch (e) { $("plSt").textContent = "Failed: " + (e.message || e); }
+        });
+      }
+      $("plDel").addEventListener("click", async () => {
+        if (!confirm("Remove this partner link? Already-synced figures stay until replaced.")) return;
+        await supabase.from("unit_links").delete().eq("id", link.id);
+        await loadUnitLinks(); renderPartnerLink(entityId);
+      });
     }
 
     async function renderAccess(id, email) {

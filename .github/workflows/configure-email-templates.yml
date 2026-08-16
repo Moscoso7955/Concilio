@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-      REF: ofliuuulagqlbdjwrnjc
+      REF: ${{ vars.SUPABASE_PROJECT_REF || 'ofliuuulagqlbdjwrnjc' }}
     steps:
       - name: PATCH invite template
         run: |
