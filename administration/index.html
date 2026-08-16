@@ -2137,7 +2137,10 @@
         const isRoot = !cnt[e.id];
         const pct = isRoot ? null : (tot[e.id] || 0);
         let pctHtml = "";
-        if (pct !== null) {
+        // Sum-to-100 integrity warnings are admin-only: members see just
+        // their slice of the edges, so their totals rarely sum to 100 and
+        // "missing" would read as (and leak) something it isn't.
+        if (pct !== null && isAdmin()) {
           const cls = pct > 100 ? "red" : pct < 100 ? "amber" : "";
           const fmt = (n) => (n % 1 === 0 ? n : Number(n).toFixed(2));
           let label = fmt(pct) + "%";
