@@ -1536,17 +1536,26 @@
     $("repBack")?.addEventListener("click", () => { repUnit = null; renderGroupView(); });
 
     /* ---------------- Distributions ---------------- */
-    // A distribution's payment to one specific box (admin view-as only —
-    // real members get pre-masked lines from my_distribution_lines()).
-    function distAmountFor(d, box) {
-      if (!box || !d.splits) return 0;
-      let a = 0;
-      for (const e of (d.splits.direct || [])) if (e.id === box.id || e.name === box.name) a += Number(e.amount) || 0;
+    // A distribution's payment lines for a viewed slice (admin view-as
+    // only — real members get pre-masked lines from
+    // my_distribution_lines()). A payment counts if its recipient box is
+    // in the slice: the person themselves OR an entity they sit above.
+    function distLinesFor(d, vs) {
+      if (!vs || !d.splits) return [];
+      const lines = [];
+      const boxIdFor = (e) => (e.id && gEnt.some((x) => x.id === e.id)) ? e.id : (gEnt.find((x) => x.name === e.name)?.id || null);
+      for (const e of (d.splits.direct || [])) {
+        const bid = boxIdFor(e);
+        if (bid && vs.has(bid) && (Number(e.amount) || 0) > 0.005)
+          lines.push({ dist_date: d.dist_date, notes: d.notes, recipient: e.name, amount: Number(e.amount) || 0 });
+      }
       for (const e of (d.splits.provisions || [])) {
         const p = repProvs.find((x) => x.id === e.id);
-        if ((p && p.owner_id === box.id) || (!p && e.name === box.name)) a += Number(e.amount) || 0;
+        const bid = p?.owner_id || gEnt.find((x) => x.name === e.name)?.id || null;
+        if (bid && vs.has(bid) && (Number(e.amount) || 0) > 0.005)
+          lines.push({ dist_date: d.dist_date, notes: d.notes, recipient: e.name, amount: Number(e.amount) || 0 });
       }
-      return a;
+      return lines;
     }
     function renderDistributions(canEdit) {
       const body = $("distBody"); if (!body) return;
@@ -1554,29 +1563,34 @@
       const fullView = managesUnit(repUnit) || ((isAdmin() || !!roleInfo(profile?.role)?.read_all) && !repViewAs);
       body.innerHTML = "";
       if (!fullView) {
-        // Member (or view-as) ledger: only this person's own payments —
-        // no totals, no other owners' amounts or provisions.
-        const myBox = repViewAs ? gEnt.find((e) => e.id === repViewAs) : myGraphBox();
-        const lines = (repViewAs
-          ? repDist.filter((d) => d.entity_id === repUnit).map((d) => ({ dist_date: d.dist_date, notes: d.notes, amount: distAmountFor(d, myBox) }))
-          : repDistMine.filter((d) => d.entity_id === repUnit).map((d) => ({ dist_date: d.dist_date, notes: d.notes, amount: Number(d.amount) || 0 }))
-        ).filter((l) => l.amount > 0.005);
-        if (thead) thead.innerHTML = "<tr><th>Date</th><th class=\"num\">Your payment</th><th>Notes</th></tr>";
+        // Member (or view-as) ledger: payments to this person or to any
+        // entity they own — labeled by recipient. Never anyone else's
+        // line, never the distribution total.
+        const vs = repViewAs ? viewAsSet() : null;
+        const lines = repViewAs
+          ? repDist.filter((d) => d.entity_id === repUnit).flatMap((d) => distLinesFor(d, vs))
+          : repDistMine.filter((d) => d.entity_id === repUnit)
+              .map((d) => ({ dist_date: d.dist_date, notes: d.notes, recipient: d.recipient, amount: Number(d.amount) || 0 }))
+              .filter((l) => l.amount > 0.005);
+        if (thead) thead.innerHTML = "<tr><th>Date</th><th>Paid to</th><th class=\"num\">Amount</th><th>Notes</th></tr>";
         show($("distTable"), lines.length > 0);
         show($("distEmpty"), lines.length === 0);
-        $("distEmpty").textContent = "No payments to you recorded for this unit.";
+        $("distEmpty").textContent = "No payments to you (or entities you own) recorded for this unit.";
         for (const l of lines) {
           const tr = document.createElement("tr");
           tr.innerHTML = `<td>${new Date(l.dist_date + "T00:00:00").toLocaleDateString()}</td>
+            <td>${escapeHtml(l.recipient || "")}</td>
             <td class="num"><strong>${money(l.amount)}</strong></td>
             <td>${l.notes ? escapeHtml(l.notes) : ""}</td>`;
           body.appendChild(tr);
         }
-        // Their own provision status only (RLS scopes members already;
-        // view-as narrows to the viewed person's box).
-        const mineProvs = unitProvs().filter((p) => !myBox || p.owner_id === myBox.id || (p.owner_name || "").toLowerCase() === (myBox.name || "").toLowerCase());
+        // Provision status for their slice: RLS already scopes real
+        // members; view-as narrows the admin's full list to the slice.
+        const mineProvs = repViewAs
+          ? unitProvs().filter((p) => p.owner_id && vs && vs.has(p.owner_id))
+          : unitProvs();
         $("provSummary").innerHTML = mineProvs.filter((p) => provBalance(p) > 0.005).map((p) =>
-          `Your preferred return: ${pctFmt(Number(p.pref_pct))}% until ${money(p.principal)} is recovered — ${money(provBalance(p))} to go.`).join("<br>");
+          `${escapeHtml(p.owner_name)} — preferred return: ${pctFmt(Number(p.pref_pct))}% until ${money(p.principal)} is recovered — ${money(provBalance(p))} to go.`).join("<br>");
         show($("provSummary"), mineProvs.some((p) => provBalance(p) > 0.005));
         return;
       }
