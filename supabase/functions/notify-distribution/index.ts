@@ -51,7 +51,7 @@ function emailHtml(unitName: string, dateStr: string, headline: string, lines: {
       </table>
       ${hasEntityLine ? `<p style="color:#8a8f98;font-size:12px;line-height:1.6;margin:0 0 20px;text-align:left;">A payment to a company stays with that company — it doesn't mean an onward distribution to its owners. If one is made, you'll get a separate notice.</p>` : ""}
       <a href="${PORTAL_URL}" style="display:inline-block;background:#7c8493;color:#111111;font-weight:600;font-size:15px;text-decoration:none;padding:12px 28px;border-radius:9px;">Open the Owner Portal</a>
-      <p style="color:#8a8f98;font-size:12px;line-height:1.6;margin:24px 0 0;">You're receiving this because you have ownership upstream of ${esc(unitName)}.<br>Questions — reply or email christian@callidusco.com.</p>
+      <p style="color:#8a8f98;font-size:12px;line-height:1.6;margin:24px 0 0;">You're receiving this because you have ownership upstream of ${esc(unitName)}.<br>Questions — Reply to this email.</p>
     </div>
   </div>`;
 }
