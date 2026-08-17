@@ -140,6 +140,7 @@ Deno.serve(async (req) => {
         headers: { Authorization: `Bearer ${RESEND_KEY}`, "Content-Type": "application/json" },
         body: JSON.stringify({
           from: FROM, to: person.email, subject,
+          reply_to: "christian@callidusco.com",
           html: emailHtml(unit?.name || "Unit", dateStr, headline, lines, hasEntityLine, Number(dist.total) || 0),
         }),
       });
