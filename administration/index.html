@@ -3096,10 +3096,6 @@
             ${gPrincipals.map((p) => `<option value="${p.id}"${e.managed_by === p.id ? " selected" : ""}>${escapeHtml(p.name)}</option>`).join("")}
           </select>
         </div>
-        <div class="row">
-          <div class="field" style="flex:1;"><label>Parent label</label><input type="text" id="pCat" value="${escapeHtml(e.category || "")}" placeholder="Owner / Product / IP"></div>
-          <div class="field" style="flex:1;"><label>Sub</label><input type="text" id="pSub" value="${escapeHtml(e.subcategory || "")}" placeholder="SaaS / Patent / LLC"></div>
-        </div>
         <div class="field" id="pEmailField"><label>Email</label><input type="email" id="pEmail" value="${escapeHtml(e.email || "")}" placeholder="optional"></div>
         <div class="field">
           <div style="display:flex;justify-content:space-between;align-items:center;"><label>Links (<span id="pLinkN">${(e.links || []).length}</span>/${MAX_LINKS})</label>
@@ -3153,7 +3149,7 @@
       const collect = () => ({
         name: $("pName").value.trim(), kind: $("pKind").value === "entity" ? "entity" : "individual",
         in_reports: $("pKind").value === "entity" && $("pInReports").checked,
-        category: $("pCat").value.trim() || null, subcategory: $("pSub").value.trim() || null,
+        category: e.category || null, subcategory: e.subcategory || null,
         email: $("pEmail").value.trim() || null, notes: $("pNotes").value.trim() || null, color: e.color || null,
         managed_by: ($("pKind").value === "entity" && $("pManaged")?.value) || null,
         links: links.map((l) => ({ label: l.label.trim(), url: l.url.trim() })).filter((l) => l.url || l.label),
