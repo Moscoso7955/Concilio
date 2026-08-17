@@ -377,10 +377,14 @@
         </div>
 
         <div class="section-card" id="distCard">
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:0.6rem;margin-bottom:1rem;">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:0.6rem;margin-bottom:1rem;flex-wrap:wrap;">
             <h2 style="margin:0;">Distributions</h2>
-            <button class="btn btn--sm admin-only hidden" id="distOpenBtn" style="flex:0 0 auto;">Record distribution…</button>
+            <div style="display:flex;gap:0.5rem;flex:0 0 auto;">
+              <button class="btn btn--ghost btn--sm admin-only hidden" id="provOpenBtn">Provisions…</button>
+              <button class="btn btn--sm admin-only hidden" id="distOpenBtn">Record distribution…</button>
+            </div>
           </div>
+          <div class="muted hidden" id="provSummary" style="margin:-0.5rem 0 0.9rem;"></div>
           <div class="table-wrap">
             <table id="distTable" class="hidden">
               <thead><tr><th>Date</th><th class="num">Total</th><th>Recipients</th><th>Notes</th><th></th></tr></thead>
@@ -653,8 +657,15 @@
         <div><label>Date</label><span id="dist_date_mount"></span></div>
       </div>
       <div class="field" style="margin-top:0.75rem;"><label>Notes</label><input type="text" id="distNotes" placeholder="Optional — e.g. Q2 distribution"></div>
+      <div class="field hidden" id="distProvField">
+        <label>Preferred provisions — paid first</label>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Owner</th><th class="num">%</th><th class="num">Amount</th><th class="num">Still owed after</th></tr></thead>
+          <tbody id="distProvBody"></tbody>
+        </table></div>
+      </div>
       <div class="field">
-        <label>Send to (by direct ownership of this unit)</label>
+        <label id="distSplitLabel">Send to (by direct ownership of this unit)</label>
         <div class="table-wrap"><table>
           <thead><tr><th>Owner</th><th class="num">%</th><th class="num">Amount</th></tr></thead>
           <tbody id="distSplitBody"></tbody>
@@ -665,6 +676,34 @@
         <button class="btn" id="distSaveBtn" style="flex:0 0 auto;">Record</button>
         <button class="btn btn--ghost" id="distCloseBtn" style="flex:0 0 auto;">Cancel</button>
         <span class="muted" id="distStatus"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Provisions manager modal -->
+  <div class="modal-overlay hidden" id="provModal">
+    <div class="modal" style="max-width:620px;">
+      <h3 id="provModalTitle">Distribution provisions</h3>
+      <p class="muted" style="margin-bottom:0.9rem;">A provision gives an owner a preferred cut of every distribution until their buy-in is recovered — serviced in priority order (1 first), before the remainder splits among the other owners.</p>
+      <div id="provList"><p class="muted">None yet.</p></div>
+      <div class="section-card" style="margin:0.9rem 0 0;padding:1rem;">
+        <h2 style="font-size:0.95rem;">Add provision</h2>
+        <div class="row">
+          <div style="flex:1.4;"><label>Owner</label><select id="prov_owner" class="inline-select" style="width:100%;padding:0.6rem 0.7rem;"></select></div>
+          <div><label>Amount to recover</label><input type="number" step="0.01" id="prov_principal" placeholder="50000"></div>
+        </div>
+        <div class="row" style="margin-top:0.5rem;">
+          <div><label>Preferred %</label><input type="number" step="0.01" id="prov_pct" placeholder="40"></div>
+          <div><label>Priority (1 = first)</label><input type="number" step="1" id="prov_priority"></div>
+          <div style="flex:1.4;"><label>Notes</label><input type="text" id="prov_notes" placeholder="e.g. 5% tranche, bought Aug 2026"></div>
+        </div>
+        <div class="row" style="align-items:center;margin-top:0.75rem;">
+          <button class="btn btn--sm" id="provAddBtn" style="flex:0 0 auto;">Add provision</button>
+          <span class="muted" id="provAddStatus"></span>
+        </div>
+      </div>
+      <div class="row" style="align-items:center;margin-top:1rem;">
+        <button class="btn btn--ghost" id="provCloseBtn" style="flex:0 0 auto;">Close</button>
       </div>
     </div>
   </div>
@@ -1210,7 +1249,7 @@
     }
 
     /* ---------------- Reports (per-unit financials) ---------------- */
-    let repFin = [], repUnits = [], repUnit = null, repDist = [];
+    let repFin = [], repUnits = [], repUnit = null, repDist = [], repProvs = [];
 
     // Reports date range (defaults to this year). Monthly figures are kept
     // when their month overlaps the range; invoices compare by exact date.
@@ -1378,13 +1417,15 @@
     }
 
     async function loadFinancials() {
-      const [finRes, entRes, distRes] = await Promise.all([
+      const [finRes, entRes, distRes, provRes] = await Promise.all([
         supabase.from("financials").select("*").order("period", { ascending: false }),
         supabase.from("ownership_entities").select("id,name,kind,in_reports").order("name"),
         supabase.from("distributions").select("*").order("dist_date", { ascending: false }),
+        supabase.from("dist_provisions").select("*").order("priority"),
       ]);
       repFin = (!finRes.error && finRes.data) || [];
       repDist = (!distRes.error && distRes.data) || []; // empty pre-0024
+      repProvs = (!provRes.error && provRes.data) || []; // empty pre-0025
       repUnits = ((!entRes.error && entRes.data) || []).filter((e) => e.in_reports);
       if (repUnit && !repUnits.some((u) => u.id === repUnit)) repUnit = null;
       if (repUnit) renderUnitView(); else renderGroupView();
@@ -1492,9 +1533,15 @@
       body.innerHTML = "";
       show($("distTable"), rows.length > 0);
       show($("distEmpty"), rows.length === 0);
+      // Active-provision summary under the card header.
+      const act = unitProvs().filter((p) => provBalance(p) > 0.005);
+      $("provSummary").innerHTML = act.map((p) =>
+        `Provision ${p.priority}: <strong style="color:var(--text);">${escapeHtml(p.owner_name)}</strong> takes ${pctFmt(Number(p.pref_pct))}% until ${money(p.principal)} is recovered — ${money(provBalance(p))} to go.`).join("<br>");
+      show($("provSummary"), act.length > 0);
       for (const d of rows) {
         const direct = (d.splits && Array.isArray(d.splits.direct)) ? d.splits.direct : [];
-        const rec = direct.map((s) => `${s.name} ${money(s.amount)}`).join(" · ");
+        const provs = (d.splits && Array.isArray(d.splits.provisions)) ? d.splits.provisions : [];
+        const rec = provs.map((s) => `${s.name} ${money(s.amount)} (pref)`).concat(direct.map((s) => `${s.name} ${money(s.amount)}`)).join(" · ");
         const tr = document.createElement("tr");
         tr.innerHTML =
           `<td>${new Date(d.dist_date + "T00:00:00").toLocaleDateString()}</td>
@@ -1506,36 +1553,146 @@
       }
       body.querySelectorAll("[data-deldist]").forEach((b) => b.addEventListener("click", async () => {
         if (!confirm("Delete this distribution record?")) return;
+        const d = repDist.find((x) => x.id === b.dataset.deldist);
         await supabase.from("distributions").delete().eq("id", b.dataset.deldist);
-        repDist = repDist.filter((d) => d.id !== b.dataset.deldist);
+        // Unwind this record's provision payments.
+        for (const a of (d?.splits?.provisions || [])) {
+          const p = repProvs.find((x) => x.id === a.id);
+          if (!p) continue;
+          const nr = Math.max(0, (Number(p.repaid) || 0) - (Number(a.amount) || 0));
+          await supabase.from("dist_provisions").update({ repaid: nr }).eq("id", a.id);
+          p.repaid = nr;
+        }
+        repDist = repDist.filter((x) => x.id !== b.dataset.deldist);
         renderUnitView();
       }));
     }
 
-    // The split: direct owners get what the unit actually pays (edges
-    // into the unit). Distributions cascade — when a holding company
-    // later pays ITS owners, that's recorded on that unit.
+    /* ---- Provisions manager ---- */
+    function renderProvList() {
+      const box = $("provList"); if (!box) return;
+      const rows = unitProvs();
+      if (!rows.length) { box.innerHTML = '<p class="muted">None yet — add one below.</p>'; return; }
+      box.innerHTML = rows.map((p) => {
+        const bal = provBalance(p), paid = bal <= 0.005;
+        return `<div class="access-box" style="margin-bottom:0.5rem;display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;">
+          <span class="badge">${p.priority}</span>
+          <div style="flex:1;min-width:12rem;">
+            <strong>${escapeHtml(p.owner_name)}</strong> — ${pctFmt(Number(p.pref_pct))}% until ${money(p.principal)} recovered
+            <div class="muted" style="font-size:0.8rem;">${paid ? "Fully repaid" : `${money(p.repaid)} repaid · ${money(bal)} to go`}${p.notes ? " · " + escapeHtml(p.notes) : ""}</div>
+          </div>
+          ${paid ? '<span class="badge badge--admin">PAID</span>' : ""}
+          <button class="btn btn--danger btn--sm" data-delprov="${p.id}" style="flex:0 0 auto;">Delete</button>
+        </div>`;
+      }).join("");
+      box.querySelectorAll("[data-delprov]").forEach((b) => b.addEventListener("click", async () => {
+        const p = repProvs.find((x) => x.id === b.dataset.delprov);
+        if (!confirm(`Delete the ${p ? p.owner_name : ""} provision?${p && Number(p.repaid) > 0 ? ` ${money(p.repaid)} already repaid stays in past records.` : ""}`)) return;
+        await supabase.from("dist_provisions").delete().eq("id", b.dataset.delprov);
+        repProvs = repProvs.filter((x) => x.id !== b.dataset.delprov);
+        renderProvList(); renderUnitView();
+      }));
+    }
+    $("provOpenBtn")?.addEventListener("click", () => {
+      const u = repUnits.find((x) => x.id === repUnit); if (!u) return;
+      $("provModalTitle").textContent = "Distribution provisions — " + u.name;
+      const sel = $("prov_owner");
+      sel.innerHTML = gEdge.filter((ed) => ed.child_id === repUnit)
+        .map((ed) => gEnt.find((x) => x.id === ed.parent_id)).filter(Boolean)
+        .sort((a, b) => String(a.name).localeCompare(String(b.name)))
+        .map((p) => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join("");
+      $("prov_principal").value = ""; $("prov_pct").value = ""; $("prov_notes").value = "";
+      $("prov_priority").value = String(unitProvs().length + 1);
+      $("provAddStatus").textContent = "";
+      renderProvList();
+      show($("provModal"), true);
+    });
+    $("provCloseBtn")?.addEventListener("click", () => show($("provModal"), false));
+    $("provModal")?.addEventListener("click", (e) => { if (e.target === $("provModal")) show($("provModal"), false); });
+    $("provAddBtn")?.addEventListener("click", async () => {
+      const st = $("provAddStatus");
+      const ownerId = $("prov_owner").value;
+      const owner = gEnt.find((x) => x.id === ownerId);
+      const principal = Number($("prov_principal").value), pct = Number($("prov_pct").value);
+      if (!owner) { st.textContent = "Pick an owner."; return; }
+      if (!principal || principal <= 0) { st.textContent = "Enter the amount to recover."; return; }
+      if (!pct || pct <= 0 || pct > 100) { st.textContent = "Preferred % must be between 0 and 100."; return; }
+      st.textContent = "Adding…";
+      const row = {
+        entity_id: repUnit, owner_id: ownerId, owner_name: owner.name,
+        principal, pref_pct: pct,
+        priority: parseInt($("prov_priority").value, 10) || (unitProvs().length + 1),
+        notes: $("prov_notes").value.trim() || null,
+      };
+      const { data, error } = await supabase.from("dist_provisions").insert(row).select().maybeSingle();
+      if (error) { st.textContent = "Failed: " + error.message; return; }
+      repProvs.push(data || Object.assign({ id: "tmp-" + Date.now(), repaid: 0, created_at: new Date().toISOString() }, row));
+      st.textContent = "Added ✓";
+      $("prov_principal").value = ""; $("prov_pct").value = ""; $("prov_notes").value = "";
+      $("prov_priority").value = String(unitProvs().length + 1);
+      renderProvList(); renderUnitView();
+    });
+
+    // The split: preferred provisions are serviced first, in priority
+    // order — each active tranche takes its preferred % of what's left,
+    // capped at its unpaid balance. The remainder then splits pro-rata
+    // among the OTHER direct owners (a provision replaces its holder's
+    // regular share while it's being repaid). Distributions cascade —
+    // when a holding company later pays ITS owners, that's recorded on
+    // that unit.
+    const provBalance = (p) => Math.max(0, (Number(p.principal) || 0) - (Number(p.repaid) || 0));
+    const unitProvs = () => repProvs.filter((p) => p.entity_id === repUnit)
+      .sort((a, b) => (a.priority - b.priority) || String(a.created_at).localeCompare(String(b.created_at)));
     function distComputeSplits(total) {
-      const direct = gEdge.filter((ed) => ed.child_id === repUnit).map((ed) => {
-        const p = gEnt.find((x) => x.id === ed.parent_id);
-        return { name: p ? p.name : "?", kind: p?.kind || "entity", pct: Number(ed.percentage) || 0, amount: total * (Number(ed.percentage) || 0) / 100 };
+      let rem = total;
+      const provisions = [];
+      for (const p of unitProvs()) {
+        const bal = provBalance(p);
+        if (bal <= 0.005 || rem <= 0) continue;
+        const take = Math.min(rem * (Number(p.pref_pct) || 0) / 100, bal, rem);
+        if (take > 0.005) {
+          provisions.push({ id: p.id, name: p.owner_name, pct: Number(p.pref_pct) || 0, amount: take, owed_after: bal - take });
+          rem -= take;
+        }
+      }
+      const prefNames = new Set(provisions.map((a) => a.name.toLowerCase()));
+      const edges = gEdge.filter((ed) => ed.child_id === repUnit)
+        .map((ed) => ({ ed, par: gEnt.find((x) => x.id === ed.parent_id) }))
+        .filter((x) => x.par);
+      // Provision holders sit out the residual split; if everyone holds
+      // one, fall back to the full owner list.
+      let base = edges.filter((x) => !prefNames.has((x.par.name || "").toLowerCase()));
+      if (!base.length) base = edges;
+      const basePct = base.reduce((a, x) => a + (Number(x.ed.percentage) || 0), 0);
+      const direct = base.map((x) => {
+        const raw = Number(x.ed.percentage) || 0;
+        const share = basePct ? raw / basePct : 0;
+        return { name: x.par.name, kind: x.par.kind, pct: provisions.length ? share * 100 : raw, rawPct: raw, amount: provisions.length ? rem * share : total * raw / 100 };
       }).sort((a, b) => b.pct - a.pct);
-      return { direct };
+      return { provisions, direct, remainder: rem };
     }
     let distDatePicker = null;
     function distRenderPreview() {
       const total = Number($("distTotal").value) || 0;
-      const { direct } = distComputeSplits(total);
+      const { provisions, direct, remainder } = distComputeSplits(total);
+      show($("distProvField"), provisions.length > 0);
+      $("distProvBody").innerHTML = provisions.map((s) =>
+        `<tr><td>${escapeHtml(s.name)}</td><td class="num">${pctFmt(s.pct)}%</td><td class="num"><strong>${money(s.amount)}</strong></td><td class="num">${s.owed_after <= 0.005 ? '<span class="badge badge--admin">paid off</span>' : money(s.owed_after)}</td></tr>`).join("");
+      $("distSplitLabel").textContent = provisions.length
+        ? `Remainder (${money(remainder)}) to the other owners, pro-rata`
+        : "Send to (by direct ownership of this unit)";
       $("distSplitBody").innerHTML = direct.length
         ? direct.map((s) => `<tr><td>${escapeHtml(s.name)}</td><td class="num">${pctFmt(s.pct)}%</td><td class="num"><strong>${money(s.amount)}</strong></td></tr>`).join("")
         : '<tr><td colspan="3" class="muted">No owners connected to this unit in the graph.</td></tr>';
-      const pctSum = direct.reduce((a, s) => a + s.pct, 0);
-      const diff = 100 - pctSum;
-      $("distSplitNote").textContent = Math.abs(diff) > 0.01
-        ? `Direct ownership sums to ${pctFmt(pctSum)}% — amounts above ${diff > 0
+      // Integrity check always looks at the raw edges into the unit.
+      const rawSum = gEdge.filter((ed) => ed.child_id === repUnit).reduce((a, ed) => a + (Number(ed.percentage) || 0), 0);
+      const diff = 100 - rawSum;
+      $("distSplitNote").textContent = Math.abs(diff) > 0.01 && !provisions.length
+        ? `Direct ownership sums to ${pctFmt(rawSum)}% — amounts above ${diff > 0
             ? `leave ${money(total * diff / 100)} unallocated`
             : `exceed the total by ${money(total * -diff / 100)}`}. Fix the unit's edges in Ownership, or adjust by hand.`
-        : "";
+        : (provisions.length && Math.abs(diff) > 0.01
+            ? `Note: direct ownership sums to ${pctFmt(rawSum)}% — the remainder is split by the owners' relative shares.` : "");
     }
     $("distOpenBtn")?.addEventListener("click", () => {
       const u = repUnits.find((x) => x.id === repUnit); if (!u) return;
@@ -1565,6 +1722,14 @@
       };
       const { data, error } = await supabase.from("distributions").insert(row).select().maybeSingle();
       if (error) { st.textContent = "Save failed: " + error.message; return; }
+      // Advance each serviced provision's repaid tally.
+      for (const a of (row.splits.provisions || [])) {
+        const p = repProvs.find((x) => x.id === a.id);
+        if (!p) continue;
+        const nr = Math.min(Number(p.principal) || 0, (Number(p.repaid) || 0) + a.amount);
+        await supabase.from("dist_provisions").update({ repaid: nr }).eq("id", a.id);
+        p.repaid = nr;
+      }
       repDist.unshift(data || row);
       show($("distModal"), false);
       renderUnitView();
