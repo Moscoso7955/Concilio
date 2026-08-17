@@ -130,7 +130,7 @@ Deno.serve(async (req) => {
       ? `${unit?.name || "A unit"} sent you a distribution`
       : `${unit?.name || "A unit"} distributed to ${first}`;
     const headline = personal
-      ? `A distribution went out on ${dateStr} — here's what reached you and yours:`
+      ? `A distribution went out on ${dateStr} — here is what is headed your way:`
       : `A distribution went out on ${dateStr} — here's where it landed in your ownership chain:`;
     try {
       const res = await fetch("https://api.resend.com/emails", {
