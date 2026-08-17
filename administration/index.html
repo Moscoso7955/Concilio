@@ -331,7 +331,7 @@
   <!-- Check email -->
   <div class="center hidden" id="checkEmail">
     <div class="card auth-card">
-      <h1>Check your inbox 📬</h1>
+      <h1>Check your inbox</h1>
       <p class="sub">We sent a sign-in link to <strong id="sentTo"></strong></p>
       <p class="muted">Click the link on this device to sign in. You can close this tab.</p>
       <button class="btn btn--ghost btn--full" style="margin-top:1.2rem;" id="backToLogin">Use a different email</button>
@@ -345,7 +345,8 @@
       <div class="whoami">
         <span id="userEmail"></span>
         <span class="badge" id="roleBadge">owner</span>
-        <button class="btn btn--ghost btn--sm admin-only hidden" id="settingsBtn" title="Settings — users & access" aria-label="Settings" style="font-size:1rem;line-height:1;padding:0.35rem 0.55rem;">⚙</button>
+        <button class="btn btn--ghost btn--sm admin-only hidden" id="settingsBtn" title="Settings — users & access" aria-label="Settings" style="line-height:1;padding:0.42rem 0.55rem;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
+        <button class="btn btn--ghost btn--sm hidden" id="pwaReload" title="Reload" aria-label="Reload" style="line-height:1;padding:0.42rem 0.55rem;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button>
         <button class="btn btn--ghost btn--sm" id="signOutBtn">Sign out</button>
       </div>
     </div>
@@ -361,7 +362,7 @@
     </div>
 
     <div id="repViewAsBar" class="hidden" style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;background:rgba(124,132,147,0.12);border:1px solid var(--accent);border-radius:10px;padding:0.55rem 0.8rem;margin-bottom:0.9rem;">
-      <span>👁 Viewing the portal as <strong id="repViewAsName"></strong> — exactly what they see.</span>
+      <span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-2px;"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg> Viewing the portal as <strong id="repViewAsName"></strong> — exactly what they see.</span>
       <button class="btn btn--sm" id="repViewAsExit" style="margin-left:auto;flex:0 0 auto;">Exit</button>
     </div>
 
@@ -522,7 +523,7 @@
       </div>
 
       <div class="inv-emailbar" id="invEmailBar">
-        <span>📧 Email bills to: <span class="inv-emailaddr" id="invEmailAddr">…</span></span>
+        <span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-2px;"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg> Email bills to: <span class="inv-emailaddr" id="invEmailAddr">…</span></span>
         <button class="btn btn--ghost btn--sm" id="invEmailCopy" style="flex:0 0 auto;">Copy</button>
       </div>
 
@@ -865,6 +866,9 @@
     });
 
     $("backToLogin").addEventListener("click", () => { show($("checkEmail"), false); show($("loginView"), true); });
+    // Installed-app mode has no browser chrome — give it a reload button.
+    if (window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true) show($("pwaReload"), true);
+    $("pwaReload")?.addEventListener("click", () => location.reload());
     $("signOutBtn").addEventListener("click", async () => { await supabase.auth.signOut(); location.reload(); });
 
     /* ---------------- Settings: users & access (admin) ---------------- */
@@ -2499,7 +2503,7 @@
         div.innerHTML =
           `<div class="memo__head">
              <div>
-               <div class="memo__title">${m.pinned ? '<span class="pin-dot">📌 </span>' : ""}${escapeHtml(m.title)}</div>
+               <div class="memo__title">${m.pinned ? '<span class="pin-dot"><svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true" style="vertical-align:-1px;"><path d="M16 3a1 1 0 0 1 .97 1.24l-.9 3.62 4.07 4.07a1 1 0 0 1-.32 1.63l-4.6 1.97-1.97 4.6a1 1 0 0 1-1.63.32L7.55 16.4l-4.84 4.85a1 1 0 0 1-1.41-1.41l4.84-4.85-4.06-4.06a1 1 0 0 1 .32-1.63l4.6-1.97 1.97-4.6a1 1 0 0 1 1.63-.32l4.07 4.07 3.62-.9A1 1 0 0 1 16 3z" transform="rotate(45 12 12)"/></svg> </span>' : ""}${escapeHtml(m.title)}</div>
                <div class="memo__meta">${escapeHtml(m.author_name || "")} · ${new Date(m.created_at).toLocaleString()}</div>
              </div>
              <div class="memo__actions">
@@ -2942,7 +2946,7 @@
           `<div class="gnode__name">${escapeHtml(e.name || "unnamed")}</div>` +
           (e.subcategory ? `<div class="gnode__sub">${escapeHtml(e.subcategory)}</div>` : "") +
           pctHtml +
-          ((e.links || []).length ? `<div class="gnode__links">🔗 ${e.links.length} link${e.links.length === 1 ? "" : "s"}</div>` : "");
+          ((e.links || []).length ? `<div class="gnode__links"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-1px;"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg> ${e.links.length} link${e.links.length === 1 ? "" : "s"}</div>` : "");
         canvas.appendChild(node);
         // Size each box to whole grid blocks (nearest 20px up) for clean
         // alignment — but only when actually measurable. A hidden panel
@@ -3285,7 +3289,7 @@
           <div id="pLink" class="muted">…</div>
         </div>
 
-        ${kind === "individual" ? `<button class="btn btn--ghost btn--full" id="pViewAs" style="margin:0.5rem 0 0;">👁 View Portal as this person</button>` : ""}
+        ${kind === "individual" ? `<button class="btn btn--ghost btn--full" id="pViewAs" style="margin:0.5rem 0 0;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-2px;"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg> View Portal as this person</button>` : ""}
         <button class="btn btn--ghost btn--full" id="pAddChild" style="margin:0.5rem 0;">+ Add child (connected below)</button>
         <div class="row" style="align-items:center;">
           <button class="btn btn--danger" id="pDelete" style="flex:0 0 auto;">Delete</button>
@@ -3336,7 +3340,7 @@
         try {
           await persist();
           // Saving an individual with an email IS the invite: make sure
-          // they're allowlisted (→ they appear in ⚙ Settings → Users)
+          // they're allowlisted (→ they appear in Settings → Users)
           // and send the invite email if they're new.
           const em = ($("pEmail")?.value || "").trim().toLowerCase();
           if ($("pKind").value !== "entity" && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) {
@@ -3481,7 +3485,7 @@
           <button class="btn btn--ghost btn--sm" id="acInvite" style="flex:0 0 auto;">Email invite</button>
           <button class="btn btn--danger btn--sm" id="acRevoke" style="flex:0 0 auto;">Revoke</button>
           <span class="muted" id="acStatus"></span></div>
-          <div class="muted" style="margin-top:0.4rem;">Tabs and roles are also managed in ⚙ Settings (top right).</div>`;
+          <div class="muted" style="margin-top:0.4rem;">Tabs and roles are also managed in Settings (top right).</div>`;
         $("acUpdate").addEventListener("click", async () => {
           await supabase.from("allowed_owners").update({ role: $("acRole").value }).eq("email", email);
           await supabase.from("profiles").update({ role: $("acRole").value }).ilike("email", email);
@@ -3567,7 +3571,7 @@
       const domain = window.CALLIDUS_CONFIG && window.CALLIDUS_CONFIG.INBOUND_DOMAIN;
       if (!domain) {
         // No verified inbound domain yet — don't show a non-working address.
-        bar.innerHTML = '<span class="muted">📧 Email-in (forward bills to auto-file) isn’t set up yet.</span>';
+        bar.innerHTML = '<span class="muted">Email-in (forward bills to auto-file) isn’t set up yet.</span>';
         return;
       }
       let token = "callidus";
