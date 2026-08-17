@@ -1822,8 +1822,10 @@
           seg -= span;
         }
         // Once their tranches retire, the holder reverts to their raw
-        // share for the rest of the pot; during them, the draw replaces it.
-        if (holderId) { alloc[holderId] = credit + r * seg; credits[holderId] = credit; }
+        // share for the rest of the pot; during them, the draw replaces
+        // it. Adjust (don't overwrite) so charges from OTHER provisions
+        // against this holder are preserved.
+        if (holderId) { alloc[holderId] += credit + r * seg - r * total; credits[holderId] = credit; }
         else if (credit > 0.005) { alloc["__" + list[0].owner_name] = credit; credits["__" + list[0].owner_name] = credit; nameOf["__" + list[0].owner_name] = list[0].owner_name; rawPct["__" + list[0].owner_name] = 0; }
       }
       const direct = Object.keys(alloc).map((k) => ({
@@ -1834,6 +1836,10 @@
         .sort((a, b) => b.pct - a.pct);
       const neg = direct.find((s) => s.amount < -0.005);
       if (neg) warn = `${neg.name}'s share goes negative — the preferred top-ups exceed it. Adjust by hand.`;
+      // The most common cause of odd numbers: nobody was named to fund
+      // the top-up, so it spreads across every other owner.
+      const unset = unitProvs().filter((p) => provBalance(p) > 0.005 && !p.absorbed_by).map((p) => p.owner_name);
+      if (unset.length) warn = `No "top-up comes out of" set on ${[...new Set(unset)].join(", ")}'s provision${unset.length > 1 ? "s" : ""} — the top-up is spreading across ALL other owners. Set the absorber in Provisions… ${warn || ""}`;
       return { provisions, direct, remainder: direct.reduce((a, s) => a + Math.max(0, s.amount), 0), warn };
     }
     let distDatePicker = null;
