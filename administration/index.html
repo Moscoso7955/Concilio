@@ -868,11 +868,40 @@
         `<table><thead><tr><th>When</th><th>Who</th><th>What</th></tr></thead><tbody>` +
         data.map((r) => {
           const when = new Date(r.created_at).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
-          const what = r.event === "download"
-            ? `Downloaded <strong>${escapeHtml(r.detail?.title || "a document")}</strong>`
-            : "Signed in";
-          return `<tr><td>${when}</td><td>${escapeHtml(r.email || "—")}</td><td>${what}</td></tr>`;
+          return `<tr><td>${when}</td><td>${escapeHtml(r.email || "—")}</td><td>${activityLabel(r)}</td></tr>`;
         }).join("") + "</tbody></table>";
+    }
+    // Human line for each audit event. Unknown events (future additions)
+    // fall back to the raw name so nothing is ever silently dropped.
+    function activityLabel(r) {
+      const d = r.detail || {}, eh = escapeHtml;
+      const unit = d.unit ? ` · ${eh(d.unit)}` : "";
+      switch (r.event) {
+        case "sign_in": return "Signed in";
+        case "download": return `Downloaded <strong>${eh(d.title || "a document")}</strong>`;
+        case "doc_upload": return `Uploaded <strong>${eh(d.title || "a document")}</strong>${unit}`;
+        case "doc_edit": return `Edited document <strong>${eh(d.title || "")}</strong>`;
+        case "doc_delete": return `Deleted document <strong>${eh(d.title || "")}</strong>`;
+        case "memo_post": return `Posted memo <strong>${eh(d.title || "")}</strong>`;
+        case "memo_delete": return `Deleted memo <strong>${eh(d.title || "")}</strong>`;
+        case "user_add": return `Added user <strong>${eh(d.email || "")}</strong> as ${eh(d.role || "member")}`;
+        case "user_update": return `Changed <strong>${eh(d.email || "")}</strong> to ${eh(d.role || "?")}`;
+        case "user_remove": return `Removed user <strong>${eh(d.email || "")}</strong>`;
+        case "invite_sent": return `Sent invite to <strong>${eh(d.email || "")}</strong>`;
+        case "role_create": return `Created role <strong>${eh(d.role || "")}</strong>`;
+        case "role_update": return `Updated role <strong>${eh(d.role || "")}</strong>`;
+        case "role_delete": return `Deleted role <strong>${eh(d.role || "")}</strong>`;
+        case "fin_save": return `Saved ${eh(d.period || "a month")} figures${unit}`;
+        case "fin_delete": return `Deleted ${eh(d.period || "a month")} figures${unit}`;
+        case "pnl_import": return `Imported ${Number(d.months) || "?"} month(s) of P&L${unit}`;
+        case "dist_record": return `Recorded a <strong>${money(Number(d.total) || 0)}</strong> distribution${unit}`;
+        case "dist_delete": return `Deleted a ${d.total != null ? money(Number(d.total)) + " " : ""}distribution record${unit}`;
+        case "dist_notify": return `Notified ${Number(d.notified) || 0} partner(s) about a distribution${unit}`;
+        case "prov_add": return `Added a provision: <strong>${eh(d.owner || "")}</strong> ${pctFmt(Number(d.pct) || 0)}% until ${money(Number(d.principal) || 0)}${unit}`;
+        case "prov_delete": return `Deleted <strong>${eh(d.owner || "")}</strong>'s provision`;
+        case "prov_payment": return `Logged a ${money(Number(d.amount) || 0)} direct payment to <strong>${eh(d.owner || "")}</strong>`;
+        default: return eh(r.event || "activity");
+      }
     }
 
     // Send the branded invite email (or a fresh sign-in link for people
@@ -892,6 +921,7 @@
       let data = {};
       try { data = await res.json(); } catch (_) {}
       if (!res.ok || data.ok === false) throw new Error(data.error || ("HTTP " + res.status));
+      logAccess("invite_sent", { email });
       return data;
     }
     $("settingsCloseBtn")?.addEventListener("click", () => show($("settingsModal"), false));
@@ -1010,6 +1040,7 @@
             await loadPrincipals();
           } catch (_) { /* pre-0023 */ }
         }
+        if (!error) logAccess("user_update", { email, role });
         st.textContent = error ? error.message : "Saved ✓ (applies at their next sign-in or refresh)";
       }));
       box.querySelectorAll("[data-suinvite]").forEach((btn) => btn.addEventListener("click", async () => {
@@ -1027,6 +1058,7 @@
         if (!confirm(`Remove portal access for ${email}?`)) return;
         await supabase.from("allowed_owners").delete().eq("email", email);
         await supabase.from("profiles").delete().ilike("email", email);
+        logAccess("user_remove", { email });
         loadSettingsUsers();
       }));
     }
@@ -1072,6 +1104,7 @@
         const picked = [...box.querySelectorAll(`[data-srtab="${i}"]:checked`)].map((c) => c.value);
         const st = box.querySelector(`[data-srstatus="${i}"]`); st.textContent = "Saving…";
         const { error } = await supabase.from("roles").update({ name, read_all, tabs: picked.length ? picked : null }).eq("key", key);
+        if (!error) logAccess("role_update", { role: key });
         st.textContent = error ? error.message : "Saved ✓ (applies at their next sign-in or refresh)";
         if (!error) { await refreshRoles(); loadSettingsUsers(); }
       }));
@@ -1080,6 +1113,7 @@
         if (!confirm(`Delete the "${key}" role?`)) return;
         const { error } = await supabase.from("roles").delete().eq("key", key);
         if (error) { alert(error.message); return; }
+        logAccess("role_delete", { role: key });
         await refreshRoles(); loadSettingsUsers();
       }));
     }
@@ -1091,6 +1125,7 @@
       const key = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
       if (!key) { st.textContent = "Name needs letters or numbers."; return; }
       const { error } = await supabase.from("roles").insert({ key, name, tabs: ["financials"], read_all: false });
+      if (!error) logAccess("role_create", { role: key });
       st.textContent = error ? error.message : "Added ✓ — set its tabs and scope below.";
       if (!error) { $("srNewName").value = ""; await refreshRoles(); loadSettingsUsers(); }
     });
@@ -1101,6 +1136,7 @@
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { st.textContent = "Enter a valid email."; return; }
       const { error } = await supabase.from("allowed_owners").upsert({ email, role: $("suNewRole").value }, { onConflict: "email" });
       if (error) { st.textContent = error.message; return; }
+      logAccess("user_add", { email, role: $("suNewRole").value });
       // Principals get an org record too — name/brand/domain editable on
       // their user card below.
       if ($("suNewRole").value === "principal") {
@@ -1683,6 +1719,7 @@
           const data = await res.json();
           if (!res.ok || data.ok === false) throw new Error(data.error || ("HTTP " + res.status));
           d.notified_at = new Date().toISOString();
+          logAccess("dist_notify", { unit: (repUnits.find((x) => x.id === repUnit)?.name || "unit"), notified: data.notified });
           b.textContent = `Notified ${data.notified} ✓`;
           b.title = (data.errors || []).length ? "Some sends failed: " + data.errors.join("; ") : "";
           setTimeout(() => { b.textContent = "Re-notify"; b.disabled = false; }, 2500);
@@ -1704,6 +1741,7 @@
           p.repaid = nr;
         }
         repDist = repDist.filter((x) => x.id !== b.dataset.deldist);
+        logAccess("dist_delete", { unit: (repUnits.find((x) => x.id === repUnit)?.name || "unit"), total: d?.total ?? null });
         renderUnitView();
       }));
     }
@@ -1769,6 +1807,7 @@
           const nr = Math.min(Number(p.principal) || 0, (Number(p.repaid) || 0) + amt);
           await supabase.from("dist_provisions").update({ repaid: nr }).eq("id", p.id);
           p.repaid = nr;
+          logAccess("prov_payment", { owner: p.owner_name, amount: amt });
           repDist.unshift(data || row);
           renderProvList(); renderUnitView();
         });
@@ -1786,6 +1825,7 @@
         const p = repProvs.find((x) => x.id === b.dataset.delprov);
         if (!confirm(`Delete the ${p ? p.owner_name : ""} provision?${p && Number(p.repaid) > 0 ? ` ${money(p.repaid)} already repaid stays in past records.` : ""}`)) return;
         await supabase.from("dist_provisions").delete().eq("id", b.dataset.delprov);
+        logAccess("prov_delete", { owner: p?.owner_name || null });
         repProvs = repProvs.filter((x) => x.id !== b.dataset.delprov);
         renderProvList(); renderUnitView();
       }));
@@ -1833,6 +1873,7 @@
       }
       if (error) { st.textContent = "Failed: " + error.message; return; }
       repProvs.push(data || Object.assign({ id: "tmp-" + Date.now(), repaid: 0, created_at: new Date().toISOString() }, row));
+      logAccess("prov_add", { unit: (repUnits.find((x) => x.id === repUnit)?.name || "unit"), owner: owner.name, principal, pct });
       st.textContent = "Added ✓";
       $("prov_principal").value = ""; $("prov_pct").value = ""; $("prov_notes").value = "";
       $("prov_priority").value = String(unitProvs().length + 1);
@@ -1986,6 +2027,7 @@
         p.repaid = nr;
       }
       repDist.unshift(data || Object.assign({ id: "tmp-" + Date.now() }, row));
+      logAccess("dist_record", { unit: (repUnits.find((x) => x.id === repUnit)?.name || "unit"), total, date: dist_date });
       show($("distModal"), false);
       renderUnitView();
     });
@@ -2316,6 +2358,7 @@
       finPendingPnl = null;
       $("fin_revenue").value = ""; $("fin_expenses").value = ""; $("fin_notes").value = "";
       st.textContent = degraded ? "Saved — run migration 0008 for per-unit data" : "Saved ✓";
+      logAccess("fin_save", { unit: (repUnits.find((x) => x.id === repUnit)?.name || "unit"), period: m });
       loadFinancials();
     });
 
@@ -2364,7 +2407,7 @@
           const { error, degraded } = await upsertFinancials(rows);
           st.textContent = error ? error.message
             : (degraded ? `Imported ${rows.length} — run migration 0008` : `Imported ${rows.length} month(s) from AI ✓`);
-          if (!error) loadFinancials();
+          if (!error) { logAccess("pnl_import", { unit: (repUnits.find((x) => x.id === repUnit)?.name || "unit"), months: rows.length }); loadFinancials(); }
         }
       } catch (e) {
         st.textContent = "AI read failed: " + (e.message || e);
@@ -2397,8 +2440,9 @@
 
     async function deleteFinancial(id) {
       if (!confirm("Delete this month's figures?")) return;
+      const r = repFin.find((x) => x.id === id);
       const { error } = await supabase.from("financials").delete().eq("id", id);
-      if (!error) loadFinancials();
+      if (!error) { logAccess("fin_delete", { unit: (repUnits.find((x) => x.id === repUnit)?.name || "unit"), period: r ? String(r.period).slice(0, 7) : null }); loadFinancials(); }
     }
 
     /* ---------------- Memos ---------------- */
@@ -2421,7 +2465,7 @@
              </div>
              <div class="memo__actions">
                ${canEdit ? `<button class="btn btn--ghost btn--sm" data-pin="${m.id}" data-on="${m.pinned}">${m.pinned ? "Unpin" : "Pin"}</button>` : ""}
-               ${canEdit ? `<button class="btn btn--danger btn--sm" data-delmemo="${m.id}">Delete</button>` : ""}
+               ${canEdit ? `<button class="btn btn--danger btn--sm" data-delmemo="${m.id}" data-mtitle="${escapeHtml(m.title)}">Delete</button>` : ""}
              </div>
            </div>
            <div class="memo__body">${escapeHtml(m.body)}</div>`;
@@ -2430,7 +2474,7 @@
       list.querySelectorAll("[data-pin]").forEach((b) => b.addEventListener("click", () =>
         togglePin(b.dataset.pin, b.dataset.on === "true")));
       list.querySelectorAll("[data-delmemo]").forEach((b) => b.addEventListener("click", () =>
-        deleteMemo(b.dataset.delmemo)));
+        deleteMemo(b.dataset.delmemo, b.dataset.mtitle)));
     }
 
     $("memoPostBtn").addEventListener("click", async () => {
@@ -2445,15 +2489,18 @@
       const { error } = await supabase.from("memos").insert(row);
       if (error) { st.textContent = error.message; return; }
       $("memo_title").value = ""; $("memo_body").value = ""; if ($("memo_pinned")) $("memo_pinned").checked = false;
+      logAccess("memo_post", { title });
       st.textContent = "Posted ✓"; loadMemos();
     });
 
     async function togglePin(id, on) {
       await supabase.from("memos").update({ pinned: !on }).eq("id", id); loadMemos();
     }
-    async function deleteMemo(id) {
+    async function deleteMemo(id, title) {
       if (!confirm("Delete this memo?")) return;
-      await supabase.from("memos").delete().eq("id", id); loadMemos();
+      await supabase.from("memos").delete().eq("id", id);
+      logAccess("memo_delete", { title: title || null });
+      loadMemos();
     }
 
     /* ---------------- Documents ---------------- */
@@ -2656,6 +2703,7 @@
             ({ error } = await supabase.from("documents").update(upd).eq("id", docEditingId));
           }
           if (error) throw error;
+          logAccess("doc_edit", { title: upd.title });
           docResetForm();
           st.textContent = "Saved ✓"; loadDocuments();
         } catch (e) { st.textContent = "Save failed: " + (e.message || e); }
@@ -2685,6 +2733,7 @@
           ({ error: insErr } = await supabase.from("documents").insert(row));
         }
         if (insErr) throw insErr;
+        logAccess("doc_upload", { title, unit: row.entity_id ? (gEnt.find((x) => x.id === row.entity_id)?.name || null) : null });
         docResetForm();
         st.textContent = "Saved ✓"; loadDocuments();
       } catch (e) { st.textContent = "Upload failed: " + (e.message || e); }
@@ -2692,8 +2741,10 @@
 
     async function deleteDoc(id, path) {
       if (!confirm("Delete this document?")) return;
+      const d = docRowsCache.find((x) => x.id === id);
       await supabase.storage.from("documents").remove([path]);
       await supabase.from("documents").delete().eq("id", id);
+      logAccess("doc_delete", { title: d?.title || null });
       loadDocuments();
     }
 
@@ -3395,6 +3446,7 @@
         $("acUpdate").addEventListener("click", async () => {
           await supabase.from("allowed_owners").update({ role: $("acRole").value }).eq("email", email);
           await supabase.from("profiles").update({ role: $("acRole").value }).ilike("email", email);
+          logAccess("user_update", { email, role: $("acRole").value });
           renderAccess(id, email);
         });
         $("acInvite").addEventListener("click", async () => {
@@ -3409,6 +3461,7 @@
           await supabase.from("allowed_owners").delete().eq("email", email);
           await supabase.from("profiles").delete().ilike("email", email);
           renderAccess(id, email);
+          logAccess("user_remove", { email });
         });
       } else {
         box.innerHTML = `<div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;">
