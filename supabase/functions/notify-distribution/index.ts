@@ -100,12 +100,11 @@ Deno.serve(async (req) => {
   const provById = new Map((provRows || []).map((p) => [p.id, p]));
 
   const dateStr = new Date(dist.dist_date + "T00:00:00").toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
-  const requester = (prof.email || user.email || "").toLowerCase();
   let notified = 0, skipped = 0;
   const errors: string[] = [];
 
+  // Everyone upstream gets one — including the admin who clicked.
   for (const person of (ents || []).filter((e) => e.kind !== "entity" && e.email)) {
-    if ((person.email || "").toLowerCase() === requester) { skipped++; continue; }
     const vis = downstream(person.id);
     if (!vis.has(dist.entity_id)) continue; // not upstream of this unit
     // Their slice of the split: payments to them or entities they own.
