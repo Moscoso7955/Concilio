@@ -684,7 +684,7 @@
   <div class="modal-overlay hidden" id="provModal">
     <div class="modal" style="max-width:620px;">
       <h3 id="provModalTitle">Distribution provisions</h3>
-      <p class="muted" style="margin-bottom:0.9rem;">A provision gives an owner a preferred cut of every distribution until their buy-in is recovered — serviced in priority order (1 first), before the remainder splits among the other owners. An owner's tranches go one at a time: their next tranche waits until the earlier one is fully recovered.</p>
+      <p class="muted" style="margin-bottom:0.9rem;">A provision gives an owner a preferred cut of every distribution until their buy-in is recovered. Unaffected owners keep their full ownership % — the preferred top-up comes out of the absorber's share (usually whoever sold the stake). An owner's tranches go one at a time: the next waits until the earlier one is fully recovered.</p>
       <div id="provList"><p class="muted">None yet.</p></div>
       <div class="section-card" style="margin:0.9rem 0 0;padding:1rem;">
         <h2 style="font-size:0.95rem;">Add provision</h2>
@@ -695,8 +695,9 @@
         <div class="row" style="margin-top:0.5rem;">
           <div><label>Preferred %</label><input type="number" step="0.01" id="prov_pct" placeholder="40"></div>
           <div><label>Priority (1 = first)</label><input type="number" step="1" id="prov_priority"></div>
-          <div style="flex:1.4;"><label>Notes</label><input type="text" id="prov_notes" placeholder="e.g. 5% tranche, bought Aug 2026"></div>
+          <div style="flex:1.4;"><label>Top-up comes out of</label><select id="prov_absorb" class="inline-select" style="width:100%;padding:0.6rem 0.7rem;"></select></div>
         </div>
+        <div class="field" style="margin-top:0.5rem;"><label>Notes</label><input type="text" id="prov_notes" placeholder="e.g. 5% tranche, bought Aug 2026"></div>
         <div class="row" style="align-items:center;margin-top:0.75rem;">
           <button class="btn btn--sm" id="provAddBtn" style="flex:0 0 auto;">Add provision</button>
           <span class="muted" id="provAddStatus"></span>
@@ -1249,7 +1250,7 @@
     }
 
     /* ---------------- Reports (per-unit financials) ---------------- */
-    let repFin = [], repUnits = [], repUnit = null, repDist = [], repProvs = [];
+    let repFin = [], repUnits = [], repUnit = null, repDist = [], repProvs = [], repDistMine = [];
 
     // Reports date range (defaults to this year). Monthly figures are kept
     // when their month overlaps the range; invoices compare by exact date.
@@ -1424,8 +1425,16 @@
         supabase.from("dist_provisions").select("*").order("priority"),
       ]);
       repFin = (!finRes.error && finRes.data) || [];
-      repDist = (!distRes.error && distRes.data) || []; // empty pre-0024
-      repProvs = (!provRes.error && provRes.data) || []; // empty pre-0025
+      repDist = (!distRes.error && distRes.data) || []; // RLS: staff/managers only
+      repProvs = (!provRes.error && provRes.data) || []; // RLS: staff/managers/own
+      // Members read their own payment lines through the masked function
+      // — never the full rows.
+      if (!isAdmin() && !roleInfo(profile?.role)?.read_all) {
+        try {
+          const { data: mine, error } = await supabase.rpc("my_distribution_lines");
+          repDistMine = (!error && mine) || [];
+        } catch (_) { repDistMine = []; }
+      }
       repUnits = ((!entRes.error && entRes.data) || []).filter((e) => e.in_reports);
       if (repUnit && !repUnits.some((u) => u.id === repUnit)) repUnit = null;
       if (repUnit) renderUnitView(); else renderGroupView();
@@ -1527,10 +1536,53 @@
     $("repBack")?.addEventListener("click", () => { repUnit = null; renderGroupView(); });
 
     /* ---------------- Distributions ---------------- */
+    // A distribution's payment to one specific box (admin view-as only —
+    // real members get pre-masked lines from my_distribution_lines()).
+    function distAmountFor(d, box) {
+      if (!box || !d.splits) return 0;
+      let a = 0;
+      for (const e of (d.splits.direct || [])) if (e.id === box.id || e.name === box.name) a += Number(e.amount) || 0;
+      for (const e of (d.splits.provisions || [])) {
+        const p = repProvs.find((x) => x.id === e.id);
+        if ((p && p.owner_id === box.id) || (!p && e.name === box.name)) a += Number(e.amount) || 0;
+      }
+      return a;
+    }
     function renderDistributions(canEdit) {
-      const rows = repDist.filter((d) => d.entity_id === repUnit);
       const body = $("distBody"); if (!body) return;
+      const thead = $("distTable")?.querySelector("thead");
+      const fullView = managesUnit(repUnit) || ((isAdmin() || !!roleInfo(profile?.role)?.read_all) && !repViewAs);
       body.innerHTML = "";
+      if (!fullView) {
+        // Member (or view-as) ledger: only this person's own payments —
+        // no totals, no other owners' amounts or provisions.
+        const myBox = repViewAs ? gEnt.find((e) => e.id === repViewAs) : myGraphBox();
+        const lines = (repViewAs
+          ? repDist.filter((d) => d.entity_id === repUnit).map((d) => ({ dist_date: d.dist_date, notes: d.notes, amount: distAmountFor(d, myBox) }))
+          : repDistMine.filter((d) => d.entity_id === repUnit).map((d) => ({ dist_date: d.dist_date, notes: d.notes, amount: Number(d.amount) || 0 }))
+        ).filter((l) => l.amount > 0.005);
+        if (thead) thead.innerHTML = "<tr><th>Date</th><th class=\"num\">Your payment</th><th>Notes</th></tr>";
+        show($("distTable"), lines.length > 0);
+        show($("distEmpty"), lines.length === 0);
+        $("distEmpty").textContent = "No payments to you recorded for this unit.";
+        for (const l of lines) {
+          const tr = document.createElement("tr");
+          tr.innerHTML = `<td>${new Date(l.dist_date + "T00:00:00").toLocaleDateString()}</td>
+            <td class="num"><strong>${money(l.amount)}</strong></td>
+            <td>${l.notes ? escapeHtml(l.notes) : ""}</td>`;
+          body.appendChild(tr);
+        }
+        // Their own provision status only (RLS scopes members already;
+        // view-as narrows to the viewed person's box).
+        const mineProvs = unitProvs().filter((p) => !myBox || p.owner_id === myBox.id || (p.owner_name || "").toLowerCase() === (myBox.name || "").toLowerCase());
+        $("provSummary").innerHTML = mineProvs.filter((p) => provBalance(p) > 0.005).map((p) =>
+          `Your preferred return: ${pctFmt(Number(p.pref_pct))}% until ${money(p.principal)} is recovered — ${money(provBalance(p))} to go.`).join("<br>");
+        show($("provSummary"), mineProvs.some((p) => provBalance(p) > 0.005));
+        return;
+      }
+      if (thead) thead.innerHTML = "<tr><th>Date</th><th class=\"num\">Total</th><th>Recipients</th><th>Notes</th><th></th></tr>";
+      const rows = repDist.filter((d) => d.entity_id === repUnit);
+      $("distEmpty").textContent = "No distributions recorded for this unit.";
       show($("distTable"), rows.length > 0);
       show($("distEmpty"), rows.length === 0);
       // Active-provision summary under the card header. An owner's later
@@ -1585,6 +1637,12 @@
           <div style="flex:1;min-width:12rem;">
             <strong>${escapeHtml(p.owner_name)}</strong> — ${pctFmt(Number(p.pref_pct))}% until ${money(p.principal)} recovered
             <div class="muted" style="font-size:0.8rem;">${paid ? "Fully repaid" : `${money(p.repaid)} repaid · ${money(bal)} to go`}${p.notes ? " · " + escapeHtml(p.notes) : ""}</div>
+            ${paid ? "" : `<div class="muted" style="font-size:0.8rem;margin-top:0.2rem;">Top-up out of:
+              <select data-provabsorb="${p.id}" class="inline-select" style="font-size:0.78rem;padding:0.15rem 0.3rem;">
+                <option value="">— other owners, pro-rata —</option>
+                ${gEdge.filter((ed) => ed.child_id === repUnit).map((ed) => gEnt.find((x) => x.id === ed.parent_id)).filter((o) => o && o.id !== p.owner_id)
+                  .map((o) => `<option value="${o.id}"${p.absorbed_by === o.id ? " selected" : ""}>${escapeHtml(o.name)}</option>`).join("")}
+              </select></div>`}
           </div>
           ${paid ? '<span class="badge badge--admin">PAID</span>' : `<button class="btn btn--ghost btn--sm" data-payprov="${p.id}" style="flex:0 0 auto;">Log payment…</button>`}
           <button class="btn btn--danger btn--sm" data-delprov="${p.id}" style="flex:0 0 auto;">Delete</button>
@@ -1632,6 +1690,15 @@
           renderProvList(); renderUnitView();
         });
       }));
+      box.querySelectorAll("[data-provabsorb]").forEach((sel) => sel.addEventListener("change", async () => {
+        const p = repProvs.find((x) => x.id === sel.dataset.provabsorb); if (!p) return;
+        const ab = sel.value ? gEnt.find((x) => x.id === sel.value) : null;
+        try {
+          await supabase.from("dist_provisions").update({ absorbed_by: ab?.id || null, absorbed_by_name: ab?.name || null }).eq("id", p.id);
+          p.absorbed_by = ab?.id || null; p.absorbed_by_name = ab?.name || null;
+          renderUnitView();
+        } catch (_) {}
+      }));
       box.querySelectorAll("[data-delprov]").forEach((b) => b.addEventListener("click", async () => {
         const p = repProvs.find((x) => x.id === b.dataset.delprov);
         if (!confirm(`Delete the ${p ? p.owner_name : ""} provision?${p && Number(p.repaid) > 0 ? ` ${money(p.repaid)} already repaid stays in past records.` : ""}`)) return;
@@ -1643,11 +1710,13 @@
     $("provOpenBtn")?.addEventListener("click", () => {
       const u = repUnits.find((x) => x.id === repUnit); if (!u) return;
       $("provModalTitle").textContent = "Distribution provisions — " + u.name;
-      const sel = $("prov_owner");
-      sel.innerHTML = gEdge.filter((ed) => ed.child_id === repUnit)
+      const owners = gEdge.filter((ed) => ed.child_id === repUnit)
         .map((ed) => gEnt.find((x) => x.id === ed.parent_id)).filter(Boolean)
-        .sort((a, b) => String(a.name).localeCompare(String(b.name)))
-        .map((p) => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join("");
+        .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+      const sel = $("prov_owner");
+      sel.innerHTML = owners.map((p) => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join("");
+      $("prov_absorb").innerHTML = '<option value="">— other owners, pro-rata —</option>' +
+        owners.map((p) => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join("");
       $("prov_principal").value = ""; $("prov_pct").value = ""; $("prov_notes").value = "";
       $("prov_priority").value = String(unitProvs().length + 1);
       $("provAddStatus").textContent = "";
@@ -1664,14 +1733,21 @@
       if (!owner) { st.textContent = "Pick an owner."; return; }
       if (!principal || principal <= 0) { st.textContent = "Enter the amount to recover."; return; }
       if (!pct || pct <= 0 || pct > 100) { st.textContent = "Preferred % must be between 0 and 100."; return; }
+      if ($("prov_absorb").value && $("prov_absorb").value === ownerId) { st.textContent = "The absorber can't be the provision holder."; return; }
       st.textContent = "Adding…";
+      const absorber = $("prov_absorb").value ? gEnt.find((x) => x.id === $("prov_absorb").value) : null;
       const row = {
         entity_id: repUnit, owner_id: ownerId, owner_name: owner.name,
         principal, pref_pct: pct,
         priority: parseInt($("prov_priority").value, 10) || (unitProvs().length + 1),
         notes: $("prov_notes").value.trim() || null,
+        absorbed_by: absorber?.id || null, absorbed_by_name: absorber?.name || null,
       };
-      const { data, error } = await supabase.from("dist_provisions").insert(row).select().maybeSingle();
+      let { data, error } = await supabase.from("dist_provisions").insert(row).select().maybeSingle();
+      if (error && /absorbed_by/i.test(error.message || "")) {
+        delete row.absorbed_by; delete row.absorbed_by_name; // pre-0026
+        ({ data, error } = await supabase.from("dist_provisions").insert(row).select().maybeSingle());
+      }
       if (error) { st.textContent = "Failed: " + error.message; return; }
       repProvs.push(data || Object.assign({ id: "tmp-" + Date.now(), repaid: 0, created_at: new Date().toISOString() }, row));
       st.textContent = "Added ✓";
@@ -1690,65 +1766,99 @@
     const provBalance = (p) => Math.max(0, (Number(p.principal) || 0) - (Number(p.repaid) || 0));
     const unitProvs = () => repProvs.filter((p) => p.entity_id === repUnit)
       .sort((a, b) => (a.priority - b.priority) || String(a.created_at).localeCompare(String(b.created_at)));
-    // One tranche per owner at a time: an owner's later tranche stays
-    // queued until their earlier one is fully recovered ("50K first at
-    // 40%, then 30% on the 150K"). Different owners service concurrently.
+    // The waterfall. Every owner keeps their raw ownership % of the
+    // TOTAL — a preferred return never changes the unaffected owners'
+    // cuts. A provision replaces its holder's share with the preferred
+    // draw, and the top-up (preferred minus their own share) is deducted
+    // from the absorber — whoever sold them the stake — or spread
+    // pro-rata over the other owners when no absorber is set. An owner's
+    // tranches service one at a time ("50K first at 40%, then 30% on the
+    // 150K"): the next starts only when the earlier one is recovered,
+    // mid-distribution included. Different owners service concurrently.
     const provOwnerKey = (p) => p.owner_id || (p.owner_name || "").toLowerCase();
     function distComputeSplits(total) {
-      let rem = total;
-      const provisions = [];
-      const servicing = new Set();
-      for (const p of unitProvs()) {
-        const bal = provBalance(p);
-        if (bal <= 0.005 || rem <= 0) continue;
-        if (servicing.has(provOwnerKey(p))) continue; // queued behind their earlier tranche
-        const take = Math.min(rem * (Number(p.pref_pct) || 0) / 100, bal, rem);
-        if (take > 0.005) {
-          provisions.push({ id: p.id, name: p.owner_name, pct: Number(p.pref_pct) || 0, amount: take, owed_after: bal - take });
-          rem -= take;
-        }
-        // Still owed after this one → their later tranches wait. Paid off
-        // completely → the next tranche may pick up in this distribution.
-        if (bal - take > 0.005) servicing.add(provOwnerKey(p));
-      }
-      const prefNames = new Set(provisions.map((a) => a.name.toLowerCase()));
       const edges = gEdge.filter((ed) => ed.child_id === repUnit)
         .map((ed) => ({ ed, par: gEnt.find((x) => x.id === ed.parent_id) }))
         .filter((x) => x.par);
-      // Provision holders sit out the residual split; if everyone holds
-      // one, fall back to the full owner list.
-      let base = edges.filter((x) => !prefNames.has((x.par.name || "").toLowerCase()));
-      if (!base.length) base = edges;
-      const basePct = base.reduce((a, x) => a + (Number(x.ed.percentage) || 0), 0);
-      const direct = base.map((x) => {
-        const raw = Number(x.ed.percentage) || 0;
-        const share = basePct ? raw / basePct : 0;
-        return { name: x.par.name, kind: x.par.kind, pct: provisions.length ? share * 100 : raw, rawPct: raw, amount: provisions.length ? rem * share : total * raw / 100 };
-      }).sort((a, b) => b.pct - a.pct);
-      return { provisions, direct, remainder: rem };
+      const rawPct = {}, nameOf = {}, kindOf = {};
+      for (const x of edges) {
+        rawPct[x.par.id] = (rawPct[x.par.id] || 0) + (Number(x.ed.percentage) || 0);
+        nameOf[x.par.id] = x.par.name; kindOf[x.par.id] = x.par.kind;
+      }
+      const alloc = {}; for (const k in rawPct) alloc[k] = total * rawPct[k] / 100;
+      const credits = {}; // preferred draws per holder, shown separately
+      const provisions = [];
+      let warn = null;
+      const charge = (p, holderId, topUp) => {
+        if (Math.abs(topUp) <= 0.000001) return;
+        if (p.absorbed_by && alloc[p.absorbed_by] != null) { alloc[p.absorbed_by] -= topUp; return; }
+        // No absorber set: the other owners fund it pro-rata.
+        const othersPct = Object.keys(alloc).reduce((a, k) => a + (k === holderId ? 0 : rawPct[k]), 0);
+        if (othersPct <= 0) { warn = "No other owners to fund the preferred top-up."; return; }
+        for (const k of Object.keys(alloc)) if (k !== holderId) alloc[k] -= topUp * rawPct[k] / othersPct;
+      };
+      const byOwner = new Map();
+      for (const p of unitProvs()) {
+        if (provBalance(p) <= 0.005) continue;
+        const k = provOwnerKey(p);
+        if (!byOwner.has(k)) byOwner.set(k, []);
+        byOwner.get(k).push(p);
+      }
+      for (const [, list] of byOwner) {
+        const holderId = list[0].owner_id && rawPct[list[0].owner_id] != null ? list[0].owner_id : null;
+        const r = holderId ? rawPct[holderId] / 100 : 0;
+        let seg = total, credit = 0;
+        for (const p of list) {
+          if (seg <= 0.005) break;
+          const f = (Number(p.pref_pct) || 0) / 100; if (f <= 0) continue;
+          const bal = provBalance(p);
+          const span = Math.min(seg, bal / f); // slice of the pot this tranche is live for
+          const take = span * f;
+          if (take > 0.005) {
+            provisions.push({ id: p.id, name: p.owner_name, pct: Number(p.pref_pct) || 0, amount: take, owed_after: bal - take });
+            charge(p, holderId, (f - r) * span);
+            credit += take;
+          }
+          seg -= span;
+        }
+        // Once their tranches retire, the holder reverts to their raw
+        // share for the rest of the pot; during them, the draw replaces it.
+        if (holderId) { alloc[holderId] = credit + r * seg; credits[holderId] = credit; }
+        else if (credit > 0.005) { alloc["__" + list[0].owner_name] = credit; credits["__" + list[0].owner_name] = credit; nameOf["__" + list[0].owner_name] = list[0].owner_name; rawPct["__" + list[0].owner_name] = 0; }
+      }
+      const direct = Object.keys(alloc).map((k) => ({
+        id: k, name: nameOf[k], kind: kindOf[k] || "entity", pct: rawPct[k],
+        amount: alloc[k] - (credits[k] || 0),
+        absorbs: unitProvs().some((p) => p.absorbed_by === k && provBalance(p) > 0.005),
+      })).filter((s) => Math.abs(s.amount) > 0.005 || (!credits[s.id] && rawPct[s.id] > 0))
+        .sort((a, b) => b.pct - a.pct);
+      const neg = direct.find((s) => s.amount < -0.005);
+      if (neg) warn = `${neg.name}'s share goes negative — the preferred top-ups exceed it. Adjust by hand.`;
+      return { provisions, direct, remainder: direct.reduce((a, s) => a + Math.max(0, s.amount), 0), warn };
     }
     let distDatePicker = null;
     function distRenderPreview() {
       const total = Number($("distTotal").value) || 0;
-      const { provisions, direct, remainder } = distComputeSplits(total);
+      const { provisions, direct, remainder, warn } = distComputeSplits(total);
       show($("distProvField"), provisions.length > 0);
       $("distProvBody").innerHTML = provisions.map((s) =>
         `<tr><td>${escapeHtml(s.name)}</td><td class="num">${pctFmt(s.pct)}%</td><td class="num"><strong>${money(s.amount)}</strong></td><td class="num">${s.owed_after <= 0.005 ? '<span class="badge badge--admin">paid off</span>' : money(s.owed_after)}</td></tr>`).join("");
       $("distSplitLabel").textContent = provisions.length
-        ? `Remainder (${money(remainder)}) to the other owners, pro-rata`
+        ? `Remainder (${money(remainder)}) — owners keep their full %; the preferred top-up comes out of the absorber's share`
         : "Send to (by direct ownership of this unit)";
       $("distSplitBody").innerHTML = direct.length
-        ? direct.map((s) => `<tr><td>${escapeHtml(s.name)}</td><td class="num">${pctFmt(s.pct)}%</td><td class="num"><strong>${money(s.amount)}</strong></td></tr>`).join("")
+        ? direct.map((s) => `<tr><td>${escapeHtml(s.name)}${s.absorbs ? ' <span class="muted" style="font-size:0.78rem;">(absorbs pref top-up)</span>' : ""}</td><td class="num">${pctFmt(s.pct)}%</td><td class="num"><strong>${money(s.amount)}</strong></td></tr>`).join("")
         : '<tr><td colspan="3" class="muted">No owners connected to this unit in the graph.</td></tr>';
       // Integrity check always looks at the raw edges into the unit.
       const rawSum = gEdge.filter((ed) => ed.child_id === repUnit).reduce((a, ed) => a + (Number(ed.percentage) || 0), 0);
       const diff = 100 - rawSum;
-      $("distSplitNote").textContent = Math.abs(diff) > 0.01 && !provisions.length
-        ? `Direct ownership sums to ${pctFmt(rawSum)}% — amounts above ${diff > 0
-            ? `leave ${money(total * diff / 100)} unallocated`
-            : `exceed the total by ${money(total * -diff / 100)}`}. Fix the unit's edges in Ownership, or adjust by hand.`
-        : (provisions.length && Math.abs(diff) > 0.01
-            ? `Note: direct ownership sums to ${pctFmt(rawSum)}% — the remainder is split by the owners' relative shares.` : "");
+      $("distSplitNote").textContent = warn
+        ? warn
+        : (Math.abs(diff) > 0.01
+          ? `Direct ownership sums to ${pctFmt(rawSum)}% — amounts above ${diff > 0
+              ? `leave ${money(total * diff / 100)} unallocated`
+              : `exceed the total by ${money(total * -diff / 100)}`}. Fix the unit's edges in Ownership, or adjust by hand.`
+          : "");
     }
     $("distOpenBtn")?.addEventListener("click", () => {
       const u = repUnits.find((x) => x.id === repUnit); if (!u) return;
