@@ -1586,10 +1586,52 @@
             <strong>${escapeHtml(p.owner_name)}</strong> — ${pctFmt(Number(p.pref_pct))}% until ${money(p.principal)} recovered
             <div class="muted" style="font-size:0.8rem;">${paid ? "Fully repaid" : `${money(p.repaid)} repaid · ${money(bal)} to go`}${p.notes ? " · " + escapeHtml(p.notes) : ""}</div>
           </div>
-          ${paid ? '<span class="badge badge--admin">PAID</span>' : ""}
+          ${paid ? '<span class="badge badge--admin">PAID</span>' : `<button class="btn btn--ghost btn--sm" data-payprov="${p.id}" style="flex:0 0 auto;">Log payment…</button>`}
           <button class="btn btn--danger btn--sm" data-delprov="${p.id}" style="flex:0 0 auto;">Delete</button>
+          <div class="hidden" data-payform="${p.id}" style="flex-basis:100%;"></div>
         </div>`;
       }).join("");
+      // Log a payment made outside the waterfall — a check cut straight
+      // to the provision holder. Records a ledger entry (100% to them)
+      // and advances the tranche's repaid balance.
+      box.querySelectorAll("[data-payprov]").forEach((b) => b.addEventListener("click", () => {
+        const p = repProvs.find((x) => x.id === b.dataset.payprov); if (!p) return;
+        const form = box.querySelector(`[data-payform="${p.id}"]`);
+        if (!form.classList.contains("hidden")) { show(form, false); return; }
+        box.querySelectorAll("[data-payform]").forEach((f) => show(f, false));
+        form.innerHTML = `
+          <div class="row" style="align-items:flex-end;margin-top:0.5rem;">
+            <div><label>Amount paid</label><input type="number" step="0.01" data-payamt placeholder="933.33"></div>
+            <div><label>Date paid</label><span data-paydate></span></div>
+            <div style="flex:1.4;"><label>Note</label><input type="text" data-paynote placeholder="Direct payment"></div>
+            <button class="btn btn--sm" data-paygo style="flex:0 0 auto;">Log</button>
+            <span class="muted" data-payst></span>
+          </div>`;
+        show(form, true);
+        const picker = window.createDatePicker
+          ? window.createDatePicker({ mount: form.querySelector("[data-paydate]"), initial: new Date().toISOString().slice(0, 10) }) : null;
+        form.querySelector("[data-paygo]").addEventListener("click", async () => {
+          const st = form.querySelector("[data-payst]");
+          const amt = Number(form.querySelector("[data-payamt]").value);
+          if (!amt || amt <= 0) { st.textContent = "Enter the amount."; return; }
+          st.textContent = "Logging…";
+          const row = {
+            entity_id: repUnit,
+            dist_date: picker?.getValue() || new Date().toISOString().slice(0, 10),
+            total: amt,
+            notes: form.querySelector("[data-paynote]").value.trim() || `Direct payment — ${p.owner_name}`,
+            splits: { provisions: [{ id: p.id, name: p.owner_name, pct: 100, amount: amt }], direct: [] },
+            created_by: profile?.full_name || profile?.email || null,
+          };
+          const { data, error } = await supabase.from("distributions").insert(row).select().maybeSingle();
+          if (error) { st.textContent = "Failed: " + error.message; return; }
+          const nr = Math.min(Number(p.principal) || 0, (Number(p.repaid) || 0) + amt);
+          await supabase.from("dist_provisions").update({ repaid: nr }).eq("id", p.id);
+          p.repaid = nr;
+          repDist.unshift(data || row);
+          renderProvList(); renderUnitView();
+        });
+      }));
       box.querySelectorAll("[data-delprov]").forEach((b) => b.addEventListener("click", async () => {
         const p = repProvs.find((x) => x.id === b.dataset.delprov);
         if (!confirm(`Delete the ${p ? p.owner_name : ""} provision?${p && Number(p.repaid) > 0 ? ` ${money(p.repaid)} already repaid stays in past records.` : ""}`)) return;
