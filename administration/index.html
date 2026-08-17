@@ -9,6 +9,9 @@
   <link rel="manifest" href="/administration/manifest.webmanifest">
   <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png">
   <meta name="theme-color" content="#111111">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Callidus">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <style>
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
     :root {
@@ -175,6 +178,17 @@
     .pnl-table td:first-child, .pnl-table th:first-child {
       position: sticky; left: 0; background: var(--panel); z-index: 1;
     }
+    /* Section headers span the full table, so the CELL can't stick —
+       the name inside it does. */
+    .pnl-table .pnl-sechead td:first-child { position: static; }
+    .pnl-sechead .pnl-secname { position: sticky; left: 0.4rem; display: inline-block; }
+    /* Monthly figures: keep the month visible while scrolling to actions. */
+    #finTable th:first-child, #finTable td:first-child { position: sticky; left: 0; background: var(--panel); z-index: 1; }
+    /* Sticky modal header: title + close stay visible over long statements. */
+    .modal-sticky-head { position: sticky; top: 0; display: flex; justify-content: space-between; align-items: flex-start; gap: 0.75rem; background: var(--panel); z-index: 5; margin: -1.25rem -1.25rem 0.75rem; padding: 1.1rem 1.25rem 0.6rem; border-radius: 14px 14px 0 0; }
+    .modal-sticky-head h3 { margin-bottom: 0.1rem; }
+    /* Graph pane: keep the header (and its ×) reachable while scrolling. */
+    .gpane > div:first-child { position: sticky; top: 0; background: var(--panel); z-index: 3; padding: 0.4rem 0; margin-top: -0.4rem; }
     .pnl-table th { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); text-align: left; padding: 0.25rem 0.4rem 0.4rem; border-bottom: 1px solid var(--border); font-weight: 600; }
     .pnl-table th.num { text-align: right; }
     .pnl-table td { padding: 0.28rem 0.4rem; }
@@ -186,7 +200,7 @@
     .pnl-pct { color: var(--muted); font-size: 0.8rem; width: 3.8rem; }
     .pnl-acct2 { padding-left: 2.7rem !important; }
     .pnl-grptotal td { font-weight: 600; }
-    .inline-select { background: var(--panel-2); border: 1px solid var(--border); color: var(--text); border-radius: 7px; padding: 0.25rem 0.4rem; font-size: 0.85rem; font-family: inherit; }
+    .inline-select { width: auto; min-width: 6.5rem; background: var(--panel-2); border: 1px solid var(--border); color: var(--text); border-radius: 7px; padding: 0.25rem 0.4rem; font-size: 0.85rem; font-family: inherit; }
     a.filelink { color: var(--accent); text-decoration: none; }
     a.filelink:hover { text-decoration: underline; }
     .inv-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; }
@@ -195,7 +209,7 @@
     .inv-emailbar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;
       background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 0.7rem 0.9rem; margin-bottom: 1rem; font-size: 0.9rem; }
     .inv-emailaddr { color: var(--accent); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 600; }
-    .inv-range-row { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 1rem; }
+    .inv-range-row { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 1rem; flex-wrap: wrap; }
     .inv-range-row label { margin: 0; flex: 0 0 auto; }
 
     /* Ownership graph */
@@ -250,7 +264,7 @@
     @media (max-width: 640px) {
       .shell { padding: 0.75rem 0.75rem 3rem; }
       /* Horizontal scroll only — no vertical pull/rubber-band on the strip. */
-      .tabs { flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; overscroll-behavior: contain; touch-action: pan-x; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+      .tabs { flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; touch-action: pan-x pan-y; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
       .tabs::-webkit-scrollbar { display: none; }
       .tab { white-space: nowrap; flex: 0 0 auto; }
       .stats { grid-template-columns: repeat(2, 1fr); gap: 0.6rem; }
@@ -264,6 +278,10 @@
          crushing columns into one-word-per-line stacks. */
       #distTable { min-width: 560px; }
       .dist-rec { max-width: none; min-width: 16rem; }
+      .tab { margin-bottom: 0; }
+      #ytdModalBody th:first-child { min-width: 8rem !important; }
+      #saList td:nth-child(2) { max-width: 9rem; overflow: hidden; text-overflow: ellipsis; }
+      .dp2-root { display: block; }
       .unit-card__figs .v { font-size: 0.95rem; }
       .section-card { padding: 0.9rem; border-radius: 12px; }
       .unit-grid { grid-template-columns: 1fr; }
@@ -725,8 +743,10 @@
 
   <div class="modal-overlay hidden" id="ytdModal">
     <div class="modal" style="max-width:min(1200px, 94vw);">
-      <h3 id="ytdModalTitle" style="margin-bottom:0.1rem;">P&amp;L</h3>
-      <div class="muted" id="ytdModalSub" style="margin-bottom:1rem;font-size:0.85rem;"></div>
+      <div class="modal-sticky-head"><div>
+        <h3 id="ytdModalTitle" style="margin-bottom:0.1rem;">P&amp;L</h3>
+        <div class="muted" id="ytdModalSub" style="font-size:0.85rem;"></div>
+      </div><button class="iconbtn" data-closemodal="ytdModal" style="font-size:1.5rem;" aria-label="Close">×</button></div>
       <div class="table-wrap" id="ytdModalBody"></div>
       <div class="row" style="align-items:center;margin-top:1rem;">
         <button class="btn btn--ghost" id="ytdCloseBtn" style="flex:0 0 auto;">Close</button>
@@ -736,8 +756,10 @@
 
   <div class="modal-overlay hidden" id="pnlModal">
     <div class="modal" style="max-width:540px;">
-      <h3 id="pnlModalTitle" style="margin-bottom:0.1rem;">P&amp;L</h3>
-      <div class="muted" id="pnlModalSub" style="margin-bottom:1rem;font-size:0.85rem;"></div>
+      <div class="modal-sticky-head"><div>
+        <h3 id="pnlModalTitle" style="margin-bottom:0.1rem;">P&amp;L</h3>
+        <div class="muted" id="pnlModalSub" style="font-size:0.85rem;"></div>
+      </div><button class="iconbtn" data-closemodal="pnlModal" style="font-size:1.5rem;" aria-label="Close">×</button></div>
       <div id="pnlModalBody"></div>
       <div class="row" style="align-items:center;margin-top:1rem;">
         <button class="btn btn--ghost" id="pnlCloseBtn" style="flex:0 0 auto;">Close</button>
@@ -941,6 +963,8 @@
       if (e.key !== "Escape") return;
       document.querySelectorAll(".modal-overlay:not(.hidden)").forEach((m) => m.classList.add("hidden"));
     });
+    document.querySelectorAll("[data-closemodal]").forEach((b) =>
+      b.addEventListener("click", () => show($(b.dataset.closemodal), false)));
 
     async function loadSettingsUsers() {
       const box = $("suList"); box.innerHTML = '<p class="muted">Loading…</p>';
@@ -1290,6 +1314,9 @@
       document.querySelectorAll(".tab-panel").forEach((p) => show(p, p.dataset.panel === name));
       // On narrow screens the tab strip scrolls — keep the active tab visible.
       try { btn.scrollIntoView({ block: "nearest", inline: "nearest" }); } catch (_) {}
+      // Tables keep their sideways scroll otherwise — a switched-to tab
+      // should never open mid-scroll with its first column hidden.
+      document.querySelectorAll(".table-wrap").forEach((w) => w.scrollLeft = 0);
       // The graph measures its boxes; re-render now that it's visible so
       // sizes/edges are computed against real dimensions.
       if (name === "owners" && typeof gEnt !== "undefined" && gEnt.length) render();
@@ -1579,6 +1606,7 @@
       let canEdit = (isAdmin() && !repViewAs) || managesUnit(repUnit);
       document.querySelectorAll('[data-panel="financials"] .admin-only').forEach((el) => show(el, canEdit));
       $("repUnitName").textContent = u.name;
+      document.querySelectorAll('[data-panel="financials"] .table-wrap').forEach((w) => w.scrollLeft = 0);
       const rows = repFinInRange().filter((r) => r.entity_id === repUnit);
       // Mirrored units live on a partner portal — figures arrive via
       // partner-sync and are read-only here (the home portal is truth).
@@ -2147,7 +2175,7 @@
         const rank = sectionRank(s.name);
         if (rank === 3) { otherInc += secTot; sawOther = true; }
         if (rank === 4) { otherExp += secTot; sawOther = true; }
-        rowsHtml += `<tr class="pnl-sechead"><td colspan="3">${escapeHtml(s.name)}</td></tr>`;
+        rowsHtml += `<tr class="pnl-sechead"><td colspan="3"><span class="pnl-secname">${escapeHtml(s.name)}</span></td></tr>`;
         // Groups render as nested blocks with their own "Total for" row.
         // COGS groups by the portal's classification; other sections use
         // the statement's own nesting when captured.
@@ -2268,7 +2296,7 @@
       for (const sec of sections) {
         const isCogs = pnlIsCogsSec(sec.name);
         const secAgg = {};
-        body += `<tr class="pnl-sechead"><td colspan="${span}">${escapeHtml(sec.name)}</td></tr>`;
+        body += `<tr class="pnl-sechead"><td colspan="${span}"><span class="pnl-secname">${escapeHtml(sec.name)}</span></td></tr>`;
         const acctRow = (a, indent, group) => {
           addTo(secAgg, a.vals);
           let base = grossTot, title = "of gross income";

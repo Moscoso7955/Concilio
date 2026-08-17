@@ -376,6 +376,24 @@
 .drp-apply{width:134px;height:36px;margin-top:8px;background:var(--accent,#7c8493);color:#0b0b0b;font-size:13px;font-weight:600;border:1px solid var(--accent-hover,#616773);border-radius:6px;cursor:pointer;font-family:inherit;}
 .drp-apply:hover{background:var(--accent-hover,#616773);}
 .drp-apply:active{transform:translateY(1px);}
+@media (max-width: 640px) {
+  .drp-root{display:block;max-width:100%;}
+  .drp-trigger{width:100%;}
+  .drp-label{width:auto;flex:1;min-width:0;}
+  /* The popover becomes a centered sheet: calendar on top, presets and
+     the From/To/Apply row stacked beneath — nothing off-screen. */
+  .drp-pop{position:fixed;left:12px;right:12px;top:8vh;width:auto;height:auto;max-height:80vh;
+    flex-direction:column;overflow-y:auto;}
+  .drp-cal{width:256px;margin:0 auto;padding:8px 0 0;}
+  .drp-scroll{height:236px;}
+  .drp-right{width:100%;border-left:none;border-top:1px solid var(--border,#2a2a2a);}
+  .drp-presets{height:auto;display:flex;flex-wrap:wrap;gap:6px;justify-content:center;padding:10px 8px;}
+  .drp-preset{width:auto;margin:0;padding:0 12px;height:30px;}
+  .drp-inputs{flex-direction:row;flex-wrap:wrap;gap:6px;justify-content:center;align-items:center;padding:10px 8px 14px;}
+  .drp-input{width:118px;}
+  .drp-to{margin:0 2px;}
+  .drp-apply{width:auto;padding:0 16px;margin-top:0;}
+}
 .dp2-root{position:relative;display:inline-block;font-variant-numeric:tabular-nums;}
 .dp2-trigger{min-width:150px;width:100%;padding:0.6rem 0.7rem;font-size:14px;text-align:left;color:var(--text,#e5e7eb);background:var(--panel-2,#2a2a2a);border:1px solid var(--border,#3a3a3a);border-radius:9px;cursor:pointer;font-family:inherit;}
 .dp2-trigger:hover{border-color:var(--accent,#7c8493);}
