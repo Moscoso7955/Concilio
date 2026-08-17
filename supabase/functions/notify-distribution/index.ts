@@ -30,19 +30,22 @@ const money = (n: number) =>
   (n < 0 ? "-$" : "$") + Math.abs(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const esc = (s: string) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-function emailHtml(unitName: string, dateStr: string, headline: string, lines: { name: string; amount: number }[], hasEntityLine: boolean) {
+function emailHtml(unitName: string, dateStr: string, headline: string, lines: { name: string; amount: number }[], hasEntityLine: boolean, total: number) {
+  const pctOf = (a: number) => total > 0 ? String(Math.round(a / total * 10000) / 100).replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "") + "%" : "";
   const rows = lines.map((l) =>
     `<tr><td style="padding:8px 0;color:#e5e7eb;font-size:14px;text-align:left;border-bottom:1px solid #2f2f2f;">${esc(l.name)}</td>
+     <td style="padding:8px 0;color:#8a8f98;font-size:14px;text-align:right;border-bottom:1px solid #2f2f2f;">${pctOf(l.amount)}</td>
      <td style="padding:8px 0;color:#e5e7eb;font-size:14px;font-weight:600;text-align:right;border-bottom:1px solid #2f2f2f;">${money(l.amount)}</td></tr>`).join("");
   return `
   <div style="background:#111111;padding:40px 16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
     <div style="max-width:440px;margin:0 auto;background:#1a1a1a;border:1px solid #2f2f2f;border-radius:14px;padding:32px;text-align:center;">
       <img src="${LOGO}" width="72" height="72" alt="Callidus Co." style="display:block;margin:0 auto 10px;border:0;">
       <h1 style="color:#e5e7eb;font-size:20px;margin:0 0 6px;">${esc(unitName)}</h1>
-      <p style="color:#8a8f98;font-size:13px;margin:0 0 20px;">Distribution · ${esc(dateStr)}</p>
+      <p style="color:#8a8f98;font-size:13px;margin:0 0 20px;">Distribution · ${esc(dateStr)} · ${money(total)} total</p>
       <p style="color:#e5e7eb;font-size:15px;line-height:1.6;margin:0 0 20px;">${headline}</p>
       <table style="width:100%;border-collapse:collapse;margin:0 0 24px;">
         <tr><th style="color:#8a8f98;font-size:11px;letter-spacing:0.06em;text-transform:uppercase;text-align:left;padding-bottom:6px;">Paid to</th>
+            <th style="color:#8a8f98;font-size:11px;letter-spacing:0.06em;text-transform:uppercase;text-align:right;padding-bottom:6px;">%</th>
             <th style="color:#8a8f98;font-size:11px;letter-spacing:0.06em;text-transform:uppercase;text-align:right;padding-bottom:6px;">Amount</th></tr>
         ${rows}
       </table>
@@ -138,7 +141,7 @@ Deno.serve(async (req) => {
         headers: { Authorization: `Bearer ${RESEND_KEY}`, "Content-Type": "application/json" },
         body: JSON.stringify({
           from: FROM, to: person.email, subject,
-          html: emailHtml(unit?.name || "Unit", dateStr, headline, lines, hasEntityLine),
+          html: emailHtml(unit?.name || "Unit", dateStr, headline, lines, hasEntityLine, Number(dist.total) || 0),
         }),
       });
       if (!res.ok) throw new Error(`Resend HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
