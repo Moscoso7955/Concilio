@@ -1619,9 +1619,37 @@
            <td class="num"><strong>${money(d.total)}</strong></td>
            <td style="white-space:normal;max-width:22rem;">${escapeHtml(rec)}</td>
            <td>${d.notes ? escapeHtml(d.notes) : ""}</td>
-           <td class="num">${canEdit ? `<button class="btn btn--danger btn--sm" data-deldist="${d.id}">Delete</button>` : ""}</td>`;
+           <td class="num" style="white-space:nowrap;">${canEdit ? `<button class="btn btn--ghost btn--sm" data-notifydist="${d.id}"${d.notified_at ? ` title="Last notified ${new Date(d.notified_at).toLocaleString()}"` : ""}>${d.notified_at ? "Re-notify" : "Notify"}</button> <button class="btn btn--danger btn--sm" data-deldist="${d.id}">Delete</button>` : ""}</td>`;
         body.appendChild(tr);
       }
+      // Email everyone upstream — each partner gets only their slice.
+      body.querySelectorAll("[data-notifydist]").forEach((b) => b.addEventListener("click", async () => {
+        const d = repDist.find((x) => x.id === b.dataset.notifydist); if (!d) return;
+        if (d.notified_at && !confirm("Partners were already notified about this distribution. Send again?")) return;
+        b.disabled = true; b.textContent = "Sending…";
+        try {
+          let session = null;
+          try { session = (await supabase.auth.getSession()).data.session; } catch (_) {}
+          const res = await fetch(cfg.SUPABASE_URL + "/functions/v1/notify-distribution", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              apikey: cfg.SUPABASE_ANON_KEY,
+              Authorization: "Bearer " + (session?.access_token || cfg.SUPABASE_ANON_KEY),
+            },
+            body: JSON.stringify({ id: d.id }),
+          });
+          const data = await res.json();
+          if (!res.ok || data.ok === false) throw new Error(data.error || ("HTTP " + res.status));
+          d.notified_at = new Date().toISOString();
+          b.textContent = `Notified ${data.notified} ✓`;
+          b.title = (data.errors || []).length ? "Some sends failed: " + data.errors.join("; ") : "";
+          setTimeout(() => { b.textContent = "Re-notify"; b.disabled = false; }, 2500);
+        } catch (e) {
+          b.textContent = "Failed"; b.title = e.message || String(e);
+          setTimeout(() => { b.textContent = d.notified_at ? "Re-notify" : "Notify"; b.disabled = false; }, 2500);
+        }
+      }));
       body.querySelectorAll("[data-deldist]").forEach((b) => b.addEventListener("click", async () => {
         if (!confirm("Delete this distribution record?")) return;
         const d = repDist.find((x) => x.id === b.dataset.deldist);
@@ -1916,7 +1944,7 @@
         await supabase.from("dist_provisions").update({ repaid: nr }).eq("id", a.id);
         p.repaid = nr;
       }
-      repDist.unshift(data || row);
+      repDist.unshift(data || Object.assign({ id: "tmp-" + Date.now() }, row));
       show($("distModal"), false);
       renderUnitView();
     });

@@ -64,3 +64,8 @@ jobs:
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: supabase functions deploy partner-sync --project-ref "$SUPABASE_PROJECT_ID" --no-verify-jwt
+
+      - name: Deploy notify-distribution (JWT off — does its own admin auth)
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: supabase functions deploy notify-distribution --project-ref "$SUPABASE_PROJECT_ID" --no-verify-jwt
