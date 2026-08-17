@@ -330,12 +330,13 @@
       <button class="tab" data-tab="owners">Ownership</button>
     </div>
 
+    <div id="repViewAsBar" class="hidden" style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;background:rgba(124,132,147,0.12);border:1px solid var(--accent);border-radius:10px;padding:0.55rem 0.8rem;margin-bottom:0.9rem;">
+      <span>👁 Viewing the portal as <strong id="repViewAsName"></strong> — exactly what they see.</span>
+      <button class="btn btn--sm" id="repViewAsExit" style="margin-left:auto;flex:0 0 auto;">Exit</button>
+    </div>
+
     <!-- Reports -->
     <section class="tab-panel" data-panel="financials">
-      <div id="repViewAsBar" class="hidden" style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;background:rgba(124,132,147,0.12);border:1px solid var(--accent);border-radius:10px;padding:0.55rem 0.8rem;margin-bottom:0.9rem;">
-        <span>👁 Viewing Reports as <strong id="repViewAsName"></strong> — exactly what they see.</span>
-        <button class="btn btn--sm" id="repViewAsExit" style="margin-left:auto;flex:0 0 auto;">Exit</button>
-      </div>
       <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;margin-bottom:0.9rem;">
         <div id="repRangePicker"></div>
       </div>
@@ -794,6 +795,15 @@
     let currentEmail = null; // signed-in email; links the user to their graph box
     let currentUserId; // undefined until first route; guards redundant re-entry (null = signed-out, already rendered)
     const isAdmin = () => profile && profile.role === "admin";
+    // Admin chrome (edit controls, handles, admin buttons) — hidden while
+    // impersonating a member with "View portal as", so the whole portal
+    // looks exactly like theirs. Data access stays admin (client-side
+    // filtering only; the admin is entitled to see everything anyway).
+    const adminUI = () => isAdmin() && !repViewAs;
+    const effectiveEmail = () => {
+      if (repViewAs) return (gEnt.find((x) => x.id === repViewAs)?.email || "").toLowerCase();
+      return (currentEmail || "").toLowerCase();
+    };
 
     /* ---------------- Auth ---------------- */
     $("loginForm").addEventListener("submit", async (e) => {
@@ -1318,19 +1328,48 @@
       const n = (gEnt.find((x) => x.id === repViewAs)?.name || "Their").trim().split(/\s+/)[0];
       return `${escapeHtml(n)}'s share`;
     }
-    function enterViewAs(id) {
+    // Whole-portal impersonation: their tabs, their documents, their
+    // slice of the graph, no admin chrome anywhere — the banner is the
+    // only tell.
+    let viewAsAcct = null; // the viewed person's allowlist row (role/tabs)
+    function viewedTabs() {
+      const r = viewAsAcct;
+      const assigned = r && Array.isArray(r.tabs) && r.tabs.length ? r.tabs : null;
+      const ri = roleInfo(r?.role || "owner");
+      const roleTabs = ri && Array.isArray(ri.tabs) && ri.tabs.length ? ri.tabs : null;
+      return (assigned || roleTabs || ROLE_DEFAULT_TABS[r?.role] || ROLE_DEFAULT_TABS.owner).filter((t) => t !== "site");
+    }
+    async function enterViewAs(id) {
       const e = gEnt.find((x) => x.id === id); if (!e) return;
-      repViewAs = id; repUnit = null;
+      repViewAs = id; repUnit = null; viewAsAcct = null;
+      const em = (e.email || "").toLowerCase();
+      if (em) {
+        try {
+          const { data } = await supabase.from("allowed_owners").select("role,tabs").ilike("email", em).maybeSingle();
+          viewAsAcct = data || null;
+        } catch (_) {}
+      }
       $("repViewAsName").textContent = e.name || "member";
       show($("repViewAsBar"), true);
+      document.querySelectorAll(".admin-only").forEach((el) => show(el, false));
+      const tabs = viewedTabs();
+      document.querySelectorAll(".tab[data-tab]").forEach((b) => show(b, tabs.includes(b.dataset.tab)));
       activateTab("financials");
       renderGroupView();
+      if (typeof gEnt !== "undefined" && gEnt.length) render(); // graph re-scopes to their slice
+      loadDocuments(); // documents re-filter to their visibility
+      loadMemos();     // memo controls re-gate
     }
     function exitViewAs() {
-      repViewAs = null;
+      repViewAs = null; viewAsAcct = null;
       show($("repViewAsBar"), false);
-      document.querySelectorAll('[data-panel="financials"] .admin-only').forEach((el) => show(el, isAdmin()));
+      document.querySelectorAll(".admin-only").forEach((el) => show(el, isAdmin()));
+      const tabs = allowedTabs();
+      document.querySelectorAll(".tab[data-tab]").forEach((b) => show(b, tabs.includes(b.dataset.tab)));
       renderGroupView();
+      if (typeof gEnt !== "undefined" && gEnt.length) render();
+      loadDocuments();
+      loadMemos();
     }
     $("repViewAsExit")?.addEventListener("click", exitViewAs);
 
@@ -2369,7 +2408,7 @@
       show($("memoEmpty"), rows.length === 0);
       const me = profile.id;
       for (const m of rows) {
-        const canEdit = isAdmin(); // solo-admin portal: members are view-only
+        const canEdit = adminUI(); // solo-admin portal: members are view-only
         const div = document.createElement("div");
         div.className = "memo" + (m.pinned ? " pinned" : "");
         div.innerHTML =
@@ -2379,7 +2418,7 @@
                <div class="memo__meta">${escapeHtml(m.author_name || "")} · ${new Date(m.created_at).toLocaleString()}</div>
              </div>
              <div class="memo__actions">
-               ${isAdmin() ? `<button class="btn btn--ghost btn--sm" data-pin="${m.id}" data-on="${m.pinned}">${m.pinned ? "Unpin" : "Pin"}</button>` : ""}
+               ${canEdit ? `<button class="btn btn--ghost btn--sm" data-pin="${m.id}" data-on="${m.pinned}">${m.pinned ? "Unpin" : "Pin"}</button>` : ""}
                ${canEdit ? `<button class="btn btn--danger btn--sm" data-delmemo="${m.id}">Delete</button>` : ""}
              </div>
            </div>
@@ -2426,7 +2465,7 @@
     // or staff — from the viewer's perspective.
     function docScopeLabel(d) {
       if (Array.isArray(d.recipients) && d.recipients.length) {
-        if (d.recipients.includes((currentEmail || "").toLowerCase())) return '<span class="badge badge--admin">For you</span>';
+        if (d.recipients.includes(effectiveEmail())) return '<span class="badge badge--admin">For you</span>';
         return `<span title="${escapeHtml(d.recipients.join(", "))}">${d.recipients.length} ${d.recipients.length === 1 ? "person" : "people"}</span>`;
       }
       if (d.entity_id) {
@@ -2439,7 +2478,16 @@
     let docRowsCache = [];
     async function loadDocuments() {
       const { data, error } = await supabase.from("documents").select("*").order("created_at", { ascending: false });
-      const rows = (!error && data) || [];
+      let rows = (!error && data) || [];
+      // Impersonation: show only what the viewed person's RLS would
+      // return — recipient-scoped docs listing them, or unit docs whose
+      // unit sits in their slice. Staff-only docs disappear.
+      if (repViewAs) {
+        const vs = viewAsSet(), em = effectiveEmail();
+        rows = rows.filter((d) => (Array.isArray(d.recipients) && d.recipients.length)
+          ? d.recipients.includes(em)
+          : (d.entity_id && vs && vs.has(d.entity_id)));
+      }
       docRowsCache = rows;
       const body = $("docBody"); body.innerHTML = "";
       show($("docEmpty"), rows.length === 0);
@@ -2453,7 +2501,7 @@
            <td class="num">${fmtSize(d.size_bytes)}</td>
            <td class="num">
              <button class="btn btn--ghost btn--sm" data-dl="${d.file_path}" data-dltitle="${escapeHtml(d.title)}" data-name="${escapeHtml(d.file_name)}">Download</button>
-             ${(isAdmin() || (d.entity_id && managesUnit(d.entity_id))) ? `<button class="btn btn--ghost btn--sm" data-editdoc="${d.id}">Edit</button><button class="btn btn--danger btn--sm" data-deldoc="${d.id}" data-path="${d.file_path}">Delete</button>` : ""}
+             ${(adminUI() || (d.entity_id && managesUnit(d.entity_id))) ? `<button class="btn btn--ghost btn--sm" data-editdoc="${d.id}">Edit</button><button class="btn btn--danger btn--sm" data-deldoc="${d.id}" data-path="${d.file_path}">Delete</button>` : ""}
            </td>`;
         body.appendChild(tr);
       }
@@ -2772,7 +2820,10 @@
       const canvas = $("ownCanvas");
       canvas.querySelectorAll(".gnode").forEach((n) => n.remove());
       const { tot, cnt } = inbound();
-      for (const e of gEnt) {
+      // While impersonating, draw only their slice — renderEdges follows
+      // automatically (it skips edges whose boxes aren't drawn).
+      const vsSlice = viewAsSet();
+      for (const e of (vsSlice ? gEnt.filter((x) => vsSlice.has(x.id)) : gEnt)) {
         const node = document.createElement("div");
         node.className = "gnode" + (gSel === e.id ? " sel" : "");
         node.dataset.id = e.id;
@@ -2785,7 +2836,7 @@
         // Sum-to-100 integrity warnings are admin-only: members see just
         // their slice of the edges, so their totals rarely sum to 100 and
         // "missing" would read as (and leak) something it isn't.
-        if (pct !== null && isAdmin()) {
+        if (pct !== null && adminUI()) {
           const cls = pct > 100 ? "red" : pct < 100 ? "amber" : "";
           const fmt = (n) => (n % 1 === 0 ? n : Number(n).toFixed(2));
           let label = fmt(pct) + "%";
@@ -2794,7 +2845,7 @@
           pctHtml = `<div class="gnode__pct ${cls}">${label}</div>`;
         }
         node.innerHTML =
-          (isAdmin() ? `<div class="ghandle ghandle--top"></div><div class="ghandle ghandle--bottom"></div>` : "") +
+          (adminUI() ? `<div class="ghandle ghandle--top"></div><div class="ghandle ghandle--bottom"></div>` : "") +
           (e.category ? `<div class="gnode__cat" style="color:${e.color || "var(--muted)"}">${escapeHtml(e.category)}</div>` : "") +
           `<div class="gnode__name">${escapeHtml(e.name || "unnamed")}</div>` +
           (e.subcategory ? `<div class="gnode__sub">${escapeHtml(e.subcategory)}</div>` : "") +
@@ -2907,12 +2958,12 @@
       // viewer's calculated stake tooltip.
       node.addEventListener("mouseenter", () => {
         edgeHover(new Set(gEdge.filter((x) => x.parent_id === e.id || x.child_id === e.id).map((x) => x.id)));
-        const me = myGraphBox(); if (!me) return;
-        if (e.id === me.id) { showTip(node, "This is you"); return; }
-        const eff = effOf(e.id, me.id) * 100;
+        const anchorId = repViewAs || myGraphBox()?.id; if (!anchorId) return;
+        if (e.id === anchorId) { showTip(node, repViewAs ? "This is them" : "This is you"); return; }
+        const eff = effOf(e.id, anchorId) * 100;
         if (eff <= 0) return;
         const fmt = (n) => (Math.round(n * 100) / 100) % 1 === 0 ? Math.round(n) : (Math.round(n * 100) / 100).toFixed(2);
-        showTip(node, `Your ownership: ${fmt(eff)}%`);
+        showTip(node, `${repViewAs ? "Their ownership" : "Your ownership"}: ${fmt(eff)}%`);
       });
       node.addEventListener("mouseleave", () => { hideTip(); edgeHover(null); });
 
@@ -2922,7 +2973,7 @@
         const sx = ev.clientX, sy = ev.clientY, ox = node.offsetLeft, oy = node.offsetTop;
         let moved = false;
         const mv = (m) => {
-          if (!isAdmin()) return; // read-only: click opens the pane, no moving
+          if (!adminUI()) return; // read-only: click opens the pane, no moving
           const sdx = m.clientX - sx, sdy = m.clientY - sy; // screen delta
           if (Math.abs(sdx) > 3 || Math.abs(sdy) > 3) moved = true;
           node.style.left = Math.max(GMARGIN, ox + sdx / gZoom) + "px";
@@ -2952,7 +3003,7 @@
     }
 
     async function editEdge(id) {
-      if (!isAdmin()) return;
+      if (!adminUI()) return;
       const e = gEdge.find((z) => z.id === id); if (!e) return;
       const a = prompt(`Edit edge — new % (0–100) or "delete":`, String(e.percentage));
       if (a === null) return;
@@ -3000,7 +3051,7 @@
       const kind = e.kind === "entity" ? "entity" : "individual";
       gSel = id; renderNodes();
       const pane = $("ownPane");
-      if (!isAdmin()) {
+      if (!adminUI()) {
         // Read-only details: name, type, notes, clickable links.
         const linkList = (e.links || []).filter((l) => toHref(l.url)).map((l) =>
           `<div style="margin:0.3rem 0;"><a href="${escapeHtml(toHref(l.url))}" target="_blank" rel="noopener noreferrer" style="color:#c4c8ce;">${escapeHtml(l.label || l.url)} ↗</a></div>`).join("");
