@@ -106,6 +106,7 @@
     /* Documents: long titles wrap, descriptions truncate to one line
        (full text on hover) — actions stay visible without side-scrolling. */
     #docBody td:first-child { white-space: normal; max-width: 19rem; }
+    .dist-rec { white-space: normal; max-width: 22rem; }
     .doc-desc { display: block; max-width: 19rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     /* Keep a visible scrollbar so wide tables read as scrollable, not cut off. */
     .table-wrap::-webkit-scrollbar, #pnlModalBody::-webkit-scrollbar { height: 8px; }
@@ -248,12 +249,22 @@
     /* ---------- Small screens ---------- */
     @media (max-width: 640px) {
       .shell { padding: 0.75rem 0.75rem 3rem; }
-      .tabs { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+      /* Horizontal scroll only — no vertical pull/rubber-band on the strip. */
+      .tabs { flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; overscroll-behavior: contain; touch-action: pan-x; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
       .tabs::-webkit-scrollbar { display: none; }
       .tab { white-space: nowrap; flex: 0 0 auto; }
       .stats { grid-template-columns: repeat(2, 1fr); gap: 0.6rem; }
       .stat { padding: 0.8rem 0.9rem; }
+      .stat .k { font-size: 0.66rem; }
       .stat .v { font-size: 1.15rem; }
+      /* An odd last card (e.g. Your share) spans the full row instead of
+         sitting half-width next to a gap. */
+      .stats > .stat:last-child:nth-child(odd) { grid-column: 1 / -1; }
+      /* Wide ledgers scroll sideways inside their card instead of
+         crushing columns into one-word-per-line stacks. */
+      #distTable { min-width: 560px; }
+      .dist-rec { max-width: none; min-width: 16rem; }
+      .unit-card__figs .v { font-size: 0.95rem; }
       .section-card { padding: 0.9rem; border-radius: 12px; }
       .unit-grid { grid-template-columns: 1fr; }
       .modal { padding: 1rem; max-height: 94vh; }
@@ -1694,7 +1705,7 @@
         tr.innerHTML =
           `<td>${new Date(d.dist_date + "T00:00:00").toLocaleDateString()}</td>
            <td class="num"><strong>${money(d.total)}</strong></td>
-           <td style="white-space:normal;max-width:22rem;">${escapeHtml(rec)}</td>
+           <td class="dist-rec">${escapeHtml(rec)}</td>
            <td>${d.notes ? escapeHtml(d.notes) : ""}</td>
            <td class="num" style="white-space:nowrap;">${canEdit ? `<button class="btn btn--ghost btn--sm" data-notifydist="${d.id}"${d.notified_at ? ` title="Last notified ${new Date(d.notified_at).toLocaleString()}"` : ""}>${d.notified_at ? "Re-notify" : "Notify"}</button> <button class="btn btn--danger btn--sm" data-deldist="${d.id}">Delete</button>` : ""}</td>`;
         body.appendChild(tr);
