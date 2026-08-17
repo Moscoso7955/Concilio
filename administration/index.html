@@ -684,7 +684,7 @@
   <div class="modal-overlay hidden" id="provModal">
     <div class="modal" style="max-width:620px;">
       <h3 id="provModalTitle">Distribution provisions</h3>
-      <p class="muted" style="margin-bottom:0.9rem;">A provision gives an owner a preferred cut of every distribution until their buy-in is recovered — serviced in priority order (1 first), before the remainder splits among the other owners.</p>
+      <p class="muted" style="margin-bottom:0.9rem;">A provision gives an owner a preferred cut of every distribution until their buy-in is recovered — serviced in priority order (1 first), before the remainder splits among the other owners. An owner's tranches go one at a time: their next tranche waits until the earlier one is fully recovered.</p>
       <div id="provList"><p class="muted">None yet.</p></div>
       <div class="section-card" style="margin:0.9rem 0 0;padding:1rem;">
         <h2 style="font-size:0.95rem;">Add provision</h2>
@@ -1533,10 +1533,15 @@
       body.innerHTML = "";
       show($("distTable"), rows.length > 0);
       show($("distEmpty"), rows.length === 0);
-      // Active-provision summary under the card header.
+      // Active-provision summary under the card header. An owner's later
+      // tranches show as queued until their earlier one is recovered.
       const act = unitProvs().filter((p) => provBalance(p) > 0.005);
-      $("provSummary").innerHTML = act.map((p) =>
-        `Provision ${p.priority}: <strong style="color:var(--text);">${escapeHtml(p.owner_name)}</strong> takes ${pctFmt(Number(p.pref_pct))}% until ${money(p.principal)} is recovered — ${money(provBalance(p))} to go.`).join("<br>");
+      const seenOwner = new Set();
+      $("provSummary").innerHTML = act.map((p) => {
+        const queued = seenOwner.has(provOwnerKey(p));
+        seenOwner.add(provOwnerKey(p));
+        return `Provision ${p.priority}: <strong style="color:var(--text);">${escapeHtml(p.owner_name)}</strong> takes ${pctFmt(Number(p.pref_pct))}% until ${money(p.principal)} is recovered — ${money(provBalance(p))} to go.${queued ? ' <span class="badge">queued</span>' : ""}`;
+      }).join("<br>");
       show($("provSummary"), act.length > 0);
       for (const d of rows) {
         const direct = (d.splits && Array.isArray(d.splits.direct)) ? d.splits.direct : [];
@@ -1643,17 +1648,26 @@
     const provBalance = (p) => Math.max(0, (Number(p.principal) || 0) - (Number(p.repaid) || 0));
     const unitProvs = () => repProvs.filter((p) => p.entity_id === repUnit)
       .sort((a, b) => (a.priority - b.priority) || String(a.created_at).localeCompare(String(b.created_at)));
+    // One tranche per owner at a time: an owner's later tranche stays
+    // queued until their earlier one is fully recovered ("50K first at
+    // 40%, then 30% on the 150K"). Different owners service concurrently.
+    const provOwnerKey = (p) => p.owner_id || (p.owner_name || "").toLowerCase();
     function distComputeSplits(total) {
       let rem = total;
       const provisions = [];
+      const servicing = new Set();
       for (const p of unitProvs()) {
         const bal = provBalance(p);
         if (bal <= 0.005 || rem <= 0) continue;
+        if (servicing.has(provOwnerKey(p))) continue; // queued behind their earlier tranche
         const take = Math.min(rem * (Number(p.pref_pct) || 0) / 100, bal, rem);
         if (take > 0.005) {
           provisions.push({ id: p.id, name: p.owner_name, pct: Number(p.pref_pct) || 0, amount: take, owed_after: bal - take });
           rem -= take;
         }
+        // Still owed after this one → their later tranches wait. Paid off
+        // completely → the next tranche may pick up in this distribution.
+        if (bal - take > 0.005) servicing.add(provOwnerKey(p));
       }
       const prefNames = new Set(provisions.map((a) => a.name.toLowerCase()));
       const edges = gEdge.filter((ed) => ed.child_id === repUnit)
