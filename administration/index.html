@@ -632,8 +632,13 @@
           <div><label>Logo URL</label><input type="url" id="ms_logo" placeholder="https://…/logo.png"></div>
         </div>
         <div class="row" style="margin-top:0.5rem;">
-          <div style="flex:1.5;"><label>Sync URL (venue app subscribers endpoint)</label><input type="url" id="ms_sync_url" placeholder="https://barphoebe.com/api/subscribers"></div>
-          <div><label>Sync key (Bearer secret)</label><input type="text" id="ms_sync_key" placeholder="shared secret"></div>
+          <div style="flex:1.5;"><label>Sync source — venue endpoint or its Supabase REST URL</label><input type="url" id="ms_sync_url" placeholder="https://xxxx.supabase.co/rest/v1/mailing_list?select=email,name,created_at"></div>
+          <div><label>Sync key (Bearer / venue anon key)</label><input type="text" id="ms_sync_key" placeholder="shared secret"></div>
+        </div>
+        <div class="field" style="margin-top:0.6rem;">
+          <label style="display:inline-flex;align-items:center;gap:0.45rem;margin:0;cursor:pointer;">
+            <input type="checkbox" id="ms_warmup" checked style="width:auto;"> Warm-up — ramp daily send volume while this domain builds reputation (150 → 400 → 1,000 → 3,000/day, then unlimited)
+          </label>
         </div>
         <div class="row" style="align-items:center;margin-top:0.75rem;">
           <button class="btn" id="msSaveBtn" style="flex:0 0 auto;">Save sender</button>
@@ -668,7 +673,11 @@
       <div class="section-card">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:0.6rem;flex-wrap:wrap;margin-bottom:0.5rem;">
           <h2 style="margin:0;">Audience</h2>
-          <button class="btn btn--sm" id="mailSyncBtn" style="flex:0 0 auto;">Sync mailing list</button>
+          <div style="display:flex;gap:0.4rem;flex-wrap:wrap;">
+            <button class="btn btn--ghost btn--sm" id="mailCsvBtn">Import CSV…</button>
+            <button class="btn btn--sm" id="mailSyncBtn">Sync mailing list</button>
+            <input type="file" id="mailCsvFile" accept=".csv,text/csv,text/plain" class="hidden">
+          </div>
         </div>
         <div class="muted" id="mailAudience">—</div>
       </div>
@@ -676,6 +685,7 @@
       <div class="section-card">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:0.6rem;flex-wrap:wrap;margin-bottom:1rem;">
           <h2 style="margin:0;">Campaigns</h2>
+          <span class="muted" id="mailCampStatus" style="flex:1;text-align:right;"></span>
           <button class="btn btn--sm" id="mailNewBtn" style="flex:0 0 auto;">New campaign…</button>
         </div>
         <div class="table-wrap">
@@ -2972,7 +2982,8 @@
       $("ms_logo").value = mailSender?.logo_url || "";
       $("ms_sync_url").value = mailSender?.sync_url || "";
       $("ms_sync_key").value = mailSender?.sync_key || "";
-      $("msStatus").textContent = "";
+      $("ms_warmup").checked = mailSender ? mailSender.warmup !== false : true;
+      $("msStatus").textContent = ""; $("mailCampStatus").textContent = "";
       // Branding card (columns exist from migration 0032 on).
       mbHeaderUrl = mailSender?.header_image_url || null;
       renderMbHeader();
@@ -3048,6 +3059,35 @@
       } catch (e) { $("mailAudience").textContent = "Sync failed: " + (e.message || e); }
       b.disabled = false; b.textContent = "Sync mailing list";
     });
+    // CSV fallback: any export with an email column works — we find the
+    // address on each line and treat the rest of the line as the name.
+    $("mailCsvBtn")?.addEventListener("click", () => $("mailCsvFile").click());
+    $("mailCsvFile")?.addEventListener("change", async () => {
+      const f = $("mailCsvFile").files[0]; $("mailCsvFile").value = "";
+      if (!f || !mailUnit) return;
+      const text = await f.text();
+      const subs = [];
+      for (const line of text.split(/\r?\n/)) {
+        const m = line.match(/[^@\s,;"']+@[^@\s,;"']+\.[^@\s,;"'.]{2,}/);
+        if (!m) continue;
+        const name = line.replace(m[0], "").split(/[,;\t]/)
+          .map((s) => s.replace(/^["\s]+|["\s]+$/g, "")).filter(Boolean).join(" ").slice(0, 200);
+        subs.push({ email: m[0].toLowerCase(), name: name || null });
+      }
+      if (!subs.length) { $("mailAudience").textContent = "No email addresses found in that file."; return; }
+      if (!confirm(`Import ${subs.length} address${subs.length === 1 ? "" : "es"} into ${mailUnits.find((u) => u.id === mailUnit)?.name || "this venue"}'s list?`)) return;
+      $("mailAudience").textContent = `Importing ${subs.length}…`;
+      try {
+        const res = await fetch(cfg.SUPABASE_URL + "/functions/v1/mail-sync", {
+          method: "POST", headers: await mailFnHeaders(), body: JSON.stringify({ entity_id: mailUnit, subscribers: subs }),
+        });
+        const data = await res.json();
+        if (!res.ok || data.ok === false) throw new Error(data.error || ("HTTP " + res.status));
+        logAccess("mail_sync", { unit: mailUnits.find((u) => u.id === mailUnit)?.name, fetched: data.fetched, added: data.added });
+        await refreshMailUnit();
+        $("mailAudience").innerHTML += ` · <span style="color:var(--text);">imported ✓ (${data.added} new, ${data.existing} already on the list)</span>`;
+      } catch (e) { $("mailAudience").textContent = "Import failed: " + (e.message || e); }
+    });
     $("msSaveBtn")?.addEventListener("click", async () => {
       const st = $("msStatus");
       const row = {
@@ -3058,6 +3098,7 @@
         logo_url: $("ms_logo").value.trim() || null,
         sync_url: $("ms_sync_url").value.trim() || null,
         sync_key: $("ms_sync_key").value.trim() || null,
+        warmup: $("ms_warmup").checked,
       };
       if (!row.from_name || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(row.from_email)) { st.textContent = "From name and a valid from email are required."; return; }
       st.textContent = "Saving…";
@@ -3071,14 +3112,22 @@
       show($("mailCampTable"), mailCamps.length > 0);
       show($("mailCampEmpty"), mailCamps.length === 0);
       for (const c of mailCamps) {
+        const badge = c.status === "sent" ? '<span class="badge badge--admin">SENT</span>'
+          : (c.status === "sending" ? '<span class="badge">SENDING</span>' : '<span class="badge">DRAFT</span>');
+        const sentCell = c.status === "sent"
+          ? `${c.sent_count ?? 0} on ${new Date(c.sent_at).toLocaleDateString()}${c.failed_count ? ` · ${c.failed_count} failed` : ""}`
+          : (c.status === "sending" ? `${c.sent_count ?? 0} so far — warm-up chunks` : (c.test_sent_at ? "test sent" : "—"));
+        const actions = c.status === "draft"
+          ? `<button class="btn btn--ghost btn--sm" data-mcedit="${c.id}">Edit</button> <button class="btn btn--danger btn--sm" data-mcdel="${c.id}">Delete</button>`
+          : (c.status === "sending"
+            ? `<button class="btn btn--sm" data-mccont="${c.id}">Continue send</button> <button class="btn btn--ghost btn--sm" data-mcedit="${c.id}">View</button>`
+            : `<button class="btn btn--ghost btn--sm" data-mcedit="${c.id}">View</button>`);
         const tr = document.createElement("tr");
         tr.innerHTML =
           `<td style="white-space:normal;max-width:20rem;"><strong>${escapeHtml(c.subject)}</strong>${c.preview_text ? `<div class="muted" style="font-size:0.78rem;">${escapeHtml(c.preview_text)}</div>` : ""}</td>
-           <td>${c.status === "sent" ? '<span class="badge badge--admin">SENT</span>' : '<span class="badge">DRAFT</span>'}</td>
-           <td>${c.status === "sent" ? `${c.sent_count ?? 0} on ${new Date(c.sent_at).toLocaleDateString()}${c.failed_count ? ` · ${c.failed_count} failed` : ""}` : (c.test_sent_at ? "test sent" : "—")}</td>
-           <td class="num" style="white-space:nowrap;">
-             ${c.status === "draft" ? `<button class="btn btn--ghost btn--sm" data-mcedit="${c.id}">Edit</button> <button class="btn btn--danger btn--sm" data-mcdel="${c.id}">Delete</button>` : `<button class="btn btn--ghost btn--sm" data-mcedit="${c.id}">View</button>`}
-           </td>`;
+           <td>${badge}</td>
+           <td>${sentCell}</td>
+           <td class="num" style="white-space:nowrap;">${actions}</td>`;
         body.appendChild(tr);
       }
       body.querySelectorAll("[data-mcedit]").forEach((b) => b.addEventListener("click", () => openMailComposer(b.dataset.mcedit)));
@@ -3087,19 +3136,39 @@
         await supabase.from("mail_campaigns").delete().eq("id", b.dataset.mcdel);
         refreshMailUnit();
       }));
+      body.querySelectorAll("[data-mccont]").forEach((b) => b.addEventListener("click", async () => {
+        const c = mailCamps.find((x) => x.id === b.dataset.mccont); if (!c) return;
+        if (!confirm(`Continue "${c.subject}" — send the next warm-up chunk to subscribers who haven't received it yet?`)) return;
+        b.disabled = true; b.textContent = "Sending…";
+        const st = $("mailCampStatus");
+        try {
+          const res = await fetch(cfg.SUPABASE_URL + "/functions/v1/mail-send", {
+            method: "POST", headers: await mailFnHeaders(), body: JSON.stringify({ campaign_id: c.id, mode: "real" }),
+          });
+          const data = await res.json();
+          if (!res.ok || data.ok === false) throw new Error(data.error || ("HTTP " + res.status));
+          logAccess("mail_send", { unit: mailUnits.find((u) => u.id === mailUnit)?.name, subject: c.subject, sent: data.sent });
+          await refreshMailUnit();
+          st.textContent = data.complete
+            ? `"${c.subject}" complete — ${data.delivered} delivered ✓`
+            : `Sent ${data.sent} more — ${data.remaining} still queued (warm-up ${data.warmupCap}/day).`;
+        } catch (e) { await refreshMailUnit(); $("mailCampStatus").textContent = "Continue failed: " + (e.message || e); }
+      }));
     }
     function openMailComposer(id) {
       mailEditId = id || null;
       const c = id ? mailCamps.find((x) => x.id === id) : null;
-      const sent = c?.status === "sent";
-      $("mailModalTitle").textContent = sent ? "Campaign (sent)" : (id ? "Edit campaign" : "New campaign");
+      const sent = c?.status === "sent" || c?.status === "sending";
+      $("mailModalTitle").textContent = c?.status === "sending" ? "Campaign (sending)" : (sent ? "Campaign (sent)" : (id ? "Edit campaign" : "New campaign"));
       $("mailModalSub").textContent = mailUnits.find((u) => u.id === mailUnit)?.name || "";
       $("mc_subject").value = c?.subject || "";
       $("mc_preview").value = c?.preview_text || "";
       $("mailEditor").innerHTML = c?.body_html || "";
       $("mailEditor").contentEditable = sent ? "false" : "true";
       show($("mcSaveBtn"), !sent); show($("mcTestBtn"), !sent); show($("mcSendBtn"), !sent);
-      $("mcStatus").textContent = sent ? `Sent to ${c.sent_count ?? 0} on ${new Date(c.sent_at).toLocaleString()}` : "";
+      $("mcStatus").textContent = c?.status === "sending"
+        ? `Sending in warm-up chunks — ${c.sent_count ?? 0} delivered so far. Use "Continue send" in the campaign list.`
+        : (sent ? `Sent to ${c.sent_count ?? 0} on ${new Date(c.sent_at).toLocaleString()}` : "");
       show($("mailModal"), true);
     }
     $("mailNewBtn")?.addEventListener("click", () => {
@@ -3156,7 +3225,9 @@
       const id = await saveMailDraft(true); if (!id) return;
       const uName = mailUnits.find((u) => u.id === mailUnit)?.name || "this venue";
       if (!mailStats.active) { $("mcStatus").textContent = "No active subscribers — sync the mailing list first."; return; }
-      if (!confirm(`Send "${$("mc_subject").value.trim()}" to ${mailStats.active} subscriber${mailStats.active === 1 ? "" : "s"} of ${uName}, from ${mailSender.from_name} <${mailSender.from_email}>?`)) return;
+      const warm = mailSender.warmup !== false
+        ? "\n\nWarm-up is on — a list bigger than today's cap goes out in daily chunks (a Continue send button appears on the campaign)." : "";
+      if (!confirm(`Send "${$("mc_subject").value.trim()}" to ${mailStats.active} subscriber${mailStats.active === 1 ? "" : "s"} of ${uName}, from ${mailSender.from_name} <${mailSender.from_email}>?${warm}`)) return;
       $("mcStatus").textContent = `Sending to ${mailStats.active}…`;
       try {
         const res = await fetch(cfg.SUPABASE_URL + "/functions/v1/mail-send", {
@@ -3165,7 +3236,9 @@
         const data = await res.json();
         if (!res.ok || data.ok === false) throw new Error(data.error || ("HTTP " + res.status));
         logAccess("mail_send", { unit: uName, subject: $("mc_subject").value.trim(), sent: data.sent });
-        $("mcStatus").textContent = `Sent to ${data.sent} ✓${data.failed ? ` (${data.failed} failed)` : ""}`;
+        $("mcStatus").textContent = data.complete === false
+          ? `Sent ${data.sent} now — ${data.remaining} queued by warm-up (${data.warmupCap}/day). Continue from the campaign list tomorrow.`
+          : `Sent to ${data.sent} ✓${data.failed ? ` (${data.failed} failed)` : ""}`;
         refreshMailUnit();
       } catch (e) { $("mcStatus").textContent = "Send failed: " + (e.message || e); }
     });

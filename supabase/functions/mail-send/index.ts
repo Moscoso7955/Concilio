@@ -1,9 +1,20 @@
-// Campaign sender. mode "test" emails only the requesting admin with a
-// [Test] subject; mode "real" sends to every active subscriber of the
+// Campaign sender. mode "test" emails only the requester with a
+// [Test] subject; mode "real" sends to active subscribers of the
 // campaign's unit (suppressing unsubscribed / bounced / complained) in
 // Resend batches of 100, each with a personal unsubscribe link and
-// List-Unsubscribe headers, then marks the campaign sent. A sent
-// campaign refuses to send again. Marketing-capability auth. verify_jwt = FALSE.
+// List-Unsubscribe headers. Every recipient handed to Resend is
+// recorded in mail_deliveries, so a send can stop and resume without
+// ever emailing anyone twice.
+//
+// Warm-up (mail_senders.warmup, on by default): a fresh sending domain
+// ramps instead of blasting. The daily cap grows with the venue's
+// lifetime delivered volume —
+//   < 500 delivered → 150/day    < 2,000 → 400/day
+//   < 5,000 → 1,000/day          < 15,000 → 3,000/day   then unlimited.
+// A campaign that hits the cap is left status 'sending' with the rest
+// queued; clicking Continue send (any time after the 24h window frees
+// up) sends the next chunk. A fully-delivered campaign flips to 'sent'
+// and refuses to send again. Marketing-capability auth. verify_jwt = FALSE.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
@@ -109,9 +120,38 @@ Deno.serve(async (req) => {
   const recipients = subs || [];
   if (!recipients.length) return json({ error: "No active subscribers — sync the mailing list first." }, 400);
 
+  // Resume-safe: skip anyone this campaign has already reached.
+  const { data: dl } = await admin.from("mail_deliveries").select("email").eq("campaign_id", camp.id);
+  const done = new Set((dl || []).map((r) => r.email));
+  const remaining = recipients.filter((r) => !done.has(r.email));
+  if (!remaining.length) {
+    await admin.from("mail_campaigns").update({ status: "sent" }).eq("id", camp.id);
+    return json({ ok: true, sent: 0, failed: 0, delivered: done.size, remaining: 0, complete: true, note: "Everyone already received this campaign." });
+  }
+
+  // Warm-up cap: how much this venue may still send in the current 24h.
+  let stageCap: number | null = null;
+  let toSend = remaining;
+  if (sender.warmup !== false) {
+    const { count: cum } = await admin.from("mail_deliveries")
+      .select("id", { count: "exact", head: true }).eq("entity_id", camp.entity_id);
+    const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+    const { count: recent } = await admin.from("mail_deliveries")
+      .select("id", { count: "exact", head: true }).eq("entity_id", camp.entity_id).gte("sent_at", since);
+    const c = cum ?? 0;
+    stageCap = c < 500 ? 150 : c < 2000 ? 400 : c < 5000 ? 1000 : c < 15000 ? 3000 : null;
+    if (stageCap !== null) {
+      const allowance = Math.max(0, stageCap - (recent ?? 0));
+      if (!allowance) {
+        return json({ ok: false, error: `Warm-up: this venue's ${stageCap}/day cap is used up — try again once the 24h window frees up.`, warmupCap: stageCap }, 429);
+      }
+      toSend = remaining.slice(0, allowance);
+    }
+  }
+
   let sent = 0, failed = 0;
-  for (let i = 0; i < recipients.length; i += 100) {
-    const chunk = recipients.slice(i, i + 100);
+  for (let i = 0; i < toSend.length; i += 100) {
+    const chunk = toSend.slice(i, i + 100);
     const items = chunk.map((r) => {
       const unsub = `${SUPABASE_URL}/functions/v1/mail-unsubscribe?t=${r.unsub_token}`;
       return {
@@ -131,16 +171,25 @@ Deno.serve(async (req) => {
       });
       if (!res.ok) throw new Error(`batch HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
       sent += chunk.length;
+      await admin.from("mail_deliveries").insert(
+        chunk.map((r) => ({ campaign_id: camp.id, entity_id: camp.entity_id, email: r.email })));
     } catch (e) {
       failed += chunk.length;
       console.log("batch failed:", String((e as Error).message || e));
     }
   }
+  const delivered = done.size + sent;
+  const left = remaining.length - sent;
+  const complete = left === 0 && failed === 0;
   await admin.from("mail_campaigns").update({
-    status: "sent", sent_at: new Date().toISOString(), sent_count: sent, failed_count: failed,
+    status: complete ? "sent" : "sending", sent_at: new Date().toISOString(),
+    sent_count: delivered, failed_count: (camp.failed_count || 0) + failed,
   }).eq("id", camp.id);
   try {
-    await admin.from("function_logs").insert({ fn: "mail-send", msg: "campaign sent", detail: { campaign: camp.id, subject: camp.subject, sent, failed } });
+    await admin.from("function_logs").insert({
+      fn: "mail-send", msg: complete ? "campaign sent" : "campaign chunk sent",
+      detail: { campaign: camp.id, subject: camp.subject, sent, failed, delivered, remaining: left, warmupCap: stageCap },
+    });
   } catch (_) { /* best effort */ }
-  return json({ ok: true, sent, failed });
+  return json({ ok: true, sent, failed, delivered, total: recipients.length, remaining: left, warmupCap: stageCap, complete });
 });

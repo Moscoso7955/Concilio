@@ -24,9 +24,9 @@ window.createOwnershipStore = function (supabase) {
     if (!e) return false;
     if (e.code === "42703" || e.code === "PGRST204") return true; // undefined column / schema cache
     const m = `${e.message || ""} ${e.details || ""} ${e.hint || ""}`;
-    return /schema cache/i.test(m) || /\b(kind|in_reports)\b/.test(m);
+    return /schema cache/i.test(m) || /\b(kind|in_reports|in_marketing|managed_by)\b/.test(m);
   };
-  const stripOptional = (row) => { const r = { ...row }; delete r.kind; delete r.in_reports; return r; };
+  const stripOptional = (row) => { const r = { ...row }; delete r.kind; delete r.in_reports; delete r.in_marketing; delete r.managed_by; return r; };
 
   return {
     async loadGraph() {
@@ -64,12 +64,12 @@ window.createOwnershipStore = function (supabase) {
 
     async updateEntity(id, patch) {
       const p = {};
-      for (const k of ["name", "category", "subcategory", "kind", "in_reports", "email", "notes", "color"]) {
+      for (const k of ["name", "category", "subcategory", "kind", "in_reports", "in_marketing", "managed_by", "email", "notes", "color"]) {
         if (patch[k] !== undefined) p[k] = patch[k];
       }
       if (patch.links !== undefined) p.links = cleanLinks(patch.links);
       let { error } = await supabase.from("ownership_entities").update(p).eq("id", id);
-      if (error && undefinedColumn(error) && ("kind" in p || "in_reports" in p)) {
+      if (error && undefinedColumn(error) && ("kind" in p || "in_reports" in p || "in_marketing" in p || "managed_by" in p)) {
         ({ error } = await supabase.from("ownership_entities").update(stripOptional(p)).eq("id", id));
       }
       if (error) throw error;

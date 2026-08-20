@@ -3,14 +3,47 @@ name: Check Resend DNS records
 # Verifies the DNS for the bills.callidusco.com inbound subdomain, plus
 # sanity checks that the root domain's Google mail and www site records
 # are untouched. Manual dispatch — run after adding records in Squarespace.
+#
+# Optional input venue_domain: also verify a venue SENDING subdomain
+# (e.g. news.barphoebe.com) — checks the Resend DKIM TXT and the
+# send.<domain> MX + SPF pair. Run it after adding a venue's records.
 
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      venue_domain:
+        description: "Venue sending subdomain to verify (e.g. news.barphoebe.com) — optional"
+        required: false
+        default: ""
 
 jobs:
   check:
     runs-on: ubuntu-latest
     steps:
+      - name: Check venue sending subdomain (if given)
+        if: ${{ github.event.inputs.venue_domain != '' }}
+        run: |
+          d="${{ github.event.inputs.venue_domain }}"
+          fail=0
+          echo "== TXT resend._domainkey.$d (DKIM) =="
+          out=$(dig +short TXT "resend._domainkey.$d")
+          echo "${out:-<missing>}"
+          echo "$out" | grep -q "p=" || { echo "FAIL: DKIM TXT missing"; fail=1; }
+
+          echo "== MX send.$d (return path) =="
+          out=$(dig +short MX "send.$d")
+          echo "${out:-<missing>}"
+          echo "$out" | grep -qi "amazonses.com" || { echo "FAIL: send MX missing"; fail=1; }
+
+          echo "== TXT send.$d (SPF) =="
+          out=$(dig +short TXT "send.$d")
+          echo "${out:-<missing>}"
+          echo "$out" | grep -q "v=spf1" || { echo "FAIL: SPF TXT missing"; fail=1; }
+
+          echo "== TXT _dmarc.$d (DMARC — optional but recommended) =="
+          out=$(dig +short TXT "_dmarc.$d")
+          echo "${out:-<missing (add v=DMARC1; p=none; for deliverability)>}"
+          exit $fail
       - name: Check bills.callidusco.com records
         run: |
           fail=0

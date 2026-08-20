@@ -81,21 +81,39 @@ things set up once:
    registrar. The sender profile's from-email must be on this domain.
    Never send campaigns from callidusco.com — bulk reputation must stay
    isolated from the portal's transactional email.
-2. **A subscribers endpoint on the venue app** (the "Sync mailing
-   list" source). Contract: HTTPS GET, checks
-   `Authorization: Bearer <sync key>`, responds
-   `{ "subscribers": [{ "email": "...", "name": "...", "source":
-   "newsletter", "subscribed_at": "2026-05-01T00:00:00Z" }] }`
-   (name/source/subscribed_at optional; a bare JSON array also works).
-   Put the URL + key on the unit's sender profile.
+2. **A subscriber source** for "Sync mailing list" — any ONE of:
+   - **Supabase-backed venue app (easiest for ours):** point the
+     sender profile's Sync source straight at the venue project's
+     REST endpoint, e.g.
+     `https://<ref>.supabase.co/rest/v1/mailing_list?select=email,name,created_at`
+     with a venue API key (anon works if that table is readable, else
+     a service key) as the Sync key. The pull sends both `apikey` and
+     `Authorization` headers and paginates 1,000 rows at a time.
+   - **A JSON endpoint on the venue app:** HTTPS GET checking
+     `Authorization: Bearer <sync key>`, returning
+     `{ "subscribers": [{ "email": "...", "name": "..." }] }` or a
+     bare array; large lists may return a `"next"` URL for the
+     following page. Field names are mapped flexibly
+     (email/Email/email_address/address; name/full_name/first+last;
+     subscribed_at/created_at).
+   - **CSV import:** Audience → Import CSV… takes any export with an
+     email column — no venue-side work at all.
+   Sync only ever ADDS addresses. Existing rows are untouched, so
+   unsubscribes and bounces are never resurrected, and re-running a
+   sync or import is always safe.
 3. **Bounce webhook (shared, once for all venues).** In Resend:
    Webhooks → add `<SUPABASE_URL>/functions/v1/mail-webhook` for
    `email.bounced` + `email.complained`, then store the signing secret
    as the `MAIL_WEBHOOK_SECRET` function secret. Suppressed addresses
    are never mailed again; unsubscribes are handled automatically by
-   the per-recipient link and are permanent (sync never resurrects
-   them).
+   the per-recipient link and are permanent.
 
-Warm-up: a list that has never been mailed from its domain should get
-its first sends in modest chunks (the first campaign to a few hundred
-is fine; don't debut with many thousands).
+Warm-up is built in (per-venue toggle on the sender profile, ON by
+default): daily send caps ramp with the venue's lifetime delivered
+volume — 150/day until 500 delivered, then 400/day to 2,000, then
+1,000/day to 5,000, then 3,000/day to 15,000, then unlimited. A
+campaign bigger than the day's cap is left in status "sending" with
+every delivered recipient tracked (mail_deliveries), and **Continue
+send** pushes the next chunk once the 24-hour window frees up — nobody
+is ever emailed twice. Turn the toggle off only for a domain that
+already sends bulk volume.
