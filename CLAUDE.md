@@ -17,6 +17,16 @@ shared UI components in `assets/js/`.
   (slate: bg #111111, panel #1a1a1a, accent #7c8493). New UI uses the
   variables, not hard-coded colors.
 
+## Versioning
+
+The portal shows a version badge (`.version-tag` in
+`administration/index.html`, bottom-left): **v‹generation›.‹schema›.‹patch›**
+— schema = highest applied migration number, patch = frontend-only
+ships since that migration. On every push to main, update the badge
+(text + title): a push containing a new migration sets the middle
+number to it and resets patch to 0; a frontend-only push bumps patch.
+Generation stays 1 until a ground-up rework.
+
 ## Workflow notes
 
 - Develop on `main` — no feature branches. Push with
