@@ -140,6 +140,11 @@
     /* Invoices */
     .toolbar-row { display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: center; margin-bottom: 1rem; }
     .pill { border-radius: 999px; padding: 0.25rem 0.55rem; font-size: 0.78rem; font-weight: 600; border: 1px solid var(--border); background: var(--panel-2); color: var(--text); font-family: inherit; cursor: pointer; }
+    /* Settings: tab-assignment chips (checkbox styled as a toggle pill) */
+    .tabchip { display: inline-flex; align-items: center; margin: 0 0.35rem 0.35rem 0; padding: 0.26rem 0.7rem; border: 1px solid var(--border); border-radius: 999px; font-size: 0.79rem; color: var(--muted); cursor: pointer; user-select: none; transition: border-color 0.12s, color 0.12s; }
+    .tabchip input { display: none; }
+    .tabchip:has(input:checked) { color: var(--text); border-color: var(--accent); background: rgba(124, 132, 147, 0.16); }
+    .su-actions { display: flex; align-items: center; gap: 0.45rem; flex-wrap: wrap; }
     .pill--unpaid { color: #fbbf24; border-color: #b4790f; }
     .pill--paid { color: #a3a9b3; border-color: #4a4f58; }
     .dup-tag { color: #fca5a5; border: 1px solid var(--danger); border-radius: 6px; font-size: 0.68rem; padding: 0.05rem 0.35rem; margin-left: 0.4rem; }
@@ -366,7 +371,6 @@
       <button class="tab" data-tab="documents">Documents</button>
       <button class="tab" data-tab="invoices">Invoices</button>
       <button class="tab" data-tab="marketing">Marketing</button>
-      <button class="tab" data-tab="coa">Chart of Accounts</button>
       <button class="tab" data-tab="site">Site Content</button>
       <button class="tab" data-tab="owners">Ownership</button>
     </div>
@@ -584,26 +588,6 @@
       </div>
     </section>
 
-    <!-- Chart of Accounts (admin) -->
-    <section class="tab-panel hidden" data-panel="coa">
-      <div class="section-card">
-        <h2>Chart of Accounts</h2>
-        <p class="muted" style="margin-bottom:1rem;">Assign a numeric code to each category. Mark a category as a <strong>Sub account</strong> to nest it under a parent. This list is exactly what the invoice <strong>Code</strong> picker chooses from.</p>
-        <div class="row admin-only hidden" style="align-items:center;margin-bottom:1rem;">
-          <input type="text" id="coa_name" placeholder="Add a category…" style="flex:2;">
-          <button class="btn" id="coaAddBtn" style="flex:0 0 auto;">Add category</button>
-          <span class="muted" id="coaStatus"></span>
-        </div>
-        <div class="table-wrap">
-          <table id="coaTable">
-            <thead><tr><th>Category</th><th>Sub account</th><th>Code / Parent</th><th></th></tr></thead>
-            <tbody id="coaBody"></tbody>
-          </table>
-        </div>
-        <p class="muted" id="coaEmpty">No accounts yet.</p>
-      </div>
-    </section>
-
     <!-- Site Content (admin) -->
     <section class="tab-panel hidden" data-panel="site">
       <div class="section-card">
@@ -626,10 +610,16 @@
 
     <!-- Marketing: per-venue mail campaigns (more marketing tools nest here later) -->
     <section class="tab-panel hidden" data-panel="marketing">
-      <div class="row" style="align-items:flex-end;margin-bottom:1rem;">
+      <div class="row" id="mailUnitRow" style="align-items:flex-end;margin-bottom:1rem;">
         <div style="flex:0 1 20rem;"><label>Venue</label><select id="mailUnitSel" class="inline-select" style="width:100%;padding:0.6rem 0.7rem;"></select></div>
       </div>
 
+      <div class="section-card hidden" id="mailEmpty">
+        <h2>No venues yet</h2>
+        <p class="muted" style="margin:0;">Add a venue from <strong>Ownership</strong>: open its box and check <strong>Marketing</strong> — it appears here with its own mailing list, branding, and campaigns.</p>
+      </div>
+
+      <div id="mailBody">
       <div class="section-card">
         <h2>Sender profile</h2>
         <p class="muted" style="margin-bottom:0.75rem;">Each venue sends from its own verified domain. The physical address and unsubscribe link are added to every email automatically (legally required).</p>
@@ -648,6 +638,30 @@
         <div class="row" style="align-items:center;margin-top:0.75rem;">
           <button class="btn" id="msSaveBtn" style="flex:0 0 auto;">Save sender</button>
           <span class="muted" id="msStatus"></span>
+        </div>
+      </div>
+
+      <div class="section-card">
+        <h2>Branding</h2>
+        <p class="muted" style="margin-bottom:0.75rem;">How this venue's campaign emails look. The header image runs full-width across the top of every email — about 1200 × 300 JPG/PNG works well (keep it under ~700&nbsp;KB).</p>
+        <div class="field">
+          <label>Email header image</label>
+          <img id="mbHeaderPreview" class="hidden" alt="Header image preview" style="display:block;max-width:100%;max-height:180px;border-radius:8px;border:1px solid var(--border);margin-bottom:0.5rem;">
+          <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;">
+            <button class="btn btn--ghost btn--sm" id="mbHeaderPick">Replace image…</button>
+            <button class="btn btn--ghost btn--sm hidden" id="mbHeaderClear">Remove</button>
+            <input type="file" id="mbHeaderFile" accept="image/png,image/jpeg,image/webp" class="hidden">
+            <span class="muted" id="mbHeaderStatus"></span>
+          </div>
+        </div>
+        <div class="row" style="margin-top:0.5rem;">
+          <div><label>Accent color</label><div class="color-row"><input type="color" id="mb_accent_p" value="#111827"><input type="text" id="mb_accent" placeholder="#111827"></div></div>
+          <div><label>Card background</label><div class="color-row"><input type="color" id="mb_card_p" value="#ffffff"><input type="text" id="mb_card" placeholder="#ffffff"></div></div>
+          <div><label>Page background</label><div class="color-row"><input type="color" id="mb_page_p" value="#f4f4f5"><input type="text" id="mb_page" placeholder="#f4f4f5"></div></div>
+        </div>
+        <div class="row" style="align-items:center;margin-top:0.75rem;">
+          <button class="btn" id="mbSaveBtn" style="flex:0 0 auto;">Save branding</button>
+          <span class="muted" id="mbStatus"></span>
         </div>
       </div>
 
@@ -672,6 +686,7 @@
         </div>
         <p class="muted" id="mailCampEmpty">No campaigns yet for this venue.</p>
       </div>
+      </div><!-- /mailBody -->
     </section>
 
     <!-- Owners: admins edit; members see their downstream slice read-only -->
@@ -699,11 +714,15 @@
 
   <!-- Add-invoice modal -->
   <div class="modal-overlay hidden" id="settingsModal">
-    <div class="modal" style="max-width:680px;">
-      <h3>Settings</h3>
+    <div class="modal" style="max-width:760px;">
+      <div class="modal-sticky-head">
+        <h3 style="margin:0;">Settings</h3>
+        <button class="iconbtn" data-closemodal="settingsModal" style="font-size:1.5rem;" aria-label="Close">×</button>
+      </div>
       <div class="tabs" style="margin-bottom:1rem;">
         <button class="tab active" data-stab="users">Users</button>
         <button class="tab" data-stab="roles">Roles</button>
+        <button class="tab" data-stab="coa">Chart of Accounts</button>
         <button class="tab" data-stab="activity">Activity</button>
       </div>
 
@@ -732,12 +751,25 @@
         </div>
       </div>
 
+      <div id="settingsCoaPane" class="hidden">
+        <p class="muted" style="margin-bottom:1rem;">Assign a numeric code to each category. Mark a category as a <strong>Sub account</strong> to nest it under a parent. This list is exactly what the invoice <strong>Code</strong> picker chooses from.</p>
+        <div class="row admin-only hidden" style="align-items:center;margin-bottom:1rem;">
+          <input type="text" id="coa_name" placeholder="Add a category…" style="flex:2;">
+          <button class="btn" id="coaAddBtn" style="flex:0 0 auto;">Add category</button>
+          <span class="muted" id="coaStatus"></span>
+        </div>
+        <div class="table-wrap">
+          <table id="coaTable">
+            <thead><tr><th>Category</th><th>Sub account</th><th>Code / Parent</th><th></th></tr></thead>
+            <tbody id="coaBody"></tbody>
+          </table>
+        </div>
+        <p class="muted" id="coaEmpty">No accounts yet.</p>
+      </div>
+
       <div id="settingsActivityPane" class="hidden">
         <p class="muted" style="margin-bottom:0.75rem;">Who signed in and what they downloaded — most recent first.</p>
         <div class="table-wrap" id="saList"><p class="muted">Loading…</p></div>
-      </div>
-      <div class="row" style="align-items:center;margin-top:1rem;">
-        <button class="btn btn--ghost" id="settingsCloseBtn" style="flex:0 0 auto;">Close</button>
       </div>
     </div>
   </div>
@@ -966,7 +998,7 @@
     $("signOutBtn").addEventListener("click", async () => { await supabase.auth.signOut(); location.reload(); });
 
     /* ---------------- Settings: users & access (admin) ---------------- */
-    const TAB_META = [["financials", "Reports"], ["memos", "Memo Board"], ["documents", "Documents"], ["invoices", "Invoices"], ["marketing", "Marketing"], ["coa", "Chart of Accounts"], ["owners", "Ownership"]];
+    const TAB_META = [["financials", "Reports"], ["memos", "Memo Board"], ["documents", "Documents"], ["invoices", "Invoices"], ["marketing", "Marketing"], ["owners", "Ownership"]];
     const ROLE_LABEL = { owner: "Member", accountant: "Accountant", admin: "Admin" };
 
     $("settingsBtn")?.addEventListener("click", () => { show($("settingsModal"), true); loadSettingsUsers(); });
@@ -974,8 +1006,10 @@
       document.querySelectorAll("[data-stab]").forEach((x) => x.classList.toggle("active", x === b));
       show($("settingsUsersPane"), b.dataset.stab === "users");
       show($("settingsRolesPane"), b.dataset.stab === "roles");
+      show($("settingsCoaPane"), b.dataset.stab === "coa");
       show($("settingsActivityPane"), b.dataset.stab === "activity");
       if (b.dataset.stab === "activity") loadActivity();
+      if (b.dataset.stab === "coa") loadChart();
     }));
 
     /* ---------------- Settings: activity log (admin) ---------------- */
@@ -1034,6 +1068,7 @@
         case "inv_company": return `Moved bill <strong>${eh(d.vendor || "")}</strong> to ${eh(d.company || "")}`;
         case "mail_sync": return `Synced ${eh(d.unit || "")} mailing list (${Number(d.fetched) || 0} fetched, ${Number(d.added) || 0} new)`;
         case "mail_send": return `Sent campaign <strong>${eh(d.subject || "")}</strong> to ${Number(d.sent) || 0} subscribers · ${eh(d.unit || "")}`;
+        case "mail_brand": return `Updated ${eh(d.unit || "a venue")}'s email branding`;
         default: return eh(r.event || "activity");
       }
     }
@@ -1058,7 +1093,6 @@
       logAccess("invite_sent", { email });
       return data;
     }
-    $("settingsCloseBtn")?.addEventListener("click", () => show($("settingsModal"), false));
     $("settingsModal")?.addEventListener("click", (e) => { if (e.target === $("settingsModal")) show($("settingsModal"), false); });
     document.addEventListener("keydown", (e) => {
       if (e.key !== "Escape") return;
@@ -1102,9 +1136,7 @@
         const tabs = Array.isArray(r.tabs) && r.tabs.length ? r.tabs
           : (Array.isArray(roleTabs) && roleTabs.length ? roleTabs : (ROLE_DEFAULT_TABS[r.role] || null));
         const checks = TAB_META.map(([k, label]) =>
-          `<label style="display:inline-flex;align-items:center;gap:0.3rem;margin:0 0.75rem 0.25rem 0;font-size:0.8rem;color:var(--text);cursor:pointer;">
-             <input type="checkbox" data-sutab="${i}" value="${k}" style="width:auto;"${!tabs || tabs.includes(k) ? " checked" : ""}> ${label}
-           </label>`).join("");
+          `<label class="tabchip"><input type="checkbox" data-sutab="${i}" value="${k}"${!tabs || tabs.includes(k) ? " checked" : ""}> ${label}</label>`).join("");
         return `<div class="section-card" style="margin-bottom:0.75rem;padding:1rem;" data-surow="${i}" data-suemail="${escapeHtml(r.email)}">
           <div style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;">
             <strong>${escapeHtml(r.email)}</strong>
@@ -1112,13 +1144,13 @@
             ${b ? `<span class="badge">in ownership graph</span>` : ""}
             <span class="badge${signedUp ? " badge--admin" : ""}">${signedUp ? "signed up" : "invited — hasn't signed in"}</span>
           </div>
-          <div class="row" style="align-items:center;margin-top:0.6rem;">
-            <div style="flex:0 0 auto;"><select data-surole="${i}" class="inline-select">
+          <div class="su-actions" style="margin-top:0.6rem;">
+            <select data-surole="${i}" class="inline-select" style="padding:0.4rem 0.5rem;">
               ${roleRows.map((ro) => `<option value="${escapeHtml(ro.key)}"${r.role === ro.key ? " selected" : ""}>${escapeHtml(ro.name)}</option>`).join("")}
-            </select></div>
-            <button class="btn btn--sm" data-susave="${i}" style="flex:0 0 auto;">Save</button>
-            <button class="btn btn--ghost btn--sm" data-suinvite="${i}" style="flex:0 0 auto;">${signedUp ? "Send sign-in link" : "Send invite"}</button>
-            <button class="btn btn--danger btn--sm" data-suremove="${i}" style="flex:0 0 auto;">Remove</button>
+            </select>
+            <button class="btn btn--sm" data-susave="${i}">Save</button>
+            <button class="btn btn--ghost btn--sm" data-suinvite="${i}">${signedUp ? "Send sign-in link" : "Send invite"}</button>
+            <button class="btn btn--danger btn--sm" data-suremove="${i}">Remove</button>
             <span class="muted" data-sustatus="${i}"></span>
           </div>
           <div style="margin-top:0.6rem;" data-sutabs="${i}"${r.role === "admin" ? ' hidden' : ""}>
@@ -1213,18 +1245,16 @@
         }
         const tabs = Array.isArray(r.tabs) && r.tabs.length ? r.tabs : [];
         const checks = TAB_META.map(([k, label]) =>
-          `<label style="display:inline-flex;align-items:center;gap:0.3rem;margin:0 0.75rem 0.25rem 0;font-size:0.8rem;color:var(--text);cursor:pointer;">
-             <input type="checkbox" data-srtab="${i}" value="${k}" style="width:auto;"${tabs.includes(k) ? " checked" : ""}> ${label}
-           </label>`).join("");
+          `<label class="tabchip"><input type="checkbox" data-srtab="${i}" value="${k}"${tabs.includes(k) ? " checked" : ""}> ${label}</label>`).join("");
         return `<div class="section-card" data-srrow="${i}" data-srkey="${escapeHtml(r.key)}" style="margin-bottom:0.6rem;padding:0.9rem 1rem;">
-          <div class="row" style="align-items:center;">
-            <input type="text" data-srname="${i}" value="${escapeHtml(r.name)}" style="flex:1;min-width:8rem;">
-            <select data-srscope="${i}" class="inline-select" style="flex:0 0 auto;" title="What data this role can read">
+          <div class="su-actions">
+            <input type="text" data-srname="${i}" value="${escapeHtml(r.name)}" style="flex:1;min-width:8rem;width:auto;">
+            <select data-srscope="${i}" class="inline-select" style="padding:0.4rem 0.5rem;" title="What data this role can read">
               <option value="slice"${r.read_all ? "" : " selected"}>Their ownership slice</option>
               <option value="all"${r.read_all ? " selected" : ""}>All data</option>
             </select>
-            <button class="btn btn--sm" data-srsave="${i}" style="flex:0 0 auto;">Save</button>
-            ${r.builtin ? "" : `<button class="btn btn--danger btn--sm" data-srdel="${i}" style="flex:0 0 auto;"${inUse ? ` disabled title="Reassign its ${inUse} user(s) first"` : ""}>Delete</button>`}
+            <button class="btn btn--sm" data-srsave="${i}">Save</button>
+            ${r.builtin ? "" : `<button class="btn btn--danger btn--sm" data-srdel="${i}"${inUse ? ` disabled title="Reassign its ${inUse} user(s) first"` : ""}>Delete</button>`}
             <span class="muted" data-srstatus="${i}"></span>
           </div>
           <div style="margin-top:0.55rem;"><label style="margin-bottom:0.3rem;">Default tabs</label>${checks}</div>
@@ -1357,10 +1387,10 @@
     // Which tabs this user sees. Admins see everything; others get their
     // per-user assignment (Settings) or their role's default set. Site
     // Content is never assignable — it edits the public site.
-    const ALL_TABS = ["financials", "memos", "documents", "invoices", "marketing", "coa", "site", "owners"];
+    const ALL_TABS = ["financials", "memos", "documents", "invoices", "marketing", "site", "owners"];
     const ROLE_DEFAULT_TABS = {
       owner: ["financials", "memos", "documents", "owners"],
-      accountant: ["financials", "documents", "invoices", "coa"],
+      accountant: ["financials", "documents", "invoices"],
     };
     function allowedTabs() {
       if (isAdmin()) return ALL_TABS;
@@ -1388,7 +1418,6 @@
       if (tabs.includes("documents")) loadDocuments();
       if (tabs.includes("invoices")) loadInvoices();
       if (tabs.includes("marketing")) loadMail();
-      if (tabs.includes("coa")) loadChart();
       if (isAdmin()) loadSite();
       // One sign-in event per browser session, not per reload.
       try {
@@ -2901,9 +2930,24 @@
       };
     };
     async function loadMail() {
-      const { data: ents } = await supabase.from("ownership_entities").select("id,name,kind").order("name");
-      mailUnits = ((ents || [])).filter((e) => e.kind === "entity");
+      // Venues opted in via the Ownership pane's Marketing toggle. The RPC
+      // also works for marketing-role users who can't read the ownership
+      // table; before migration 0032 it doesn't exist → every entity box.
+      let units = null;
+      try {
+        const { data, error } = await supabase.rpc("marketing_units");
+        if (!error && Array.isArray(data)) units = data;
+      } catch (_) {}
+      if (!units) {
+        const { data: ents } = await supabase.from("ownership_entities").select("id,name,kind").order("name");
+        units = ((ents || [])).filter((e) => e.kind === "entity");
+      }
+      mailUnits = units;
       const sel = $("mailUnitSel"); if (!sel) return;
+      show($("mailUnitRow"), mailUnits.length > 0);
+      show($("mailBody"), mailUnits.length > 0);
+      show($("mailEmpty"), mailUnits.length === 0);
+      if (!mailUnits.length) return;
       sel.innerHTML = mailUnits.map((u) => `<option value="${u.id}">${escapeHtml(u.name)}</option>`).join("");
       if (!mailUnit || !mailUnits.some((u) => u.id === mailUnit)) mailUnit = mailUnits[0]?.id || null;
       if (mailUnit) sel.value = mailUnit;
@@ -2929,8 +2973,58 @@
       $("ms_sync_url").value = mailSender?.sync_url || "";
       $("ms_sync_key").value = mailSender?.sync_key || "";
       $("msStatus").textContent = "";
+      // Branding card (columns exist from migration 0032 on).
+      mbHeaderUrl = mailSender?.header_image_url || null;
+      renderMbHeader();
+      const setColor = (t, p, v, fb) => { $(t).value = v || ""; $(p).value = /^#[0-9a-fA-F]{6}$/.test(v || "") ? v : fb; };
+      setColor("mb_accent", "mb_accent_p", mailSender?.accent, "#111827");
+      setColor("mb_card", "mb_card_p", mailSender?.card_bg, "#ffffff");
+      setColor("mb_page", "mb_page_p", mailSender?.page_bg, "#f4f4f5");
+      $("mbStatus").textContent = ""; $("mbHeaderStatus").textContent = "";
       renderMailAudience(); renderMailCamps();
     }
+
+    /* ---- Branding: header image + email colors on the sender profile ---- */
+    let mbHeaderUrl = null;
+    function renderMbHeader() {
+      const img = $("mbHeaderPreview"); if (!img) return;
+      if (mbHeaderUrl) img.src = mbHeaderUrl;
+      show(img, !!mbHeaderUrl);
+      show($("mbHeaderClear"), !!mbHeaderUrl);
+      $("mbHeaderPick").textContent = mbHeaderUrl ? "Replace image…" : "Upload image…";
+    }
+    $("mbHeaderPick")?.addEventListener("click", () => $("mbHeaderFile").click());
+    $("mbHeaderClear")?.addEventListener("click", () => {
+      mbHeaderUrl = null; renderMbHeader();
+      $("mbHeaderStatus").textContent = "Removed — click Save branding to apply.";
+    });
+    $("mbHeaderFile")?.addEventListener("change", async () => {
+      const f = $("mbHeaderFile").files[0]; $("mbHeaderFile").value = "";
+      if (!f || !mailUnit) return;
+      const st = $("mbHeaderStatus");
+      if (f.size > 1.5 * 1024 * 1024) { st.textContent = "That file is over 1.5 MB — resize it first (emails load faster small)."; return; }
+      st.textContent = "Uploading…";
+      const ext = (f.name.split(".").pop() || "png").toLowerCase().replace(/[^a-z0-9]/g, "") || "png";
+      const path = `mail/${mailUnit}/header-${Date.now()}.${ext}`;
+      const { error } = await supabase.storage.from("site-assets").upload(path, f, { upsert: true, contentType: f.type || undefined });
+      if (error) { st.textContent = "Upload failed: " + error.message; return; }
+      const { data } = supabase.storage.from("site-assets").getPublicUrl(path);
+      mbHeaderUrl = data?.publicUrl || null;
+      renderMbHeader();
+      st.textContent = "Uploaded — click Save branding to apply.";
+    });
+    $("mbSaveBtn")?.addEventListener("click", async () => {
+      const st = $("mbStatus"); if (!mailUnit) return;
+      const hex = (id) => { const v = $(id).value.trim().toLowerCase(); return /^#[0-9a-f]{6}$/.test(v) ? v : null; };
+      st.textContent = "Saving…";
+      const { error } = await supabase.from("mail_senders").upsert({
+        entity_id: mailUnit,
+        header_image_url: mbHeaderUrl,
+        accent: hex("mb_accent"), card_bg: hex("mb_card"), page_bg: hex("mb_page"),
+      }, { onConflict: "entity_id" });
+      if (!error) { logAccess("mail_brand", { unit: mailUnits.find((u) => u.id === mailUnit)?.name }); await refreshMailUnit(); }
+      st.textContent = error ? error.message : "Saved ✓ — used on the next send.";
+    });
     function renderMailAudience() {
       const supp = mailStats.total - mailStats.active;
       $("mailAudience").innerHTML =
@@ -3009,7 +3103,9 @@
       show($("mailModal"), true);
     }
     $("mailNewBtn")?.addEventListener("click", () => {
-      if (!mailSender) { alert("Save a sender profile for this venue first."); return; }
+      // Branding alone can create the sender row — sending still needs the
+      // from identity.
+      if (!mailSender?.from_name || !mailSender?.from_email) { alert("Save a sender profile (from name + from email) for this venue first."); return; }
       openMailComposer(null);
     });
     document.querySelectorAll("[data-mcmd]").forEach((b) => b.addEventListener("click", () => {
@@ -3082,6 +3178,7 @@
       T.addEventListener("input", () => { if (/^#[0-9a-fA-F]{6}$/.test(T.value)) P.value = T.value; });
     }
     bindColor("s_bgColor", "s_bgColor_p"); bindColor("s_textColor", "s_textColor_p");
+    bindColor("mb_accent", "mb_accent_p"); bindColor("mb_card", "mb_card_p"); bindColor("mb_page", "mb_page_p");
 
     async function loadSite() {
       const { data } = await supabase.from("site_content").select("content").eq("id", 1).single();
@@ -3549,6 +3646,11 @@
             <input type="checkbox" id="pInReports" style="width:auto;"${e.in_reports ? " checked" : ""}> Show this unit in Reports
           </label>
         </div>
+        <div class="field" id="pMarketingField">
+          <label style="display:inline-flex;align-items:center;gap:0.45rem;margin:0;cursor:pointer;">
+            <input type="checkbox" id="pInMarketing" style="width:auto;"${e.in_marketing ? " checked" : ""}> Marketing — mailing list &amp; campaigns for this venue
+          </label>
+        </div>
         <div class="field" id="pManagedField"><label>Managed by</label>
           <select id="pManaged" class="inline-select" style="width:100%;padding:0.6rem 0.7rem;">
             <option value="">— Admin —</option>
@@ -3608,6 +3710,7 @@
       const collect = () => ({
         name: $("pName").value.trim(), kind: $("pKind").value === "entity" ? "entity" : "individual",
         in_reports: $("pKind").value === "entity" && $("pInReports").checked,
+        in_marketing: $("pKind").value === "entity" && !!$("pInMarketing")?.checked,
         category: e.category || null, subcategory: e.subcategory || null,
         email: $("pEmail").value.trim() || null, notes: $("pNotes").value.trim() || null, color: e.color || null,
         managed_by: ($("pKind").value === "entity" && $("pManaged")?.value) || null,
@@ -3669,6 +3772,7 @@
         show($("pAccessField"), !isEntity);
         show($("pLinkField"), isEntity); // units can federate with a partner portal
         show($("pReportsField"), isEntity); // only entities (units) can appear in Reports
+        show($("pMarketingField"), isEntity); // only venues can join the Marketing tab
         show($("pManagedField"), isEntity); // units can be run by a principal
         // Portal access — grant/revoke via the allowlist, keyed on this box's email.
         if (!isEntity) renderAccess(id, $("pEmail").value);

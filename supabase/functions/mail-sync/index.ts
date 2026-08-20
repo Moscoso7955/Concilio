@@ -3,7 +3,7 @@
 // unit's sender profile) that, given "Authorization: Bearer <sync_key>",
 // returns { subscribers: [{ email, name?, source?, subscribed_at? }] }
 // (a bare array works too). Upserts per (unit, email); NEVER resurrects
-// an unsubscribed/bounced address. Admin auth. verify_jwt = FALSE.
+// an unsubscribed/bounced address. Marketing-capability auth. verify_jwt = FALSE.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
@@ -27,8 +27,13 @@ Deno.serve(async (req) => {
   const token = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
   const { data: { user } } = await createClient(SUPABASE_URL, ANON).auth.getUser(token);
   if (!user) return json({ error: "Unauthorized" }, 401);
-  const { data: prof } = await admin.from("profiles").select("role").eq("id", user.id).single();
-  if (prof?.role !== "admin") return json({ error: "Admins only" }, 403);
+  const { data: prof } = await admin.from("profiles").select("role,tabs,email").eq("id", user.id).single();
+  let allowed = prof?.role === "admin" || (Array.isArray(prof?.tabs) && prof.tabs.includes("marketing"));
+  if (!allowed && prof?.role) {
+    const { data: r } = await admin.from("roles").select("tabs").eq("key", prof.role).maybeSingle();
+    allowed = Array.isArray(r?.tabs) && r.tabs.includes("marketing");
+  }
+  if (!allowed) return json({ error: "Marketing access required" }, 403);
 
   let entityId = "";
   try { entityId = String((await req.json()).entity_id || ""); } catch (_) { /* below */ }

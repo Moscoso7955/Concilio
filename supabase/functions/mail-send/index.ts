@@ -3,7 +3,7 @@
 // campaign's unit (suppressing unsubscribed / bounced / complained) in
 // Resend batches of 100, each with a personal unsubscribe link and
 // List-Unsubscribe headers, then marks the campaign sent. A sent
-// campaign refuses to send again. Admin auth. verify_jwt = FALSE.
+// campaign refuses to send again. Marketing-capability auth. verify_jwt = FALSE.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
@@ -22,19 +22,38 @@ const json = (b: unknown, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { ...cors, "Content-Type": "application/json" } });
 const esc = (s: string) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-// Consumer-newsletter template: light card, venue logo, content, legal
-// footer (physical address + unsubscribe — both required).
+// Consumer-newsletter template. Branding comes from the sender profile
+// (header image, accent, card/page colors); text colors flip for dark
+// card backgrounds. Physical address + unsubscribe are always in the
+// footer (legally required).
+const lum = (hex: string) => {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex || ""); if (!m) return 1;
+  const n = parseInt(m[1], 16);
+  return (0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255;
+};
 function wrap(sender: Record<string, string | null>, preview: string, body: string, unsubUrl: string) {
+  const pageBg = sender.page_bg || "#f4f4f5";
+  const cardBg = sender.card_bg || "#ffffff";
+  const dark = lum(cardBg) < 0.5;
+  const text = dark ? "#f4f4f5" : "#1f2937";
+  const muted = dark ? "#9ca3af" : "#6b7280";
+  const border = dark ? "#3f3f46" : "#e5e7eb";
+  const accent = /^#[0-9a-f]{6}$/i.test(sender.accent || "") ? sender.accent! : (dark ? "#e5e7eb" : "#111827");
+  const head = sender.header_image_url
+    ? `<img src="${esc(sender.header_image_url)}" alt="${esc(sender.from_name || "")}" style="display:block;width:100%;border:0;">`
+    : (sender.logo_url
+      ? `<div style="text-align:center;padding:28px 24px 4px;"><img src="${esc(sender.logo_url)}" alt="${esc(sender.from_name || "")}" style="max-height:64px;max-width:220px;border:0;"></div>`
+      : `<div style="text-align:center;padding:26px 24px 0;font-size:19px;font-weight:700;color:${accent};">${esc(sender.from_name || "")}</div>`);
   return `
-  <div style="background:#f4f4f5;padding:32px 12px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <div style="background:${pageBg};padding:32px 12px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
     <span style="display:none;max-height:0;overflow:hidden;">${esc(preview || "")}</span>
-    <div style="max-width:560px;margin:0 auto;background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
-      ${sender.logo_url ? `<div style="text-align:center;padding:28px 24px 4px;"><img src="${esc(sender.logo_url)}" alt="${esc(sender.from_name || "")}" style="max-height:64px;max-width:220px;border:0;"></div>` : `<div style="text-align:center;padding:26px 24px 0;font-size:19px;font-weight:700;color:#111827;">${esc(sender.from_name || "")}</div>`}
-      <div style="padding:22px 30px 26px;color:#1f2937;font-size:15px;line-height:1.65;">${body}</div>
-      <div style="padding:16px 28px 24px;border-top:1px solid #e5e7eb;color:#6b7280;font-size:12px;line-height:1.7;text-align:center;">
+    <div style="max-width:560px;margin:0 auto;background:${cardBg};border:1px solid ${border};border-radius:12px;overflow:hidden;">
+      ${head}
+      <div style="padding:22px 30px 26px;color:${text};font-size:15px;line-height:1.65;">${body}</div>
+      <div style="padding:16px 28px 24px;border-top:1px solid ${border};color:${muted};font-size:12px;line-height:1.7;text-align:center;">
         ${esc(sender.from_name || "")}${sender.address ? " · " + esc(sender.address) : ""}<br>
         You're receiving this because you signed up at ${esc(sender.from_name || "our venue")}.
-        <a href="${unsubUrl}" style="color:#6b7280;">Unsubscribe</a>
+        <a href="${unsubUrl}" style="color:${muted};">Unsubscribe</a>
       </div>
     </div>
   </div>`;
@@ -47,8 +66,13 @@ Deno.serve(async (req) => {
   const token = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
   const { data: { user } } = await createClient(SUPABASE_URL, ANON).auth.getUser(token);
   if (!user) return json({ error: "Unauthorized" }, 401);
-  const { data: prof } = await admin.from("profiles").select("role,email").eq("id", user.id).single();
-  if (prof?.role !== "admin") return json({ error: "Admins only" }, 403);
+  const { data: prof } = await admin.from("profiles").select("role,tabs,email").eq("id", user.id).single();
+  let allowed = prof?.role === "admin" || (Array.isArray(prof?.tabs) && prof.tabs.includes("marketing"));
+  if (!allowed && prof?.role) {
+    const { data: r } = await admin.from("roles").select("tabs").eq("key", prof.role).maybeSingle();
+    allowed = Array.isArray(r?.tabs) && r.tabs.includes("marketing");
+  }
+  if (!allowed) return json({ error: "Marketing access required" }, 403);
 
   let body: { campaign_id?: string; mode?: string } = {};
   try { body = await req.json(); } catch (_) { /* below */ }
