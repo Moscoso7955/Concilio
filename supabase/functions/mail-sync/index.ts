@@ -11,10 +11,11 @@
 //      Auth: "Authorization: Bearer <sync key>".
 //   3. Direct push from the portal (CSV import): POST body
 //      { entity_id, subscribers: [{ email, name? }, ...] } — no fetch.
-// Field names are mapped flexibly (email/Email/address/email_address;
-// name/full_name/first+last). New addresses insert; existing rows are
-// left completely untouched, so unsubscribes/bounces are NEVER
-// resurrected. Marketing-capability auth. verify_jwt = FALSE.
+// Field names are mapped flexibly (snake_case and camelCase). New
+// addresses insert; venue-side unsubscribes (unsubscribedAt in the
+// feed) are propagated onto active local rows. Suppression is one-way:
+// nothing in a sync ever reactivates an unsubscribed/bounced row.
+// Marketing-capability auth. verify_jwt = FALSE.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
@@ -34,17 +35,20 @@ const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const PAGE = 1000, MAX_TOTAL = 50000;
 
 type Raw = Record<string, unknown>;
-function mapItem(item: Raw): { email: string; name: string | null; source: string | null; subscribed_at: string } | null {
+const iso = (v: unknown) => (v && !isNaN(Date.parse(String(v))) ? new Date(String(v)).toISOString() : null);
+function mapItem(item: Raw): { email: string; name: string | null; source: string | null; subscribed_at: string; unsubscribed_at: string | null } | null {
   const email = String(item.email ?? item.Email ?? item.email_address ?? item.address ?? "").trim().toLowerCase();
   if (!EMAIL_RE.test(email)) return null;
-  let name = item.name ?? item.full_name ?? item.Name ?? null;
+  let name = item.name ?? item.full_name ?? item.fullName ?? item.Name ?? null;
   if (!name && (item.first_name || item.last_name)) name = [item.first_name, item.last_name].filter(Boolean).join(" ");
-  const sub = item.subscribed_at ?? item.created_at ?? item.signup_date ?? null;
   return {
     email,
     name: name ? String(name).slice(0, 200) : null,
     source: item.source ? String(item.source).slice(0, 80) : null,
-    subscribed_at: sub && !isNaN(Date.parse(String(sub))) ? new Date(String(sub)).toISOString() : new Date().toISOString(),
+    subscribed_at: iso(item.subscribed_at ?? item.subscribedAt ?? item.created_at ?? item.createdAt ?? item.signup_date) || new Date().toISOString(),
+    // The venue's feed includes unsubscribed rows so removals made THERE
+    // (site opt-out, admin delete) are honored here too.
+    unsubscribed_at: iso(item.unsubscribed_at ?? item.unsubscribedAt),
   };
 }
 
@@ -122,8 +126,8 @@ Deno.serve(async (req) => {
     if (!row) { invalid++; continue; }
     if (!byEmail.has(row.email)) byEmail.set(row.email, row);
   }
-  const { data: existing } = await admin.from("mail_subscribers").select("email").eq("entity_id", entityId);
-  const have = new Set((existing || []).map((r) => r.email));
+  const { data: existing } = await admin.from("mail_subscribers").select("id,email,unsubscribed_at").eq("entity_id", entityId);
+  const have = new Map((existing || []).map((r) => [r.email, r]));
   const fresh = [...byEmail.values()].filter((r) => !have.has(r!.email));
   let added = 0;
   for (let i = 0; i < fresh.length; i += 500) {
@@ -133,12 +137,24 @@ Deno.serve(async (req) => {
     if (error) return json({ ok: false, error: "Insert failed: " + error.message, added }, 500);
     added += chunk.length;
   }
+  // Propagate venue-side unsubscribes onto rows that are still active
+  // here. One-way only: nothing in a sync ever REACTIVATES a local row.
+  let unsubscribed = 0;
+  for (const r of byEmail.values()) {
+    if (!r!.unsubscribed_at) continue;
+    const local = have.get(r!.email);
+    if (!local || local.unsubscribed_at) continue;
+    const { error } = await admin.from("mail_subscribers")
+      .update({ unsubscribed_at: r!.unsubscribed_at }).eq("id", local.id);
+    if (!error) unsubscribed++;
+    if (unsubscribed >= 2000) break; // sanity cap
+  }
   if (sender && !pushed) await admin.from("mail_senders").update({ last_synced_at: new Date().toISOString() }).eq("id", sender.id);
   const { count: active } = await admin.from("mail_subscribers")
     .select("id", { count: "exact", head: true }).eq("entity_id", entityId)
     .is("unsubscribed_at", null).is("bounced_at", null).is("complaint_at", null);
   try {
-    await admin.from("function_logs").insert({ fn: "mail-sync", msg: pushed ? "csv import" : "pull", detail: { entity: entityId, fetched: list.length, added, invalid } });
+    await admin.from("function_logs").insert({ fn: "mail-sync", msg: pushed ? "csv import" : "pull", detail: { entity: entityId, fetched: list.length, added, unsubscribed, invalid } });
   } catch (_) { /* best effort */ }
-  return json({ ok: true, fetched: list.length, added, existing: byEmail.size - fresh.length, invalid, active: active ?? 0 });
+  return json({ ok: true, fetched: list.length, added, unsubscribed, existing: byEmail.size - fresh.length, invalid, active: active ?? 0 });
 });

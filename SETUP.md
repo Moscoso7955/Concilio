@@ -89,18 +89,27 @@ things set up once:
      with a venue API key (anon works if that table is readable, else
      a service key) as the Sync key. The pull sends both `apikey` and
      `Authorization` headers and paginates 1,000 rows at a time.
-   - **A JSON endpoint on the venue app:** HTTPS GET checking
+   - **A JSON endpoint on the venue app** (the Bar Phoebe pattern):
+     `GET …/api/mailing-list/subscribers` checking
      `Authorization: Bearer <sync key>`, returning
-     `{ "subscribers": [{ "email": "...", "name": "..." }] }` or a
-     bare array; large lists may return a `"next"` URL for the
-     following page. Field names are mapped flexibly
-     (email/Email/email_address/address; name/full_name/first+last;
-     subscribed_at/created_at).
+     `{ "subscribers": [{ "email", "name"?, "source"?, "createdAt"?,
+     "unsubscribedAt"? }] }` or a bare array; large lists may return a
+     `"next"` URL for the following page. Field names are mapped
+     flexibly (snake_case or camelCase). Include unsubscribed rows
+     with `unsubscribedAt` set — the portal honors venue-side
+     removals on every sync. If the app also exposes the sibling
+     `POST …/api/mailing-list/unsubscribe` ({email, reason}, same
+     bearer key, idempotent), the portal calls it whenever a
+     recipient unsubscribes from a campaign (reason `user_click`) or
+     an address hard-bounces/complains (`bounced`/`complained`), so
+     the venue's list — the source of truth — always has the full
+     compliance record.
    - **CSV import:** Audience → Import CSV… takes any export with an
      email column — no venue-side work at all.
-   Sync only ever ADDS addresses. Existing rows are untouched, so
-   unsubscribes and bounces are never resurrected, and re-running a
-   sync or import is always safe.
+   Suppression is strictly one-way: a sync can ADD subscribers and
+   propagate venue-side unsubscribes, but nothing in a sync or import
+   ever reactivates an unsubscribed/bounced row. Re-running is always
+   safe.
 3. **Bounce webhook (shared, once for all venues).** In Resend:
    Webhooks → add `<SUPABASE_URL>/functions/v1/mail-webhook` for
    `email.bounced` + `email.complained`, then store the signing secret
