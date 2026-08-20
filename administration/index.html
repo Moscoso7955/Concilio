@@ -622,13 +622,12 @@
       <div id="mailBody">
       <div class="section-card">
         <h2>Sender profile</h2>
-        <p class="muted" style="margin-bottom:0.75rem;">Each venue sends from its own verified domain. The physical address and unsubscribe link are added to every email automatically (legally required).</p>
+        <p class="muted" style="margin-bottom:0.75rem;">Each venue sends from its own verified domain. Every email's footer automatically carries the unsubscribe link and the venue's physical address — the address comes from the unit's <strong>Address</strong> field in Ownership (legally required).</p>
         <div class="row">
           <div><label>From name</label><input type="text" id="ms_from_name" placeholder="Bar Phoebe"></div>
           <div><label>From email (verified domain)</label><input type="email" id="ms_from_email" placeholder="hello@news.barphoebe.com"></div>
         </div>
         <div class="row" style="margin-top:0.5rem;">
-          <div style="flex:1.5;"><label>Physical address (footer)</label><input type="text" id="ms_address" placeholder="123 Main St, Dallas, TX 75201"></div>
           <div><label>Logo URL</label><input type="url" id="ms_logo" placeholder="https://…/logo.png"></div>
         </div>
         <div class="row" style="margin-top:0.5rem;">
@@ -648,7 +647,7 @@
 
       <div class="section-card">
         <h2>Branding</h2>
-        <p class="muted" style="margin-bottom:0.75rem;">How this venue's campaign emails look. The header image runs full-width across the top of every email — about 1200 × 300 JPG/PNG works well (keep it under ~700&nbsp;KB).</p>
+        <p class="muted" style="margin-bottom:0.75rem;">How this venue's campaign emails look. The header image runs full-width across the top of every email — about 1200 × 300 JPG/PNG works well (keep it under ~700&nbsp;KB). It's stored with the venue's data, so it can't break if files get reorganized.</p>
         <div class="field">
           <label>Email header image</label>
           <img id="mbHeaderPreview" class="hidden" alt="Header image preview" style="display:block;max-width:100%;max-height:180px;border-radius:8px;border:1px solid var(--border);margin-bottom:0.5rem;">
@@ -2978,7 +2977,6 @@
       mailStats = { active: act?.count ?? 0, total: tot?.count ?? 0 };
       $("ms_from_name").value = mailSender?.from_name || "";
       $("ms_from_email").value = mailSender?.from_email || "";
-      $("ms_address").value = mailSender?.address || "";
       $("ms_logo").value = mailSender?.logo_url || "";
       $("ms_sync_url").value = mailSender?.sync_url || "";
       $("ms_sync_key").value = mailSender?.sync_key || "";
@@ -2986,6 +2984,7 @@
       $("msStatus").textContent = ""; $("mailCampStatus").textContent = "";
       // Branding card (columns exist from migration 0032 on).
       mbHeaderUrl = mailSender?.header_image_url || null;
+      mbPreviewSrc = null; mbHeaderData = null; mbHeaderMime = null; mbHeaderDirty = false;
       renderMbHeader();
       const setColor = (t, p, v, fb) => { $(t).value = v || ""; $(p).value = /^#[0-9a-fA-F]{6}$/.test(v || "") ? v : fb; };
       setColor("mb_accent", "mb_accent_p", mailSender?.accent, "#111827");
@@ -2995,18 +2994,23 @@
       renderMailAudience(); renderMailCamps();
     }
 
-    /* ---- Branding: header image + email colors on the sender profile ---- */
-    let mbHeaderUrl = null;
+    /* ---- Branding: header image + email colors. The image's bytes are
+       stored ON the sender row (base64) and served by the mail-asset
+       function at a stable URL — a moved or deleted storage file can
+       never break the branding. ---- */
+    let mbHeaderUrl = null, mbPreviewSrc = null, mbHeaderDirty = false, mbHeaderData = null, mbHeaderMime = null;
     function renderMbHeader() {
       const img = $("mbHeaderPreview"); if (!img) return;
-      if (mbHeaderUrl) img.src = mbHeaderUrl;
-      show(img, !!mbHeaderUrl);
-      show($("mbHeaderClear"), !!mbHeaderUrl);
-      $("mbHeaderPick").textContent = mbHeaderUrl ? "Replace image…" : "Upload image…";
+      const src = mbPreviewSrc || mbHeaderUrl;
+      if (src) img.src = src;
+      show(img, !!src);
+      show($("mbHeaderClear"), !!src);
+      $("mbHeaderPick").textContent = src ? "Replace image…" : "Upload image…";
     }
     $("mbHeaderPick")?.addEventListener("click", () => $("mbHeaderFile").click());
     $("mbHeaderClear")?.addEventListener("click", () => {
-      mbHeaderUrl = null; renderMbHeader();
+      mbHeaderUrl = null; mbPreviewSrc = null; mbHeaderData = null; mbHeaderMime = null; mbHeaderDirty = true;
+      renderMbHeader();
       $("mbHeaderStatus").textContent = "Removed — click Save branding to apply.";
     });
     $("mbHeaderFile")?.addEventListener("change", async () => {
@@ -3014,25 +3018,29 @@
       if (!f || !mailUnit) return;
       const st = $("mbHeaderStatus");
       if (f.size > 1.5 * 1024 * 1024) { st.textContent = "That file is over 1.5 MB — resize it first (emails load faster small)."; return; }
-      st.textContent = "Uploading…";
-      const ext = (f.name.split(".").pop() || "png").toLowerCase().replace(/[^a-z0-9]/g, "") || "png";
-      const path = `mail/${mailUnit}/header-${Date.now()}.${ext}`;
-      const { error } = await supabase.storage.from("site-assets").upload(path, f, { upsert: true, contentType: f.type || undefined });
-      if (error) { st.textContent = "Upload failed: " + error.message; return; }
-      const { data } = supabase.storage.from("site-assets").getPublicUrl(path);
-      mbHeaderUrl = data?.publicUrl || null;
+      const dataUri = await new Promise((res, rej) => {
+        const r = new FileReader(); r.onload = () => res(String(r.result)); r.onerror = rej; r.readAsDataURL(f);
+      });
+      mbHeaderData = String(dataUri).split(",")[1] || null;
+      mbHeaderMime = f.type || "image/png";
+      mbPreviewSrc = String(dataUri);
+      // Stable serving URL; ?v busts email-client caches on replacement.
+      mbHeaderUrl = `${cfg.SUPABASE_URL}/functions/v1/mail-asset?e=${mailUnit}&v=${Date.now()}`;
+      mbHeaderDirty = true;
       renderMbHeader();
-      st.textContent = "Uploaded — click Save branding to apply.";
+      st.textContent = "Ready — click Save branding to apply.";
     });
     $("mbSaveBtn")?.addEventListener("click", async () => {
       const st = $("mbStatus"); if (!mailUnit) return;
       const hex = (id) => { const v = $(id).value.trim().toLowerCase(); return /^#[0-9a-f]{6}$/.test(v) ? v : null; };
       st.textContent = "Saving…";
-      const { error } = await supabase.from("mail_senders").upsert({
+      const row = {
         entity_id: mailUnit,
         header_image_url: mbHeaderUrl,
         accent: hex("mb_accent"), card_bg: hex("mb_card"), page_bg: hex("mb_page"),
-      }, { onConflict: "entity_id" });
+      };
+      if (mbHeaderDirty) { row.header_image_data = mbHeaderData; row.header_image_mime = mbHeaderMime; }
+      const { error } = await supabase.from("mail_senders").upsert(row, { onConflict: "entity_id" });
       if (!error) { logAccess("mail_brand", { unit: mailUnits.find((u) => u.id === mailUnit)?.name }); await refreshMailUnit(); }
       st.textContent = error ? error.message : "Saved ✓ — used on the next send.";
     });
@@ -3094,7 +3102,6 @@
         entity_id: mailUnit,
         from_name: $("ms_from_name").value.trim(),
         from_email: $("ms_from_email").value.trim().toLowerCase(),
-        address: $("ms_address").value.trim() || null,
         logo_url: $("ms_logo").value.trim() || null,
         sync_url: $("ms_sync_url").value.trim() || null,
         sync_key: $("ms_sync_key").value.trim() || null,
@@ -3724,6 +3731,7 @@
             <input type="checkbox" id="pInMarketing" style="width:auto;"${e.in_marketing ? " checked" : ""}> Marketing — mailing list &amp; campaigns for this venue
           </label>
         </div>
+        <div class="field" id="pAddressField"><label>Address</label><input type="text" id="pAddress" value="${escapeHtml(e.address || "")}" placeholder="123 Main St, Dallas, TX 75201"></div>
         <div class="field" id="pManagedField"><label>Managed by</label>
           <select id="pManaged" class="inline-select" style="width:100%;padding:0.6rem 0.7rem;">
             <option value="">— Admin —</option>
@@ -3784,6 +3792,7 @@
         name: $("pName").value.trim(), kind: $("pKind").value === "entity" ? "entity" : "individual",
         in_reports: $("pKind").value === "entity" && $("pInReports").checked,
         in_marketing: $("pKind").value === "entity" && !!$("pInMarketing")?.checked,
+        address: ($("pKind").value === "entity" && $("pAddress")?.value.trim()) || null,
         category: e.category || null, subcategory: e.subcategory || null,
         email: $("pEmail").value.trim() || null, notes: $("pNotes").value.trim() || null, color: e.color || null,
         managed_by: ($("pKind").value === "entity" && $("pManaged")?.value) || null,
@@ -3846,6 +3855,7 @@
         show($("pLinkField"), isEntity); // units can federate with a partner portal
         show($("pReportsField"), isEntity); // only entities (units) can appear in Reports
         show($("pMarketingField"), isEntity); // only venues can join the Marketing tab
+        show($("pAddressField"), isEntity); // venue address — campaign email footers pull it from here
         show($("pManagedField"), isEntity); // units can be run by a principal
         // Portal access — grant/revoke via the allowlist, keyed on this box's email.
         if (!isEntity) renderAccess(id, $("pEmail").value);

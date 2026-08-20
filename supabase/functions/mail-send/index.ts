@@ -95,6 +95,9 @@ Deno.serve(async (req) => {
   if (mode === "real" && camp.status === "sent") return json({ error: "This campaign was already sent." }, 409);
   const { data: sender } = await admin.from("mail_senders").select("*").eq("entity_id", camp.entity_id).maybeSingle();
   if (!sender) return json({ error: "No sender profile for this unit." }, 400);
+  // Footer address lives on the unit's ownership card (legacy sender.address as fallback).
+  const { data: unitRow } = await admin.from("ownership_entities").select("address").eq("id", camp.entity_id).maybeSingle();
+  if (unitRow?.address) sender.address = unitRow.address;
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(sender.from_email || "")) return json({ error: "Sender from-email is invalid." }, 400);
   const from = `${sender.from_name} <${sender.from_email}>`;
   const content = camp.body_html || "<p>(empty)</p>";

@@ -89,3 +89,8 @@ jobs:
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: supabase functions deploy mail-webhook --project-ref "$SUPABASE_PROJECT_ID" --no-verify-jwt
+
+      - name: Deploy mail-asset (JWT off — public image serving from DB)
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: supabase functions deploy mail-asset --project-ref "$SUPABASE_PROJECT_ID" --no-verify-jwt
