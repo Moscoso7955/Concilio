@@ -155,6 +155,13 @@
     .iconact { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 0.95rem; padding: 0 0.15rem; font-family: inherit; }
     .iconact:hover { color: var(--accent); }
     .iconact.del:hover { color: #f87171; }
+    .mail-editor { background: #ffffff; color: #1f2937; border: 1px solid var(--border); border-radius: 10px; min-height: 220px; padding: 1rem 1.1rem; font-size: 0.95rem; line-height: 1.65; overflow-y: auto; }
+    .mail-editor:focus { outline: 2px solid var(--accent); }
+    .mail-editor a { color: #2563eb; }
+    .mail-editor h2 { font-size: 1.15rem; margin: 0.6rem 0 0.3rem; }
+    .mail-toolbar { display: flex; gap: 0.3rem; margin-bottom: 0.5rem; flex-wrap: wrap; }
+    .mail-toolbar button { background: var(--panel-2); border: 1px solid var(--border); color: var(--text); border-radius: 7px; padding: 0.25rem 0.6rem; font-size: 0.82rem; cursor: pointer; font-family: inherit; }
+    .mail-toolbar button:hover { border-color: var(--accent); }
     .inv-co-pill { font-size: 0.68rem; font-weight: 700; padding: 0.15rem 0.5rem; border-radius: 999px; border: 1px solid rgba(124,132,147,0.5); background: rgba(124,132,147,0.15); color: #c4c8ce; cursor: pointer; font-family: inherit; white-space: nowrap; vertical-align: 1px; }
     .inv-co-pill:disabled { cursor: default; }
     .qbo-pill { font-size: 0.68rem; font-weight: 700; padding: 0.15rem 0.5rem; border-radius: 999px; border: 1px solid var(--border); background: var(--panel-2); color: var(--muted); cursor: pointer; font-family: inherit; }
@@ -358,6 +365,7 @@
       <button class="tab" data-tab="memos">Memo Board</button>
       <button class="tab" data-tab="documents">Documents</button>
       <button class="tab" data-tab="invoices">Invoices</button>
+      <button class="tab" data-tab="marketing">Marketing</button>
       <button class="tab" data-tab="coa">Chart of Accounts</button>
       <button class="tab" data-tab="site">Site Content</button>
       <button class="tab" data-tab="owners">Ownership</button>
@@ -616,6 +624,56 @@
       </div>
     </section>
 
+    <!-- Marketing: per-venue mail campaigns (more marketing tools nest here later) -->
+    <section class="tab-panel hidden" data-panel="marketing">
+      <div class="row" style="align-items:flex-end;margin-bottom:1rem;">
+        <div style="flex:0 1 20rem;"><label>Venue</label><select id="mailUnitSel" class="inline-select" style="width:100%;padding:0.6rem 0.7rem;"></select></div>
+      </div>
+
+      <div class="section-card">
+        <h2>Sender profile</h2>
+        <p class="muted" style="margin-bottom:0.75rem;">Each venue sends from its own verified domain. The physical address and unsubscribe link are added to every email automatically (legally required).</p>
+        <div class="row">
+          <div><label>From name</label><input type="text" id="ms_from_name" placeholder="Bar Phoebe"></div>
+          <div><label>From email (verified domain)</label><input type="email" id="ms_from_email" placeholder="hello@news.barphoebe.com"></div>
+        </div>
+        <div class="row" style="margin-top:0.5rem;">
+          <div style="flex:1.5;"><label>Physical address (footer)</label><input type="text" id="ms_address" placeholder="123 Main St, Dallas, TX 75201"></div>
+          <div><label>Logo URL</label><input type="url" id="ms_logo" placeholder="https://…/logo.png"></div>
+        </div>
+        <div class="row" style="margin-top:0.5rem;">
+          <div style="flex:1.5;"><label>Sync URL (venue app subscribers endpoint)</label><input type="url" id="ms_sync_url" placeholder="https://barphoebe.com/api/subscribers"></div>
+          <div><label>Sync key (Bearer secret)</label><input type="text" id="ms_sync_key" placeholder="shared secret"></div>
+        </div>
+        <div class="row" style="align-items:center;margin-top:0.75rem;">
+          <button class="btn" id="msSaveBtn" style="flex:0 0 auto;">Save sender</button>
+          <span class="muted" id="msStatus"></span>
+        </div>
+      </div>
+
+      <div class="section-card">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:0.6rem;flex-wrap:wrap;margin-bottom:0.5rem;">
+          <h2 style="margin:0;">Audience</h2>
+          <button class="btn btn--sm" id="mailSyncBtn" style="flex:0 0 auto;">Sync mailing list</button>
+        </div>
+        <div class="muted" id="mailAudience">—</div>
+      </div>
+
+      <div class="section-card">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:0.6rem;flex-wrap:wrap;margin-bottom:1rem;">
+          <h2 style="margin:0;">Campaigns</h2>
+          <button class="btn btn--sm" id="mailNewBtn" style="flex:0 0 auto;">New campaign…</button>
+        </div>
+        <div class="table-wrap">
+          <table id="mailCampTable" class="hidden">
+            <thead><tr><th>Subject</th><th>Status</th><th>Sent</th><th></th></tr></thead>
+            <tbody id="mailCampBody"></tbody>
+          </table>
+        </div>
+        <p class="muted" id="mailCampEmpty">No campaigns yet for this venue.</p>
+      </div>
+    </section>
+
     <!-- Owners: admins edit; members see their downstream slice read-only -->
     <section class="tab-panel hidden" data-panel="owners">
       <div class="graph-wrap">
@@ -712,6 +770,39 @@
         <button class="btn" id="distSaveBtn" style="flex:0 0 auto;">Record</button>
         <button class="btn btn--ghost" id="distCloseBtn" style="flex:0 0 auto;">Cancel</button>
         <span class="muted" id="distStatus"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Campaign composer modal -->
+  <div class="modal-overlay hidden" id="mailModal">
+    <div class="modal" style="max-width:680px;">
+      <div class="modal-sticky-head"><div>
+        <h3 id="mailModalTitle" style="margin-bottom:0.1rem;">New campaign</h3>
+        <div class="muted" id="mailModalSub" style="font-size:0.85rem;"></div>
+      </div><button class="iconbtn" data-closemodal="mailModal" style="font-size:1.5rem;" aria-label="Close">×</button></div>
+      <div class="row">
+        <div style="flex:1.4;"><label>Subject</label><input type="text" id="mc_subject" placeholder="What''s happening this month"></div>
+        <div><label>Preview text</label><input type="text" id="mc_preview" placeholder="Shown after the subject in inboxes"></div>
+      </div>
+      <div class="field" style="margin-top:0.75rem;">
+        <label>Body</label>
+        <div class="mail-toolbar">
+          <button type="button" data-mcmd="bold"><strong>B</strong></button>
+          <button type="button" data-mcmd="italic"><em>I</em></button>
+          <button type="button" data-mcmd="h2">H2</button>
+          <button type="button" data-mcmd="p">¶</button>
+          <button type="button" data-mcmd="insertUnorderedList">• List</button>
+          <button type="button" data-mcmd="link">Link</button>
+          <button type="button" data-mcmd="removeFormat">Clear</button>
+        </div>
+        <div class="mail-editor" id="mailEditor" contenteditable="true"></div>
+      </div>
+      <div class="row" style="align-items:center;margin-top:1rem;">
+        <button class="btn btn--ghost" id="mcSaveBtn" style="flex:0 0 auto;">Save draft</button>
+        <button class="btn btn--ghost" id="mcTestBtn" style="flex:0 0 auto;">Send test to me</button>
+        <button class="btn" id="mcSendBtn" style="flex:0 0 auto;">Send…</button>
+        <span class="muted" id="mcStatus"></span>
       </div>
     </div>
   </div>
@@ -875,7 +966,7 @@
     $("signOutBtn").addEventListener("click", async () => { await supabase.auth.signOut(); location.reload(); });
 
     /* ---------------- Settings: users & access (admin) ---------------- */
-    const TAB_META = [["financials", "Reports"], ["memos", "Memo Board"], ["documents", "Documents"], ["invoices", "Invoices"], ["coa", "Chart of Accounts"], ["owners", "Ownership"]];
+    const TAB_META = [["financials", "Reports"], ["memos", "Memo Board"], ["documents", "Documents"], ["invoices", "Invoices"], ["marketing", "Marketing"], ["coa", "Chart of Accounts"], ["owners", "Ownership"]];
     const ROLE_LABEL = { owner: "Member", accountant: "Accountant", admin: "Admin" };
 
     $("settingsBtn")?.addEventListener("click", () => { show($("settingsModal"), true); loadSettingsUsers(); });
@@ -941,6 +1032,8 @@
         case "prov_delete": return `Deleted <strong>${eh(d.owner || "")}</strong>'s provision`;
         case "prov_payment": return `Logged a ${money(Number(d.amount) || 0)} direct payment to <strong>${eh(d.owner || "")}</strong>`;
         case "inv_company": return `Moved bill <strong>${eh(d.vendor || "")}</strong> to ${eh(d.company || "")}`;
+        case "mail_sync": return `Synced ${eh(d.unit || "")} mailing list (${Number(d.fetched) || 0} fetched, ${Number(d.added) || 0} new)`;
+        case "mail_send": return `Sent campaign <strong>${eh(d.subject || "")}</strong> to ${Number(d.sent) || 0} subscribers · ${eh(d.unit || "")}`;
         default: return eh(r.event || "activity");
       }
     }
@@ -1264,7 +1357,7 @@
     // Which tabs this user sees. Admins see everything; others get their
     // per-user assignment (Settings) or their role's default set. Site
     // Content is never assignable — it edits the public site.
-    const ALL_TABS = ["financials", "memos", "documents", "invoices", "coa", "site", "owners"];
+    const ALL_TABS = ["financials", "memos", "documents", "invoices", "marketing", "coa", "site", "owners"];
     const ROLE_DEFAULT_TABS = {
       owner: ["financials", "memos", "documents", "owners"],
       accountant: ["financials", "documents", "invoices", "coa"],
@@ -1294,6 +1387,7 @@
       loadFinancials(); loadMemos();
       if (tabs.includes("documents")) loadDocuments();
       if (tabs.includes("invoices")) loadInvoices();
+      if (tabs.includes("marketing")) loadMail();
       if (tabs.includes("coa")) loadChart();
       if (isAdmin()) loadSite();
       // One sign-in event per browser session, not per reload.
@@ -2794,6 +2888,192 @@
       logAccess("doc_delete", { title: d?.title || null });
       loadDocuments();
     }
+
+    /* ---------------- Mail (per-venue campaigns) ---------------- */
+    let mailUnits = [], mailUnit = null, mailSender = null, mailCamps = [], mailStats = { active: 0, total: 0 }, mailEditId = null;
+    const mailFnHeaders = async () => {
+      let session = null;
+      try { session = (await supabase.auth.getSession()).data.session; } catch (_) {}
+      return {
+        "Content-Type": "application/json",
+        apikey: cfg.SUPABASE_ANON_KEY,
+        Authorization: "Bearer " + (session?.access_token || cfg.SUPABASE_ANON_KEY),
+      };
+    };
+    async function loadMail() {
+      const { data: ents } = await supabase.from("ownership_entities").select("id,name,kind").order("name");
+      mailUnits = ((ents || [])).filter((e) => e.kind === "entity");
+      const sel = $("mailUnitSel"); if (!sel) return;
+      sel.innerHTML = mailUnits.map((u) => `<option value="${u.id}">${escapeHtml(u.name)}</option>`).join("");
+      if (!mailUnit || !mailUnits.some((u) => u.id === mailUnit)) mailUnit = mailUnits[0]?.id || null;
+      if (mailUnit) sel.value = mailUnit;
+      await refreshMailUnit();
+    }
+    $("mailUnitSel")?.addEventListener("change", () => { mailUnit = $("mailUnitSel").value; refreshMailUnit(); });
+    async function refreshMailUnit() {
+      if (!mailUnit) return;
+      const [sRes, cRes, act, tot] = await Promise.all([
+        supabase.from("mail_senders").select("*").eq("entity_id", mailUnit).maybeSingle(),
+        supabase.from("mail_campaigns").select("*").eq("entity_id", mailUnit).order("created_at", { ascending: false }),
+        supabase.from("mail_subscribers").select("id", { count: "exact", head: true }).eq("entity_id", mailUnit)
+          .is("unsubscribed_at", null).is("bounced_at", null).is("complaint_at", null),
+        supabase.from("mail_subscribers").select("id", { count: "exact", head: true }).eq("entity_id", mailUnit),
+      ]);
+      mailSender = sRes?.data || null;
+      mailCamps = (!cRes?.error && cRes?.data) || [];
+      mailStats = { active: act?.count ?? 0, total: tot?.count ?? 0 };
+      $("ms_from_name").value = mailSender?.from_name || "";
+      $("ms_from_email").value = mailSender?.from_email || "";
+      $("ms_address").value = mailSender?.address || "";
+      $("ms_logo").value = mailSender?.logo_url || "";
+      $("ms_sync_url").value = mailSender?.sync_url || "";
+      $("ms_sync_key").value = mailSender?.sync_key || "";
+      $("msStatus").textContent = "";
+      renderMailAudience(); renderMailCamps();
+    }
+    function renderMailAudience() {
+      const supp = mailStats.total - mailStats.active;
+      $("mailAudience").innerHTML =
+        `<strong style="color:var(--text);">${mailStats.active}</strong> active subscriber${mailStats.active === 1 ? "" : "s"}` +
+        (supp > 0 ? ` · ${supp} suppressed (unsubscribed/bounced)` : "") +
+        (mailSender?.last_synced_at ? ` · last synced ${new Date(mailSender.last_synced_at).toLocaleString()}` : " · never synced");
+    }
+    $("mailSyncBtn")?.addEventListener("click", async () => {
+      const b = $("mailSyncBtn");
+      if (!mailSender?.sync_url) { $("mailAudience").textContent = "Save a sender profile with a Sync URL first."; return; }
+      b.disabled = true; b.textContent = "Syncing…";
+      try {
+        const res = await fetch(cfg.SUPABASE_URL + "/functions/v1/mail-sync", {
+          method: "POST", headers: await mailFnHeaders(), body: JSON.stringify({ entity_id: mailUnit }),
+        });
+        const data = await res.json();
+        if (!res.ok || data.ok === false) throw new Error(data.error || ("HTTP " + res.status));
+        logAccess("mail_sync", { unit: mailUnits.find((u) => u.id === mailUnit)?.name, fetched: data.fetched, added: data.added });
+        await refreshMailUnit();
+        $("mailAudience").innerHTML += ` · <span style="color:var(--text);">synced ✓ (${data.fetched} fetched, ${data.added} new)</span>`;
+      } catch (e) { $("mailAudience").textContent = "Sync failed: " + (e.message || e); }
+      b.disabled = false; b.textContent = "Sync mailing list";
+    });
+    $("msSaveBtn")?.addEventListener("click", async () => {
+      const st = $("msStatus");
+      const row = {
+        entity_id: mailUnit,
+        from_name: $("ms_from_name").value.trim(),
+        from_email: $("ms_from_email").value.trim().toLowerCase(),
+        address: $("ms_address").value.trim() || null,
+        logo_url: $("ms_logo").value.trim() || null,
+        sync_url: $("ms_sync_url").value.trim() || null,
+        sync_key: $("ms_sync_key").value.trim() || null,
+      };
+      if (!row.from_name || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(row.from_email)) { st.textContent = "From name and a valid from email are required."; return; }
+      st.textContent = "Saving…";
+      const { error } = await supabase.from("mail_senders").upsert(row, { onConflict: "entity_id" });
+      st.textContent = error ? error.message : "Saved ✓";
+      if (!error) await refreshMailUnit();
+    });
+    function renderMailCamps() {
+      const body = $("mailCampBody"); if (!body) return;
+      body.innerHTML = "";
+      show($("mailCampTable"), mailCamps.length > 0);
+      show($("mailCampEmpty"), mailCamps.length === 0);
+      for (const c of mailCamps) {
+        const tr = document.createElement("tr");
+        tr.innerHTML =
+          `<td style="white-space:normal;max-width:20rem;"><strong>${escapeHtml(c.subject)}</strong>${c.preview_text ? `<div class="muted" style="font-size:0.78rem;">${escapeHtml(c.preview_text)}</div>` : ""}</td>
+           <td>${c.status === "sent" ? '<span class="badge badge--admin">SENT</span>' : '<span class="badge">DRAFT</span>'}</td>
+           <td>${c.status === "sent" ? `${c.sent_count ?? 0} on ${new Date(c.sent_at).toLocaleDateString()}${c.failed_count ? ` · ${c.failed_count} failed` : ""}` : (c.test_sent_at ? "test sent" : "—")}</td>
+           <td class="num" style="white-space:nowrap;">
+             ${c.status === "draft" ? `<button class="btn btn--ghost btn--sm" data-mcedit="${c.id}">Edit</button> <button class="btn btn--danger btn--sm" data-mcdel="${c.id}">Delete</button>` : `<button class="btn btn--ghost btn--sm" data-mcedit="${c.id}">View</button>`}
+           </td>`;
+        body.appendChild(tr);
+      }
+      body.querySelectorAll("[data-mcedit]").forEach((b) => b.addEventListener("click", () => openMailComposer(b.dataset.mcedit)));
+      body.querySelectorAll("[data-mcdel]").forEach((b) => b.addEventListener("click", async () => {
+        if (!confirm("Delete this draft?")) return;
+        await supabase.from("mail_campaigns").delete().eq("id", b.dataset.mcdel);
+        refreshMailUnit();
+      }));
+    }
+    function openMailComposer(id) {
+      mailEditId = id || null;
+      const c = id ? mailCamps.find((x) => x.id === id) : null;
+      const sent = c?.status === "sent";
+      $("mailModalTitle").textContent = sent ? "Campaign (sent)" : (id ? "Edit campaign" : "New campaign");
+      $("mailModalSub").textContent = mailUnits.find((u) => u.id === mailUnit)?.name || "";
+      $("mc_subject").value = c?.subject || "";
+      $("mc_preview").value = c?.preview_text || "";
+      $("mailEditor").innerHTML = c?.body_html || "";
+      $("mailEditor").contentEditable = sent ? "false" : "true";
+      show($("mcSaveBtn"), !sent); show($("mcTestBtn"), !sent); show($("mcSendBtn"), !sent);
+      $("mcStatus").textContent = sent ? `Sent to ${c.sent_count ?? 0} on ${new Date(c.sent_at).toLocaleString()}` : "";
+      show($("mailModal"), true);
+    }
+    $("mailNewBtn")?.addEventListener("click", () => {
+      if (!mailSender) { alert("Save a sender profile for this venue first."); return; }
+      openMailComposer(null);
+    });
+    document.querySelectorAll("[data-mcmd]").forEach((b) => b.addEventListener("click", () => {
+      const cmd = b.dataset.mcmd;
+      $("mailEditor").focus();
+      if (cmd === "link") { const u = prompt("Link URL:", "https://"); if (u) document.execCommand("createLink", false, u); }
+      else if (cmd === "h2") document.execCommand("formatBlock", false, "h2");
+      else if (cmd === "p") document.execCommand("formatBlock", false, "p");
+      else document.execCommand(cmd, false);
+    }));
+    async function saveMailDraft(quiet) {
+      const subject = $("mc_subject").value.trim();
+      if (!subject) { $("mcStatus").textContent = "Subject is required."; return null; }
+      const row = {
+        entity_id: mailUnit, subject,
+        preview_text: $("mc_preview").value.trim() || null,
+        body_html: $("mailEditor").innerHTML,
+        created_by: profile?.full_name || profile?.email || null,
+        updated_at: new Date().toISOString(),
+      };
+      if (mailEditId) {
+        const { error } = await supabase.from("mail_campaigns").update(row).eq("id", mailEditId);
+        if (error) { $("mcStatus").textContent = error.message; return null; }
+      } else {
+        const { data, error } = await supabase.from("mail_campaigns").insert(row).select().maybeSingle();
+        if (error) { $("mcStatus").textContent = error.message; return null; }
+        mailEditId = data?.id || null;
+        if (!mailEditId) { $("mcStatus").textContent = "Saved, but couldn't read the draft id — reopen it from the list."; refreshMailUnit(); return null; }
+      }
+      if (!quiet) $("mcStatus").textContent = "Draft saved ✓";
+      return mailEditId;
+    }
+    $("mcSaveBtn")?.addEventListener("click", async () => { if (await saveMailDraft(false)) refreshMailUnit(); });
+    $("mcTestBtn")?.addEventListener("click", async () => {
+      const id = await saveMailDraft(true); if (!id) return;
+      $("mcStatus").textContent = "Sending test…";
+      try {
+        const res = await fetch(cfg.SUPABASE_URL + "/functions/v1/mail-send", {
+          method: "POST", headers: await mailFnHeaders(), body: JSON.stringify({ campaign_id: id, mode: "test" }),
+        });
+        const data = await res.json();
+        if (!res.ok || data.ok === false) throw new Error(data.error || ("HTTP " + res.status));
+        $("mcStatus").textContent = `Test sent to ${data.to} ✓`;
+        refreshMailUnit();
+      } catch (e) { $("mcStatus").textContent = "Test failed: " + (e.message || e); }
+    });
+    $("mcSendBtn")?.addEventListener("click", async () => {
+      const id = await saveMailDraft(true); if (!id) return;
+      const uName = mailUnits.find((u) => u.id === mailUnit)?.name || "this venue";
+      if (!mailStats.active) { $("mcStatus").textContent = "No active subscribers — sync the mailing list first."; return; }
+      if (!confirm(`Send "${$("mc_subject").value.trim()}" to ${mailStats.active} subscriber${mailStats.active === 1 ? "" : "s"} of ${uName}, from ${mailSender.from_name} <${mailSender.from_email}>?`)) return;
+      $("mcStatus").textContent = `Sending to ${mailStats.active}…`;
+      try {
+        const res = await fetch(cfg.SUPABASE_URL + "/functions/v1/mail-send", {
+          method: "POST", headers: await mailFnHeaders(), body: JSON.stringify({ campaign_id: id, mode: "real" }),
+        });
+        const data = await res.json();
+        if (!res.ok || data.ok === false) throw new Error(data.error || ("HTTP " + res.status));
+        logAccess("mail_send", { unit: uName, subject: $("mc_subject").value.trim(), sent: data.sent });
+        $("mcStatus").textContent = `Sent to ${data.sent} ✓${data.failed ? ` (${data.failed} failed)` : ""}`;
+        refreshMailUnit();
+      } catch (e) { $("mcStatus").textContent = "Send failed: " + (e.message || e); }
+    });
+    $("mailModal")?.addEventListener("click", (e) => { if (e.target === $("mailModal")) show($("mailModal"), false); });
 
     /* ---------------- Site content (admin) ---------------- */
     function bindColor(t, p) {

@@ -68,3 +68,34 @@ box in their own ownership graph (names may differ; the link is by key).
 
 Revoking: either side removes the link from the same panel (the home
 side's removal invalidates the key immediately).
+
+
+## Marketing: connecting a venue's mailing list
+
+The Marketing tab sends per-venue newsletters. Each venue needs three
+things set up once:
+
+1. **A sender domain in Resend.** Add the venue's sending subdomain
+   (e.g. `news.barphoebe.com`) as a domain in the shared Resend
+   account and create its DNS records (DKIM/SPF/return-path) at the
+   registrar. The sender profile's from-email must be on this domain.
+   Never send campaigns from callidusco.com — bulk reputation must stay
+   isolated from the portal's transactional email.
+2. **A subscribers endpoint on the venue app** (the "Sync mailing
+   list" source). Contract: HTTPS GET, checks
+   `Authorization: Bearer <sync key>`, responds
+   `{ "subscribers": [{ "email": "...", "name": "...", "source":
+   "newsletter", "subscribed_at": "2026-05-01T00:00:00Z" }] }`
+   (name/source/subscribed_at optional; a bare JSON array also works).
+   Put the URL + key on the unit's sender profile.
+3. **Bounce webhook (shared, once for all venues).** In Resend:
+   Webhooks → add `<SUPABASE_URL>/functions/v1/mail-webhook` for
+   `email.bounced` + `email.complained`, then store the signing secret
+   as the `MAIL_WEBHOOK_SECRET` function secret. Suppressed addresses
+   are never mailed again; unsubscribes are handled automatically by
+   the per-recipient link and are permanent (sync never resurrects
+   them).
+
+Warm-up: a list that has never been mailed from its domain should get
+its first sends in modest chunks (the first campaign to a few hundred
+is fine; don't debut with many thousands).
