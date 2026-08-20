@@ -155,6 +155,8 @@
     .iconact { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 0.95rem; padding: 0 0.15rem; font-family: inherit; }
     .iconact:hover { color: var(--accent); }
     .iconact.del:hover { color: #f87171; }
+    .inv-co-pill { font-size: 0.68rem; font-weight: 700; padding: 0.15rem 0.5rem; border-radius: 999px; border: 1px solid rgba(124,132,147,0.5); background: rgba(124,132,147,0.15); color: #c4c8ce; cursor: pointer; font-family: inherit; white-space: nowrap; vertical-align: 1px; }
+    .inv-co-pill:disabled { cursor: default; }
     .qbo-pill { font-size: 0.68rem; font-weight: 700; padding: 0.15rem 0.5rem; border-radius: 999px; border: 1px solid var(--border); background: var(--panel-2); color: var(--muted); cursor: pointer; font-family: inherit; }
     .qbo-pill.on { background: rgba(124,132,147,0.15); border-color: rgba(124,132,147,0.5); color: #c4c8ce; }
     .splitrow { display: flex; align-items: center; gap: 0.25rem; margin-top: 0.25rem; }
@@ -523,7 +525,7 @@
       </div>
 
       <div class="inv-emailbar" id="invEmailBar">
-        <span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-2px;"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg> Email bills to: <span class="inv-emailaddr" id="invEmailAddr">…</span></span>
+        <span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-2px;"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg> Email bills to: <span class="inv-emailaddr" id="invEmailAddr">…</span><span class="muted" id="invEmailExtra"></span></span>
         <button class="btn btn--ghost btn--sm" id="invEmailCopy" style="flex:0 0 auto;">Copy</button>
       </div>
 
@@ -532,6 +534,7 @@
         <span id="invRangePicker"></span>
         <span class="muted" id="invBanner"></span>
       </div>
+      <div class="toolbar-row hidden" id="invCoFilter"></div>
 
       <!-- Review queue -->
       <div class="section-card review-card hidden" id="reviewCard">
@@ -937,6 +940,7 @@
         case "prov_add": return `Added a provision: <strong>${eh(d.owner || "")}</strong> ${pctFmt(Number(d.pct) || 0)}% until ${money(Number(d.principal) || 0)}${unit}`;
         case "prov_delete": return `Deleted <strong>${eh(d.owner || "")}</strong>'s provision`;
         case "prov_payment": return `Logged a ${money(Number(d.amount) || 0)} direct payment to <strong>${eh(d.owner || "")}</strong>`;
+        case "inv_company": return `Moved bill <strong>${eh(d.vendor || "")}</strong> to ${eh(d.company || "")}`;
         default: return eh(r.event || "activity");
       }
     }
@@ -3525,6 +3529,29 @@
 
     /* ---------------- Invoices ---------------- */
     let invRows = [], glCodes = [], glCat = {};
+    let invTenants = [], invCoSel = null; // companies (tenants) + active filter
+    const tenantShort = (t) => {
+      const n = (t?.name || "?").trim();
+      const stripped = n.replace(/^Callidus\s+/i, "").replace(/\s*Co\.?$/i, "").trim();
+      return stripped || n;
+    };
+    function companyPill(r) {
+      if (invTenants.length < 2) return "";
+      const t = invTenants.find((x) => x.id === r.tenant_id) || invTenants[0];
+      return `<button class="inv-co-pill" data-company="${r.id}"${adminUI() ? "" : " disabled"} title="Company this bill belongs to — click to switch">${escapeHtml(tenantShort(t))}</button>`;
+    }
+    function renderCoFilter() {
+      const bar = $("invCoFilter"); if (!bar) return;
+      show(bar, invTenants.length > 1);
+      if (invTenants.length < 2) return;
+      bar.innerHTML = `<span class="muted" style="flex:0 0 auto;">Company:</span>` +
+        [["", "All"], ...invTenants.map((t) => [t.id, tenantShort(t)])]
+          .map(([id, label]) => `<button class="btn btn--sm ${invCoSel === (id || null) ? "" : "btn--ghost"}" data-cofilter="${id}" style="flex:0 0 auto;">${escapeHtml(label)}</button>`).join("");
+      bar.querySelectorAll("[data-cofilter]").forEach((b) => b.addEventListener("click", () => {
+        invCoSel = b.dataset.cofilter || null;
+        renderCoFilter(); renderReview(); renderLedger();
+      }));
+    }
     let invSort = { key: "invoice_date", dir: "desc" };
     let invExtras = null; // splits/qbo columns exist (migration 0009) — probed on first load
 
@@ -3560,8 +3587,13 @@
         const p = await supabase.from("invoices_list").select("qbo").limit(1);
         invExtras = !p.error;
       }
-      const { data, error } = await supabase.from("invoices_list").select("*").order("created_at", { ascending: false });
+      const [{ data, error }, tRes] = await Promise.all([
+        supabase.from("invoices_list").select("*").order("created_at", { ascending: false }),
+        supabase.from("tenants").select("id,name,inbound_token").order("created_at"),
+      ]);
       invRows = (!error && data) || [];
+      invTenants = (!tRes.error && tRes.data) || [];
+      renderCoFilter();
       renderReview();
       renderLedger();
     }
@@ -3575,9 +3607,12 @@
         return;
       }
       let token = "callidus";
-      const { data } = await supabase.from("tenants").select("inbound_token").order("created_at").limit(1).maybeSingle();
-      if (data?.inbound_token) token = data.inbound_token;
+      const { data } = await supabase.from("tenants").select("inbound_token,name").order("created_at");
+      const ts = data || [];
+      if (ts[0]?.inbound_token) token = ts[0].inbound_token;
       const el = $("invEmailAddr"); if (el) el.textContent = `bills-${token}@${domain}`;
+      const extra = $("invEmailExtra");
+      if (extra && ts[1]?.inbound_token) extra.textContent = ` · or bills-${ts[1].inbound_token}@${domain} to file straight to ${tenantShort(ts[1])}`;
     }
     $("invEmailCopy")?.addEventListener("click", async () => {
       const addr = ($("invEmailAddr").textContent || "").trim();
@@ -3635,13 +3670,13 @@
     const fileCell = (row) => row.has_file ? `<a class="filelink" data-file="${row.id}" href="#">View</a>` : "—";
 
     function renderReview() {
-      const rows = invRows.filter((r) => r.needs_review);
+      const rows = invRows.filter((r) => r.needs_review).filter((r) => !invCoSel || r.tenant_id === invCoSel);
       show($("reviewCard"), rows.length > 0);
       const body = $("reviewBody"); body.innerHTML = "";
       for (const r of rows) {
         const tr = document.createElement("tr");
         tr.innerHTML =
-          `<td>${escapeHtml(r.vendor || "")}</td><td>${r.invoice_date || "—"}</td><td class="num">${money(r.amount)}</td>
+          `<td>${escapeHtml(r.vendor || "")} ${companyPill(r)}</td><td>${r.invoice_date || "—"}</td><td class="num">${money(r.amount)}</td>
            <td>${codeSelect(r)}</td><td>${fileCell(r)}</td>
            <td class="num" style="white-space:nowrap;">${isAdmin() ? `<button class="btn btn--sm" data-approve="${r.id}">Approve</button> <button class="iconact del" data-delinv="${r.id}" title="Discard">✕</button>` : ""}</td>`;
         body.appendChild(tr);
@@ -3653,7 +3688,9 @@
 
     function renderLedger() {
       const [from, to] = rangeBounds();
-      let rows = invRows.filter((r) => !r.needs_review).filter((r) =>
+      let rows = invRows.filter((r) => !r.needs_review)
+        .filter((r) => !invCoSel || r.tenant_id === invCoSel)
+        .filter((r) =>
         !from || r.invoice_date == null || (r.invoice_date >= from && r.invoice_date <= to));
       const dir = invSort.dir === "asc" ? 1 : -1;
       rows.sort((a, b) => {
@@ -3674,7 +3711,7 @@
         const tr = document.createElement("tr");
         tr.innerHTML =
           `<td${dup ? ' class="dupcell"' : ""}>
-             <div class="inv-name${dup ? " dup" : ""}">${escapeHtml(invName(r))}${dup ? '<span class="dup-tag" title="Same vendor, date, and amount as another invoice — likely a duplicate">Dup</span>' : ""}</div>
+             <div class="inv-name${dup ? " dup" : ""}">${escapeHtml(invName(r))} ${companyPill(r)}${dup ? '<span class="dup-tag" title="Same vendor, date, and amount as another invoice — likely a duplicate">Dup</span>' : ""}</div>
              ${r.note ? `<div class="inv-sub" title="${escapeHtml(r.note)}">${escapeHtml(r.note)}</div>` : ""}
            </td>
            <td>${codeSelect(r)}</td>
@@ -3696,6 +3733,17 @@
     }
 
     function wireRowControls(scope) {
+      // Company toggle: cycle the bill between tenants (Callidus ⇄ FBH).
+      scope.querySelectorAll("[data-company]").forEach((b) => b.addEventListener("click", async () => {
+        const r = invRows.find((x) => x.id === b.dataset.company); if (!r || invTenants.length < 2) return;
+        const i = invTenants.findIndex((t) => t.id === r.tenant_id);
+        const next = invTenants[(i + 1) % invTenants.length];
+        const { error } = await supabase.from("invoices").update({ tenant_id: next.id }).eq("id", r.id);
+        if (error) { alert("Couldn't switch company: " + error.message); return; }
+        r.tenant_id = next.id;
+        logAccess("inv_company", { vendor: r.vendor, company: next.name });
+        renderReview(); renderLedger();
+      }));
       scope.querySelectorAll("[data-code]").forEach((sel) => sel.addEventListener("change", () => inlineUpdate(sel.dataset.code, { code: sel.value || null })));
       scope.querySelectorAll("[data-status]").forEach((sel) => sel.addEventListener("change", () => {
         sel.className = "pill " + (sel.value === "Unpaid" ? "pill--unpaid" : "pill--paid");
