@@ -94,3 +94,8 @@ jobs:
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: supabase functions deploy mail-asset --project-ref "$SUPABASE_PROJECT_ID" --no-verify-jwt
+
+      - name: Deploy mail-signup (JWT off — venue sync key is the credential)
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: supabase functions deploy mail-signup --project-ref "$SUPABASE_PROJECT_ID" --no-verify-jwt
