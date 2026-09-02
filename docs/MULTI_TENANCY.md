@@ -2,6 +2,10 @@
 
 Noted 2026-09-02. Design only; nothing implemented yet.
 
+**Decision (Christian, 2026-09-02):** signup creates a workspace the
+user can invite others into. One workspace per person in v1; a
+switcher and multi-membership come later.
+
 ## Where we are
 
 The portal inherited from Callidus is **single-tenant**: one database,
@@ -65,8 +69,9 @@ multi-owner case (the reason the node system exists) keeps working.
    `workspaces` is where a plan column will live.
 
 ## Open questions
-- Can one person belong to several workspaces from day one, or is
-  that a later feature? (Affects whether the client needs a switcher
-  in v1.)
 - Does the existing Callidus/FBH data migrate in as workspace #1, or
-  does Concilio start empty?
+  does Concilio start empty? (The Concilio database is empty today, so
+  this only matters if Callidus data is imported later.)
+- Sequencing: the workspace signup trigger replaces the allowlist
+  trigger, so land it after Google OAuth + Resend are verified working
+  against the current trigger, not in the middle.
