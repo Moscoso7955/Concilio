@@ -5,12 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <!-- ============================================
-       1. FAVICON + WEB APP MANIFEST
+       1. WEB APP MANIFEST
        ============================================ -->
-  <link rel="icon" href="/favicon.ico" sizes="any">
-  <link rel="icon" type="image/png" sizes="32x32" href="/assets/icons/favicon-32x32.png">
-  <link rel="icon" type="image/png" sizes="16x16" href="/assets/icons/favicon-16x16.png">
-  <link rel="apple-touch-icon" sizes="180x180" href="/assets/icons/apple-touch-icon.png">
   <link rel="manifest" href="/site.webmanifest">
   <meta name="theme-color" content="#0a192f">
 
@@ -27,7 +23,6 @@
   <meta property="og:url" content="https://concilio.com/">
   <meta property="og:title" content="Concilio — Coming Soon">
   <meta property="og:description" content="Something extraordinary is on its way. Stay tuned.">
-  <meta property="og:image" content="https://concilio.com/assets/images/og-image.png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
 
@@ -35,7 +30,6 @@
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Concilio — Coming Soon">
   <meta name="twitter:description" content="Something extraordinary is on its way. Stay tuned.">
-  <meta name="twitter:image" content="https://concilio.com/assets/images/og-image.png">
 
   <style>
     *, *::before, *::after {
@@ -117,13 +111,6 @@
       max-width: 600px;
     }
 
-    .coming-soon__logo {
-      width: 144px;
-      height: auto;
-      filter: brightness(0) invert(1);
-      opacity: 0.95;
-      animation: fadeInDown 1s ease-out;
-    }
 
     .coming-soon__brand {
       font-size: 1rem;
@@ -181,7 +168,6 @@
     }
 
     @media (max-width: 480px) {
-      .coming-soon__logo { width: 108px; }
       .coming-soon__content { gap: 1.5rem; }
     }
   </style>
@@ -197,11 +183,6 @@
     </a>
 
     <div class="coming-soon__content">
-      <img
-        src="/assets/images/logo.png"
-        alt="Concilio logo"
-        class="coming-soon__logo"
-      >
       <span class="coming-soon__brand">Concilio</span>
       <p class="coming-soon__tagline">
         We're crafting an experience worth waiting for. Stay tuned.
