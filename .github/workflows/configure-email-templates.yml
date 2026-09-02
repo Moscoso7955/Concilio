@@ -20,12 +20,12 @@ jobs:
           cat > /tmp/invite.html <<'HTML'
           <div style="background:#111111;padding:40px 16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
             <div style="max-width:440px;margin:0 auto;background:#1a1a1a;border:1px solid #2f2f2f;border-radius:14px;padding:32px;text-align:center;">
-              <img src="https://callidusco.com/assets/images/logo.png" width="72" height="72" alt="Callidus Co."
+              <img src="https://concilio.com/assets/images/logo.png" width="72" height="72" alt="Concilio"
                    style="display:block;margin:0 auto 10px;border:0;">
-              <h1 style="color:#e5e7eb;font-size:20px;margin:0 0 6px;">Callidus Co.</h1>
+              <h1 style="color:#e5e7eb;font-size:20px;margin:0 0 6px;">Concilio</h1>
               <p style="color:#8a8f98;font-size:13px;margin:0 0 24px;">Owner Portal</p>
               <p style="color:#e5e7eb;font-size:15px;line-height:1.6;margin:0 0 8px;">
-                Christian Moscoso has invited you to the Callidus Owner Portal
+                Christian Moscoso has invited you to the Concilio Owner Portal
                 &mdash; reports, documents, and ownership for our partners.
               </p>
               <p style="color:#8a8f98;font-size:13px;line-height:1.6;margin:0 0 28px;">
@@ -44,7 +44,7 @@ jobs:
           </div>
           HTML
           jq -n --rawfile body /tmp/invite.html '{
-            mailer_subjects_invite: "Christian invited you to the Callidus Owner Portal",
+            mailer_subjects_invite: "Christian invited you to the Concilio Owner Portal",
             mailer_templates_invite_content: $body
           }' > /tmp/p.json
           code=$(curl -s -o /tmp/r.json -w "%{http_code}" -X PATCH \

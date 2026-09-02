@@ -86,7 +86,7 @@
   }
 
   function load() {
-    var cfg = window.CALLIDUS_CONFIG;
+    var cfg = window.CONCILIO_CONFIG;
     if (!cfg || !cfg.SUPABASE_URL || cfg.SUPABASE_URL.indexOf("__") === 0) {
       return; // not configured yet — keep static defaults
     }

@@ -1,4 +1,4 @@
-# CallidusCo Mail — Warm-up Protocol
+# Concilio Mail — Warm-up Protocol
 
 *How the Owner Portal ramps a new sending domain so venue newsletters
 land in inboxes, not spam folders. Built into the Marketing tab;

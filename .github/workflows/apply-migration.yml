@@ -1,6 +1,6 @@
 name: Apply DB migration
 
-# Runs a repo SQL file against the CallidusCo project via the Supabase
+# Runs a repo SQL file against the Concilio project via the Supabase
 # Management API (auth: SUPABASE_ACCESS_TOKEN). Manual dispatch only —
 # pass the migration file path as input.
 

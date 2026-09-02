@@ -1,5 +1,5 @@
 -- ============================================================
--- Callidus owner portal — full backend schema
+-- Concilio owner portal — full backend schema
 -- Auth: Supabase magic-link email, restricted to an allowlist.
 -- All access is enforced by Row-Level Security.
 -- Run once against a fresh Supabase project.
@@ -160,9 +160,9 @@ on conflict (email) do update set role = excluded.role;
 
 -- Default site content (matches the current static page).
 insert into site_content (id, content) values (1, '{
-  "brand": "Callidus Co.",
+  "brand": "Concilio",
   "tagline": "We''re crafting an experience worth waiting for. Stay tuned.",
-  "footer": "callidusco.com",
+  "footer": "concilio.com",
   "showLogo": true,
   "logoUrl": "/assets/images/logo.png",
   "bgColor": "#0a192f",
@@ -171,7 +171,7 @@ insert into site_content (id, content) values (1, '{
   "overlayColor": "#0f172a",
   "overlayOpacity": 0,
   "themeColor": "#0a192f",
-  "seoTitle": "Callidus Co.",
-  "seoDescription": "Callidus Co."
+  "seoTitle": "Concilio",
+  "seoDescription": "Concilio"
 }'::jsonb)
 on conflict (id) do nothing;

@@ -14,7 +14,7 @@ the fork, GitHub's "Sync fork" button pulls updates). Then set, in the
 fork's **Settings → Secrets and variables → Actions**:
 
 - Variable `SUPABASE_PROJECT_REF` — the new Supabase project ref.
-  (Workflows fall back to the CallidusCo ref when unset, so the
+  (Workflows fall back to the Concilio ref when unset, so the
   original repo needs nothing.)
 - Secret `SUPABASE_ACCESS_TOKEN` — from the new project's account
   (Supabase dashboard → Account → Access Tokens).
@@ -79,7 +79,7 @@ things set up once:
    (e.g. `news.barphoebe.com`) as a domain in the shared Resend
    account and create its DNS records (DKIM/SPF/return-path) at the
    registrar. The sender profile's from-email must be on this domain.
-   Never send campaigns from callidusco.com — bulk reputation must stay
+   Never send campaigns from concilio.com — bulk reputation must stay
    isolated from the portal's transactional email.
 2. **A subscriber source** for "Sync mailing list" — any ONE of:
    - **Supabase-backed venue app (easiest for ours):** point the

@@ -1,5 +1,5 @@
 -- Replace the entire chart of accounts with the QuickBooks export
--- (Callidus_Holdings_LLC CSV, 2026-08-02). Sub-accounts ("Payroll
+-- (Concilio_Holdings_LLC CSV, 2026-08-02). Sub-accounts ("Payroll
 -- expenses:X") nest under their parent. Existing invoice references are
 -- preserved by remapping old seed codes to their new equivalents.
 

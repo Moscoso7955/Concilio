@@ -1,13 +1,13 @@
-# Callidus Co.
+# Concilio
 
-The public site (`callidusco.com`) plus a login-gated **Owner Portal** at
+The public site (`concilio.com`) plus a login-gated **Owner Portal** at
 `/administration` — a reporting terminal where owners view financials, share
 memos, and (for admins) edit the public site content.
 
 ## Live Site
 
-- https://callidusco.com — public site
-- https://callidusco.com/administration — Owner Portal (magic-link login)
+- https://concilio.com — public site
+- https://concilio.com/administration — Owner Portal (magic-link login)
 
 ## How it works
 
@@ -81,7 +81,7 @@ runs server-side (the key never reaches the browser); the model is `claude-opus-
      be done before any mail is received.
    - Route `bills-<token>@<your-domain>` to a Resend inbound webhook pointing at
      the deployed `email-inbound` function URL. The `<token>` matches
-     `tenants.inbound_token` (seeded as `callidus`).
+     `tenants.inbound_token` (seeded as `concilio`).
    - Forwarded bills are AI-parsed and filed with **needs review** = true; approve
      them from the Invoices tab (requires vendor + amount + GL code).
    - Note: Resend's inbound payload field names can vary — if filing misbehaves,
@@ -102,9 +102,9 @@ in the database.
 - `supabase/migrations/0001_full_backend.sql` — the backend schema.
 - `vercel.json` — `cleanUrls` so `/administration` resolves.
 
-## Backend setup (one-time, in the CallidusCo Supabase project)
+## Backend setup (one-time, in the Concilio Supabase project)
 
-1. **Create the Supabase project** in the `CallidusCo` org.
+1. **Create the Supabase project** in the `Concilio` org.
 
 2. **Run the migration** — paste `supabase/migrations/0001_full_backend.sql`
    into the Supabase SQL editor (or apply via MCP/CLI). It creates all tables,
@@ -116,8 +116,8 @@ in the database.
    - Enable the **Email** provider with **magic links** (email OTP).
    - Enable the **Google** provider and paste the OAuth **Client ID + Secret**
      from Google Cloud (see the browser checklist below).
-   - **Site URL:** `https://callidusco.com`
-   - **Redirect URLs:** add `https://callidusco.com/administration` (and
+   - **Site URL:** `https://concilio.com`
+   - **Redirect URLs:** add `https://concilio.com/administration` (and
      `http://localhost:3000/administration` if testing locally).
    - The allowlist signup trigger blocks any email that isn't pre-approved — for
      **both** magic-link and Google — so only invited people can ever sign in.

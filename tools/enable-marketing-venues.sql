@@ -1,5 +1,5 @@
 -- Surface operating venues in the Marketing tab (holding companies
--- excluded; Callidus newsletter on hold). Safe to re-run.
+-- excluded; Concilio newsletter on hold). Safe to re-run.
 update ownership_entities
    set in_marketing = true
  where kind = 'entity'

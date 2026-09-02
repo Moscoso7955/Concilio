@@ -1,7 +1,7 @@
 {
-  "name": "Callidus Owner Portal",
-  "short_name": "Callidus",
-  "description": "Callidus Co. — Owner Portal",
+  "name": "Concilio Owner Portal",
+  "short_name": "Concilio",
+  "description": "Concilio — Owner Portal",
   "start_url": "/administration",
   "scope": "/administration",
   "display": "standalone",

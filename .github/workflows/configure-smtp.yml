@@ -18,12 +18,12 @@ jobs:
         run: |
           [ -n "$RESEND_API_KEY" ] || { echo "::error::RESEND_API_KEY repo secret missing"; exit 1; }
           jq -n --arg pass "$RESEND_API_KEY" '{
-            smtp_admin_email: "portal@callidusco.com",
+            smtp_admin_email: "portal@concilio.com",
             smtp_host: "smtp.resend.com",
             smtp_port: "465",
             smtp_user: "resend",
             smtp_pass: $pass,
-            smtp_sender_name: "Callidus Co.",
+            smtp_sender_name: "Concilio",
             rate_limit_email_sent: 60
           }' > /tmp/p.json
           code=$(curl -s -o /tmp/r.json -w "%{http_code}" -X PATCH \

@@ -4,13 +4,13 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="robots" content="noindex, nofollow">
-  <title>Callidus Co. — Owner Portal</title>
+  <title>Concilio — Owner Portal</title>
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="manifest" href="/administration/manifest.webmanifest">
   <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png">
   <meta name="theme-color" content="#111111">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-title" content="Callidus">
+  <meta name="apple-mobile-web-app-title" content="Concilio">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <style>
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
@@ -319,7 +319,7 @@
     <div class="card auth-card">
       <h1>Owner Portal</h1>
       <p class="sub">Backend not connected yet</p>
-      <p class="muted">The Supabase project hasn't been wired up. Once the CallidusCo project is
+      <p class="muted">The Supabase project hasn't been wired up. Once the Concilio project is
       created and the keys are added to <code>config.js</code>, sign-in will be enabled here.</p>
     </div>
   </div>
@@ -327,7 +327,7 @@
   <!-- Login -->
   <div class="center hidden" id="loginView">
     <div class="card auth-card">
-      <h1 data-brandname>Callidus Co.</h1>
+      <h1 data-brandname>Concilio</h1>
       <p class="sub">Owner Portal — sign in</p>
       <button class="btn btn--google btn--full" id="googleBtn" type="button">
         <svg width="16" height="16" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.6l6.7-6.7C35.6 2.7 30.1 0 24 0 14.6 0 6.4 5.4 2.5 13.2l7.9 6.1C12.3 13.3 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.1 24.6c0-1.6-.1-3.1-.4-4.6H24v9.1h12.4c-.5 2.9-2.1 5.3-4.6 7l7.1 5.5c4.1-3.8 6.5-9.5 6.5-16z"/><path fill="#FBBC05" d="M10.4 28.7c-.5-1.5-.8-3-.8-4.7s.3-3.2.8-4.7l-7.9-6.1C.9 16.5 0 20.1 0 24s.9 7.5 2.5 10.8l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.1 0 11.3-2 15-5.5l-7.1-5.5c-2 1.4-4.6 2.2-7.9 2.2-6.3 0-11.7-3.8-13.6-9.3l-7.9 6.1C6.4 42.6 14.6 48 24 48z"/></svg>
@@ -358,7 +358,7 @@
   <!-- App -->
   <div class="shell hidden" id="appView">
     <div class="topbar">
-      <div class="brandmark"><span data-brandname>Callidus Co.</span> <span>/ Owner Portal</span></div>
+      <div class="brandmark"><span data-brandname>Concilio</span> <span>/ Owner Portal</span></div>
       <div class="whoami">
         <span id="userEmail"></span>
         <span class="badge" id="roleBadge">owner</span>
@@ -726,7 +726,7 @@
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.35.2 — schema migration 0035">v1.35.2</div>
+  <div class="version-tag" title="Owner Portal v1.35.3 — schema migration 0035">v1.35.3</div>
 
   <!-- Settings modal -->
   <div class="modal-overlay hidden" id="settingsModal">
@@ -944,7 +944,7 @@
   <script type="module">
     import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
 
-    const cfg = window.CALLIDUS_CONFIG;
+    const cfg = window.CONCILIO_CONFIG;
     const configured = cfg && cfg.SUPABASE_URL && cfg.SUPABASE_URL.indexOf("__") !== 0;
     const $ = (id) => document.getElementById(id);
     const show = (el, on = true) => el.classList.toggle("hidden", !on);
@@ -1353,7 +1353,7 @@
     }
     // The skin: a principal's own domain shows their brand to everyone on
     // it (login page included); otherwise a signed-in principal gets
-    // their brand anywhere. Default stays Callidus.
+    // their brand anywhere. Default stays Concilio.
     function applyBrand() {
       const host = location.hostname.toLowerCase();
       const p = gPrincipals.find((x) => (x.domain || "").toLowerCase() === host) || myPrincipal();
@@ -1437,8 +1437,8 @@
       if (isAdmin()) loadSite();
       // One sign-in event per browser session, not per reload.
       try {
-        if (!sessionStorage.getItem("callidus_logged_in")) {
-          sessionStorage.setItem("callidus_logged_in", "1");
+        if (!sessionStorage.getItem("concilio_logged_in")) {
+          sessionStorage.setItem("concilio_logged_in", "1");
           logAccess("sign_in");
         }
       } catch (_) { logAccess("sign_in"); }
@@ -1473,12 +1473,12 @@
       t.addEventListener("click", () => {
         if (!t.dataset.tab) return; // settings-modal pills wire themselves
         activateTab(t.dataset.tab);
-        try { localStorage.setItem("callidus_tab", t.dataset.tab); } catch (_) {}
+        try { localStorage.setItem("concilio_tab", t.dataset.tab); } catch (_) {}
       });
     });
     function restoreTab() {
       let saved = null;
-      try { saved = localStorage.getItem("callidus_tab"); } catch (_) {}
+      try { saved = localStorage.getItem("concilio_tab"); } catch (_) {}
       if (saved) activateTab(saved); // falls back to the default (Reports) if hidden/unknown
     }
 
@@ -4006,7 +4006,7 @@
     let invTenants = [], invCoSel = null; // companies (tenants) + active filter
     const tenantShort = (t) => {
       const n = (t?.name || "?").trim();
-      const stripped = n.replace(/^Callidus\s+/i, "").replace(/\s*Co\.?$/i, "").trim();
+      const stripped = n.replace(/^Concilio\s+/i, "").replace(/\s*Co\.?$/i, "").trim();
       return stripped || n;
     };
     function companyPill(r) {
@@ -4074,13 +4074,13 @@
 
     async function loadEmailBar() {
       const bar = $("invEmailBar"); if (!bar) return;
-      const domain = window.CALLIDUS_CONFIG && window.CALLIDUS_CONFIG.INBOUND_DOMAIN;
+      const domain = window.CONCILIO_CONFIG && window.CONCILIO_CONFIG.INBOUND_DOMAIN;
       if (!domain) {
         // No verified inbound domain yet — don't show a non-working address.
         bar.innerHTML = '<span class="muted">Email-in (forward bills to auto-file) isn’t set up yet.</span>';
         return;
       }
-      let token = "callidus";
+      let token = "concilio";
       const { data } = await supabase.from("tenants").select("inbound_token,name").order("created_at");
       const ts = data || [];
       if (ts[0]?.inbound_token) token = ts[0].inbound_token;
@@ -4207,7 +4207,7 @@
     }
 
     function wireRowControls(scope) {
-      // Company toggle: cycle the bill between tenants (Callidus ⇄ FBH).
+      // Company toggle: cycle the bill between tenants (Concilio ⇄ FBH).
       scope.querySelectorAll("[data-company]").forEach((b) => b.addEventListener("click", async () => {
         const r = invRows.find((x) => x.id === b.dataset.company); if (!r || invTenants.length < 2) return;
         const i = invTenants.findIndex((t) => t.id === r.tenant_id);

@@ -62,7 +62,7 @@ npm i && npm run dev
 
 ## Note for this repo
 
-`callidus-coming-soon` is a static, no-build site (vanilla JS + Supabase), so
+`Concilio` is a static, no-build site (vanilla JS + Supabase), so
 these `.tsx` components can't mount in the live portal without a build step.
 They live here as a standalone, framework-ready library. To wire the same
 look/behavior into the current portal's native date inputs, a vanilla-JS port

@@ -2,7 +2,7 @@
 // gateway rejects the browser's CORS preflight); this function does its
 // own auth — the caller must be a signed-in ADMIN. The address must
 // already be on the allowlist (allowed_owners); the invite email goes
-// out through the configured SMTP (Resend, portal@callidusco.com) using
+// out through the configured SMTP (Resend, portal@concilio.com) using
 // Supabase's Invite template, landing the user signed in at the portal.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
@@ -12,7 +12,7 @@ const SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const ANON = Deno.env.get("SUPABASE_ANON_KEY")!;
 const admin = createClient(SUPABASE_URL, SERVICE, { auth: { persistSession: false } });
 
-const REDIRECT_TO = "https://callidusco.com/administration";
+const REDIRECT_TO = "https://concilio.com/administration";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",

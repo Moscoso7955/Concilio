@@ -30,7 +30,7 @@ const SYSTEM = `You catalog a single business document for an ownership portal's
 Core rule: if a field is not clearly present, return null rather than guessing.
 - title: a clean human title for the library (e.g. "Soca LLC Operating Agreement"), never the raw filename.
 - category: choose EXACTLY one of these values, or null if unclear: ${CATEGORIES.join(", ")}.
-- description: what the document is, in at most 12 words (e.g. "Single-member operating agreement between SOCA LLC and Callidus FBH"). No preamble, no restating the title. Null if the content is unreadable.
+- description: what the document is, in at most 12 words (e.g. "Single-member operating agreement between SOCA LLC and Concilio FBH"). No preamble, no restating the title. Null if the content is unreadable.
 - docDate: the document's own date — execution/effective/issue date — as ISO YYYY-MM-DD. Not today's date. Null if none is stated.
 - entityName: the business entity (LLC/company) the document belongs to, exactly as written in the document. Null if none.`;
 

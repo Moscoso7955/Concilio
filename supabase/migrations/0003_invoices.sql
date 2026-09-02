@@ -14,7 +14,7 @@ create table if not exists tenants (
 );
 
 insert into tenants (id, name, inbound_token)
-values ('00000000-0000-0000-0000-000000000001', 'Callidus Co.', 'callidus')
+values ('00000000-0000-0000-0000-000000000001', 'Concilio', 'concilio')
 on conflict do nothing;
 
 -- ---------- Chart of accounts (GL codes → category) ----------
