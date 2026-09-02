@@ -4,13 +4,7 @@
   "github": { "silent": true },
   "git": {
     "deploymentEnabled": {
-      "main": true,
-      "claude/repo-vercel-visibility-ti61mq": false,
-      "claude/qbo-chart": false,
-      "claude/refinements-0729": false,
-      "claude/remove-todo": false,
-      "claude/slate-accent": false,
-      "claude/year-default": false
+      "main": true
     }
   }
 }
