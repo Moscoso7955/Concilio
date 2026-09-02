@@ -20,7 +20,7 @@ jobs:
       - name: Run SQL via Supabase Management API
         env:
           TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          REF: ${{ vars.SUPABASE_PROJECT_REF || 'ofliuuulagqlbdjwrnjc' }}
+          REF: ${{ vars.SUPABASE_PROJECT_REF || 'etfpxmabzhbyiqsrtsre' }}
           FILE: ${{ inputs.file }}
         run: |
           test -f "$FILE" || { echo "::error::No such file: $FILE"; exit 1; }

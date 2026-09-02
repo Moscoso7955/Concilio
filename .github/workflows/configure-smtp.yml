@@ -12,7 +12,7 @@ jobs:
     env:
       TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
-      REF: ${{ vars.SUPABASE_PROJECT_REF || 'ofliuuulagqlbdjwrnjc' }}
+      REF: ${{ vars.SUPABASE_PROJECT_REF || 'etfpxmabzhbyiqsrtsre' }}
     steps:
       - name: PATCH auth config
         run: |
