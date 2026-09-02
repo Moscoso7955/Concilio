@@ -5,8 +5,8 @@
    static defaults and the portal shows a "not configured" note.
 ============================================================ */
 window.CONCILIO_CONFIG = {
-  SUPABASE_URL: "https://ofliuuulagqlbdjwrnjc.supabase.co",
-  SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9mbGl1dXVsYWdxbGJkandybmpjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMwMjQyNjEsImV4cCI6MjA5ODYwMDI2MX0.RtWcgElaqD3_BKa5_jJKhO_hTcCg4RnYGdD19Gt48Ho",
+  SUPABASE_URL: "__SUPABASE_URL__",
+  SUPABASE_ANON_KEY: "__SUPABASE_ANON_KEY__",
   TABLE: "site_content",
   BUCKET: "site-assets",
   // Resend inbound domain (verified 2026-07-20) — the Invoices banner shows
