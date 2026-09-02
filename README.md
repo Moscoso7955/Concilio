@@ -6,8 +6,8 @@ memos, and (for admins) edit the public site content.
 
 ## Live Site
 
-- https://concilio.com — public site
-- https://concilio.com/administration — Owner Portal (magic-link login)
+- https://concilio-ten.vercel.app — public site
+- https://concilio-ten.vercel.app/administration — Owner Portal (magic-link login)
 
 ## How it works
 
@@ -116,8 +116,8 @@ in the database.
    - Enable the **Email** provider with **magic links** (email OTP).
    - Enable the **Google** provider and paste the OAuth **Client ID + Secret**
      from Google Cloud (see the browser checklist below).
-   - **Site URL:** `https://concilio.com`
-   - **Redirect URLs:** add `https://concilio.com/administration` (and
+   - **Site URL:** `https://concilio-ten.vercel.app`
+   - **Redirect URLs:** add `https://concilio-ten.vercel.app/administration` (and
      `http://localhost:3000/administration` if testing locally).
    - The allowlist signup trigger blocks any email that isn't pre-approved — for
      **both** magic-link and Google — so only invited people can ever sign in.

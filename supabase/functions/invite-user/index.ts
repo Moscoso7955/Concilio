@@ -12,7 +12,7 @@ const SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const ANON = Deno.env.get("SUPABASE_ANON_KEY")!;
 const admin = createClient(SUPABASE_URL, SERVICE, { auth: { persistSession: false } });
 
-const REDIRECT_TO = "https://concilio.com/administration";
+const REDIRECT_TO = "https://concilio-ten.vercel.app/administration";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
