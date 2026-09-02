@@ -1,6 +1,6 @@
 # Concilio
 
-The public site (`concilio.com`) plus a login-gated **Owner Portal** at
+The public site (`conciliowealth.com`) plus a login-gated **Owner Portal** at
 `/administration` — a reporting terminal where owners view financials, share
 memos, and (for admins) edit the public site content.
 

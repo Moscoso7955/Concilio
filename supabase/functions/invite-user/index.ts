@@ -2,7 +2,7 @@
 // gateway rejects the browser's CORS preflight); this function does its
 // own auth — the caller must be a signed-in ADMIN. The address must
 // already be on the allowlist (allowed_owners); the invite email goes
-// out through the configured SMTP (Resend, portal@concilio.com) using
+// out through the configured SMTP (Resend, portal@conciliowealth.com) using
 // Supabase's Invite template, landing the user signed in at the portal.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";

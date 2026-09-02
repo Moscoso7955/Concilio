@@ -1,6 +1,6 @@
 name: Check Resend DNS records
 
-# Verifies the DNS for the bills.concilio.com inbound subdomain, plus
+# Verifies the DNS for the bills.conciliowealth.com inbound subdomain, plus
 # sanity checks that the root domain's Google mail and www site records
 # are untouched. Manual dispatch — run after adding records in Squarespace.
 #
@@ -44,33 +44,33 @@ jobs:
           out=$(dig +short TXT "_dmarc.$d")
           echo "${out:-<missing (add v=DMARC1; p=none; for deliverability)>}"
           exit $fail
-      - name: Check bills.concilio.com records
+      - name: Check bills.conciliowealth.com records
         run: |
           fail=0
-          echo "== 1. TXT resend._domainkey.bills.concilio.com (DKIM) =="
-          out=$(dig +short TXT resend._domainkey.bills.concilio.com)
+          echo "== 1. TXT resend._domainkey.bills.conciliowealth.com (DKIM) =="
+          out=$(dig +short TXT resend._domainkey.bills.conciliowealth.com)
           echo "${out:-<missing>}"
           echo "$out" | grep -q "p=" || { echo "FAIL: DKIM TXT missing"; fail=1; }
 
-          echo "== 2. MX send.bills.concilio.com (return path) =="
-          out=$(dig +short MX send.bills.concilio.com)
+          echo "== 2. MX send.bills.conciliowealth.com (return path) =="
+          out=$(dig +short MX send.bills.conciliowealth.com)
           echo "${out:-<missing>}"
           echo "$out" | grep -qi "amazonses.com" || { echo "FAIL: send MX missing"; fail=1; }
 
-          echo "== 3. TXT send.bills.concilio.com (SPF) =="
-          out=$(dig +short TXT send.bills.concilio.com)
+          echo "== 3. TXT send.bills.conciliowealth.com (SPF) =="
+          out=$(dig +short TXT send.bills.conciliowealth.com)
           echo "${out:-<missing>}"
           echo "$out" | grep -q "v=spf1" || { echo "FAIL: SPF TXT missing"; fail=1; }
 
-          echo "== 4. MX bills.concilio.com (INBOUND — the one that receives mail) =="
-          out=$(dig +short MX bills.concilio.com)
+          echo "== 4. MX bills.conciliowealth.com (INBOUND — the one that receives mail) =="
+          out=$(dig +short MX bills.conciliowealth.com)
           echo "${out:-<missing>}"
           echo "$out" | grep -qi "inbound-smtp" || { echo "FAIL: inbound MX missing"; fail=1; }
 
           echo "== Sanity: root records untouched =="
-          rootmx=$(dig +short MX concilio.com)
+          rootmx=$(dig +short MX conciliowealth.com)
           echo "root MX: ${rootmx:-<missing>}"
           echo "$rootmx" | grep -qi "google" || { echo "WARN: root MX no longer Google — christian@ mail at risk!"; fail=1; }
-          echo "www CNAME: $(dig +short CNAME www.concilio.com)"
+          echo "www CNAME: $(dig +short CNAME www.conciliowealth.com)"
 
           exit $fail

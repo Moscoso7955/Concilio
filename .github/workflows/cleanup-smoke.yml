@@ -3,7 +3,7 @@ name: Clean up smoke-test residue
 # One-off: deletes the leftover "Smoke Test Doc" files through the
 # Storage API (SQL deletes on storage.objects are blocked by Supabase's
 # protect_delete trigger), then runs tools/cleanup-smoke.sql to remove
-# the document rows and the smoke@concilio.com test account. Manual
+# the document rows and the smoke@conciliowealth.com test account. Manual
 # dispatch; safe to re-run (everything is idempotent).
 
 on:

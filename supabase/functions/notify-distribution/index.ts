@@ -15,7 +15,7 @@ const RESEND_KEY = Deno.env.get("RESEND_API_KEY") || "";
 const admin = createClient(SUPABASE_URL, SERVICE, { auth: { persistSession: false } });
 
 const PORTAL_URL = "https://concilio-ten.vercel.app/administration";
-const FROM = "Concilio <portal@concilio.com>";
+const FROM = "Concilio <portal@conciliowealth.com>";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",

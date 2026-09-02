@@ -201,7 +201,7 @@ Deno.serve(async (req) => {
     // Forgiving routing: ANY address on our inbound subdomain (receipts@,
     // bills@, a typo'd token…) files to the primary tenant. Mail for other
     // domains on the shared Resend account (e.g. Tipsy) is still ignored.
-    if (!tenant && rec.includes("@bills.concilio.com")) {
+    if (!tenant && rec.includes("@bills.conciliowealth.com")) {
       tenant = (await admin.from("tenants").select("id").order("created_at").limit(1).single()).data;
       if (tenant) console.log("no/unknown token on our domain — defaulting to primary tenant");
     }

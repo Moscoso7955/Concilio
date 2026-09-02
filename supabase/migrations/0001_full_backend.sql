@@ -162,7 +162,7 @@ on conflict (email) do update set role = excluded.role;
 insert into site_content (id, content) values (1, '{
   "brand": "Concilio",
   "tagline": "We''re crafting an experience worth waiting for. Stay tuned.",
-  "footer": "concilio.com",
+  "footer": "conciliowealth.com",
   "showLogo": false,
   "logoUrl": "",
   "bgColor": "#0a192f",
