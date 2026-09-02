@@ -110,20 +110,32 @@ const CP1252_REV: Record<number, number> = {
   0x2019: 0x92, 0x201C: 0x93, 0x201D: 0x94, 0x2022: 0x95, 0x2013: 0x96, 0x2014: 0x97, 0x02DC: 0x98,
   0x2122: 0x99, 0x0161: 0x9A, 0x203A: 0x9B, 0x0153: 0x9C, 0x017E: 0x9E, 0x0178: 0x9F,
 };
+function fixMojibake(s: string): string {
+  if (!/\u00e2\u20ac|\u00c3[\u00a0-\u00ff]/.test(s)) return s;
+  try {
+    const bytes = Uint8Array.from([...s].map((ch) => {
+      const c = ch.codePointAt(0)!;
+      return c <= 0xff ? c : (CP1252_REV[c] ?? 0x3f);
+    }));
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch (_) { return s; /* not mojibake after all — keep the original */ }
+}
+const unescapeEntities = (s: string) =>
+  s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, "&");
 function fixText(s: string): string {
-  let t = s;
-  if (/\u00e2\u20ac|\u00c3[\u00a0-\u00ff]/.test(t)) {
-    try {
-      const bytes = Uint8Array.from([...t].map((ch) => {
-        const c = ch.codePointAt(0)!;
-        return c <= 0xff ? c : (CP1252_REV[c] ?? 0x3f);
-      }));
-      t = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-    } catch (_) { /* not mojibake after all — keep the original */ }
-  }
-  if (/&(lt|gt|quot|#39|amp);/.test(t)) {
-    t = t.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, "&");
-  }
+  let t = fixMojibake(s);
+  if (/&(lt|gt|quot|#39|amp);/.test(t)) t = unescapeEntities(t);
+  return t;
+}
+// An HTML body can arrive with its ENTIRE source entity-encoded upstream
+// (seen on forwarded Gmail bills: the browser then shows the raw source as
+// text). Legit HTML uses entities too, so only unescape when escaped tags
+// outnumber real ones — that's a document encoded whole, not body text.
+function fixHtml(s: string): string {
+  let t = fixMojibake(s);
+  const real = (t.match(/<[a-zA-Z!/]/g) || []).length;
+  const escaped = (t.match(/&lt;[a-zA-Z!/]/g) || []).length;
+  if (escaped > real) t = unescapeEntities(t);
   return t;
 }
 
@@ -131,7 +143,8 @@ function fixText(s: string): string {
 // renders like the original message; fall back to repaired plain text.
 function buildBodyFile(bodyText: string, bodyHtml: string): { bytes: Uint8Array; mime: string; name: string } {
   if (bodyHtml.trim()) {
-    const html = /<meta[^>]+charset/i.test(bodyHtml) ? bodyHtml : `<meta charset="utf-8">${bodyHtml}`;
+    const repaired = fixHtml(bodyHtml);
+    const html = /<meta[^>]+charset/i.test(repaired) ? repaired : `<meta charset="utf-8">${repaired}`;
     return { bytes: new TextEncoder().encode(html), mime: "text/html", name: "email.html" };
   }
   const src = fixText(bodyText);
