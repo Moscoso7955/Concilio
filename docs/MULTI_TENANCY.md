@@ -1,6 +1,8 @@
 # Concilio as a user-based product — multi-tenancy plan
 
-Noted 2026-09-02. Design only; nothing implemented yet.
+Noted 2026-09-02. **Implemented 2026-09-03** in migration
+`0036_workspaces.sql` plus portal and edge-function changes; see
+"What shipped" at the end.
 
 **Decision (Christian, 2026-09-02):** signup creates a workspace the
 user can invite others into. One workspace per person in v1; a
@@ -75,3 +77,38 @@ multi-owner case (the reason the node system exists) keeps working.
 - Sequencing: the workspace signup trigger replaces the allowlist
   trigger, so land it after Google OAuth + Resend are verified working
   against the current trigger, not in the middle.
+
+## What shipped (0036)
+
+- `workspaces`, `workspace_members`, `platform_admins`; `profiles.workspace_id`
+  (current workspace) and `profiles.platform_admin`.
+- `workspace_id` on all 20 domain tables, `not null`, defaulting to
+  `current_workspace()` so client inserts need no change. Existing rows
+  landed in the bootstrap workspace `Concilio`
+  (`00000000-0000-0000-0000-0000000000c0`).
+- Every existing policy on those tables was rewritten in place as
+  `workspace_id = current_workspace() and (<original>)`. Helpers
+  (`is_admin`, `is_member`, `is_staff`, `can_market`, `visible_entity_ids`,
+  `manages_entity`, …) answer for the caller's current workspace.
+- Per-workspace keys: `allowed_owners (workspace_id, email)`,
+  `gl_codes (workspace_id, code)` with invoices FK following,
+  `principals (workspace_id, owner_email)`. Custom `roles` carry a
+  workspace_id; built-ins are shared. Role keys stay globally unique.
+- Storage: objects in `documents` / `invoices` live under
+  `<workspace id>/…` and policies check the prefix (`ws_path`).
+  `site-assets` writes are platform-admin only.
+- Signup trigger: profile → join any workspace whose allowlist has the
+  email → otherwise `provision_workspace()` (workspace, admin membership,
+  allowlist row, default tenant, starter chart of accounts).
+- RPCs for the Owners tab: `set_member_role(email, role, tabs)`,
+  `remove_member(email)` (never strands a user without a workspace).
+- Portal: loads the workspace, shows/renames its name (Settings → Users),
+  prefixes uploads, hides Site Content unless platform admin, sign-up copy
+  on the login card.
+- Edge functions: service-role writes carry `workspace_id`; callers are
+  checked against the row's workspace.
+
+Known v1 limits: one workspace per person (no switcher); custom role
+keys are global, so two workspaces can't both create a role with the
+same key; `mail-webhook` bounce/complaint flags apply by email across
+workspaces.

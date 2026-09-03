@@ -67,7 +67,8 @@ function toBase64(bytes: Uint8Array): string {
   return btoa(s);
 }
 
-async function extract(bytes: Uint8Array, mime: string): Promise<Record<string, unknown>> {
+type Tenant = { id: string; workspace_id: string };
+async function extract(bytes: Uint8Array, mime: string, tenant: Tenant): Promise<Record<string, unknown>> {
   const b64 = toBase64(bytes);
   let block: unknown;
   if (mime === "application/pdf") block = { type: "document", source: { type: "base64", media_type: "application/pdf", data: b64 } };
@@ -95,8 +96,7 @@ async function extract(bytes: Uint8Array, mime: string): Promise<Record<string, 
     return {};
   }
   try {
-    const { data: t } = await admin.from("tenants").select("id").order("created_at").limit(1).single();
-    await admin.from("ai_usage").insert({ tenant_id: t?.id, model: "claude-opus-4-8", input_tokens: data.usage?.input_tokens, output_tokens: data.usage?.output_tokens, purpose: "email" });
+    await admin.from("ai_usage").insert({ workspace_id: tenant.workspace_id, tenant_id: tenant.id, model: "claude-opus-4-8", input_tokens: data.usage?.input_tokens, output_tokens: data.usage?.output_tokens, purpose: "email" });
   } catch (_) { /* best-effort */ }
   const tb = (data.content || []).find((b: { type: string }) => b.type === "text");
   return JSON.parse(tb?.text || "{}");
@@ -140,10 +140,10 @@ function buildBodyFile(bodyText: string, bodyHtml: string): { bytes: Uint8Array;
   return { bytes: new TextEncoder().encode(safeHtml), mime: "text/html", name: "email-body.html" };
 }
 
-async function fileInvoice(tenantId: string, sourceKey: string, extracted: Record<string, unknown>, bytes: Uint8Array | null, mime: string, fileName: string) {
+async function fileInvoice(tenant: Tenant, sourceKey: string, extracted: Record<string, unknown>, bytes: Uint8Array | null, mime: string, fileName: string) {
   let file_url: string | null = null;
   if (bytes) {
-    const path = `email/${sourceKey.replace(/[^a-zA-Z0-9._/-]/g, "_")}`;
+    const path = `${tenant.workspace_id}/email/${sourceKey.replace(/[^a-zA-Z0-9._/-]/g, "_")}`;
     const { error } = await admin.storage.from("invoices").upload(path, bytes, { contentType: mime, upsert: true });
     if (error) console.error("fileInvoice storage error:", error.message);
     else file_url = `storage:${path}`;
@@ -153,7 +153,7 @@ async function fileInvoice(tenantId: string, sourceKey: string, extracted: Recor
   // partial unique index, which Postgres can't match for ON CONFLICT, so the
   // upsert errored on every call (and the error was silently ignored).
   const { data: existing } = await admin.from("invoices")
-    .select("id").eq("tenant_id", tenantId).eq("source_email_id", sourceKey).maybeSingle();
+    .select("id").eq("tenant_id", tenant.id).eq("source_email_id", sourceKey).maybeSingle();
   if (existing) { console.log("dedupe: already filed", sourceKey); return; }
   // Vendor memory: a returning vendor's bill pre-fills its last-used GL
   // code, so repeat bills (e.g. a weekly invoice) are one-click approvals.
@@ -161,12 +161,13 @@ async function fileInvoice(tenantId: string, sourceKey: string, extracted: Recor
   const vend = (extracted.vendor as string) || null;
   if (vend) {
     const { data: prev } = await admin.from("invoices").select("code")
-      .ilike("vendor", vend).not("code", "is", null)
+      .eq("workspace_id", tenant.workspace_id).ilike("vendor", vend).not("code", "is", null)
       .order("created_at", { ascending: false }).limit(1).maybeSingle();
     code = (prev?.code as string) ?? null;
   }
   const { error: insErr } = await admin.from("invoices").insert({
-    tenant_id: tenantId,
+    workspace_id: tenant.workspace_id,
+    tenant_id: tenant.id,
     vendor: vend || "Unknown vendor",
     category: (extracted.category as string) || null,
     code,
@@ -196,13 +197,13 @@ Deno.serve(async (req) => {
     admin.from("function_logs").delete().lt("created_at", new Date(Date.now() - 30 * 86400_000).toISOString()).then(() => {}, () => {});
     const rec = recipients.map(String).join(",").toLowerCase();
     const token = (rec.match(/bills-([a-z0-9-]+)@/i) || [])[1];
-    let tenant: { id: string } | null = null;
-    if (token) tenant = (await admin.from("tenants").select("id").eq("inbound_token", token).single()).data;
+    let tenant: Tenant | null = null;
+    if (token) tenant = (await admin.from("tenants").select("id, workspace_id").eq("inbound_token", token).single()).data;
     // Forgiving routing: ANY address on our inbound subdomain (receipts@,
     // bills@, a typo'd token…) files to the primary tenant. Mail for other
     // domains on the shared Resend account (e.g. Tipsy) is still ignored.
     if (!tenant && rec.includes("@bills.conciliowealth.com")) {
-      tenant = (await admin.from("tenants").select("id").order("created_at").limit(1).single()).data;
+      tenant = (await admin.from("tenants").select("id, workspace_id").order("created_at").limit(1).single()).data;
       if (tenant) console.log("no/unknown token on our domain — defaulting to primary tenant");
     }
     if (!tenant) { console.log("not for us — ignoring:", rec.slice(0, 120)); return new Response("ignored", { status: 200 }); }
@@ -241,9 +242,9 @@ Deno.serve(async (req) => {
         const a = real[i];
         const bytes = await attachmentBytes(a);
         if (!bytes) continue;
-        const extracted = await extract(bytes, a.content_type);
+        const extracted = await extract(bytes, a.content_type, tenant);
         await dblog("extracted (payload attachment)", extracted);
-        await fileInvoice(tenant.id, `${emailId}:${a.content_id || i}`, extracted, bytes, a.content_type, a.filename || "attachment");
+        await fileInvoice(tenant, `${emailId}:${a.content_id || i}`, extracted, bytes, a.content_type, a.filename || "attachment");
         filedCount++;
       }
       if (!filedCount) console.log("attachments listed but no bytes in payload — falling through to API fetch");
@@ -349,9 +350,9 @@ Deno.serve(async (req) => {
           if (bytes) await dblog("attachment recovered from raw MIME", { name: a.filename, bytes: bytes.length });
         }
         if (!bytes) continue;
-        const extracted = await extract(bytes, a.content_type);
+        const extracted = await extract(bytes, a.content_type, tenant);
         await dblog("extracted (api attachment)", extracted);
-        await fileInvoice(tenant.id, `${emailId}:${a.content_id || a.filename || i}`, extracted, bytes, a.content_type, a.filename || "attachment");
+        await fileInvoice(tenant, `${emailId}:${a.content_id || a.filename || i}`, extracted, bytes, a.content_type, a.filename || "attachment");
         filedCount++;
       }
       if (filedCount) return new Response("ok", { status: 200 });
@@ -360,13 +361,13 @@ Deno.serve(async (req) => {
 
       let bodyExtracted: Record<string, unknown> | null = null;
       if (readable) {
-        bodyExtracted = await extract(new TextEncoder().encode(bodyText.trim() ? fixText(bodyText) : bodyHtml), "text/plain");
+        bodyExtracted = await extract(new TextEncoder().encode(bodyText.trim() ? fixText(bodyText) : bodyHtml), "text/plain", tenant);
         await dblog("extracted (body)", bodyExtracted);
       }
 
       if (meaningful(bodyExtracted)) {
         const f = buildBodyFile(bodyText, bodyHtml);
-        await fileInvoice(tenant.id, `${emailId}:body`, bodyExtracted!, f.bytes, f.mime, f.name);
+        await fileInvoice(tenant, `${emailId}:body`, bodyExtracted!, f.bytes, f.mime, f.name);
       } else {
         // Tier 3: the bill may BE an image in the body — inline CID image
         // attachments (excluded from tier 1 by design) or <img>-linked
@@ -396,10 +397,10 @@ Deno.serve(async (req) => {
 
         let filed = false;
         for (const img of candidates.slice(0, 3)) {
-          const x = await extract(img.bytes, img.mime);
+          const x = await extract(img.bytes, img.mime, tenant);
           await dblog("extracted (image " + img.name + ")", x);
           if (meaningful(x)) {
-            await fileInvoice(tenant.id, `${emailId}:img`, x, img.bytes, img.mime, img.name);
+            await fileInvoice(tenant, `${emailId}:img`, x, img.bytes, img.mime, img.name);
             filed = true;
             break;
           }
@@ -408,7 +409,7 @@ Deno.serve(async (req) => {
           // Nothing meaningful anywhere — file the body anyway (needs_review)
           // so the email isn't lost; the owner fills the fields by hand.
           const f = buildBodyFile(bodyText, bodyHtml);
-          await fileInvoice(tenant.id, `${emailId}:body`, bodyExtracted || {}, f.bytes, f.mime, f.name);
+          await fileInvoice(tenant, `${emailId}:body`, bodyExtracted || {}, f.bytes, f.mime, f.name);
         } else if (!filed) {
           await dblog("no email content available — not filing");
           return new Response("no content", { status: 200 });

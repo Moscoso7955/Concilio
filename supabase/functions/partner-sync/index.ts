@@ -28,13 +28,13 @@ Deno.serve(async (req) => {
   const token = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
   const { data: { user } } = await createClient(SUPABASE_URL, ANON).auth.getUser(token);
   if (!user) return json({ error: "Unauthorized" }, 401);
-  const { data: prof } = await admin.from("profiles").select("role").eq("id", user.id).single();
+  const { data: prof } = await admin.from("profiles").select("role,workspace_id").eq("id", user.id).single();
   if (prof?.role !== "admin") return json({ error: "Admins only" }, 403);
 
   let force = false;
   try { force = !!(await req.json()).force; } catch (_) { /* default */ }
 
-  const { data: links } = await admin.from("unit_links").select("*").eq("direction", "subscribe");
+  const { data: links } = await admin.from("unit_links").select("*").eq("direction", "subscribe").eq("workspace_id", prof.workspace_id);
   const results: Record<string, unknown>[] = [];
   for (const link of links || []) {
     // Throttle: an on-load ping shouldn't hammer partner portals.
@@ -56,6 +56,7 @@ Deno.serve(async (req) => {
       const rows = months
         .filter((m: Record<string, unknown>) => /^\d{4}-\d{2}/.test(String(m.period || "")))
         .map((m: Record<string, unknown>) => ({
+          workspace_id: link.workspace_id,
           entity_id: link.entity_id,
           period: m.period,
           revenue: m.revenue ?? null,

@@ -326,7 +326,7 @@
   <div class="center hidden" id="loginView">
     <div class="card auth-card">
       <h1 data-brandname>Concilio</h1>
-      <p class="sub">Owner Portal — sign in</p>
+      <p class="sub">Sign in, or create your workspace</p>
       <button class="btn btn--google btn--full" id="googleBtn" type="button">
         <svg width="16" height="16" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.6l6.7-6.7C35.6 2.7 30.1 0 24 0 14.6 0 6.4 5.4 2.5 13.2l7.9 6.1C12.3 13.3 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.1 24.6c0-1.6-.1-3.1-.4-4.6H24v9.1h12.4c-.5 2.9-2.1 5.3-4.6 7l7.1 5.5c4.1-3.8 6.5-9.5 6.5-16z"/><path fill="#FBBC05" d="M10.4 28.7c-.5-1.5-.8-3-.8-4.7s.3-3.2.8-4.7l-7.9-6.1C.9 16.5 0 20.1 0 24s.9 7.5 2.5 10.8l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.1 0 11.3-2 15-5.5l-7.1-5.5c-2 1.4-4.6 2.2-7.9 2.2-6.3 0-11.7-3.8-13.6-9.3l-7.9 6.1C6.4 42.6 14.6 48 24 48z"/></svg>
         Sign in with Google
@@ -339,6 +339,7 @@
         </div>
         <button class="btn btn--full" type="submit" id="loginBtn">Email me a magic link</button>
       </form>
+      <p class="muted" style="margin-top:0.9rem;font-size:0.8rem;">New here? Sign in with Google or your email and we'll set up a workspace for you.</p>
       <div class="status" id="loginStatus"></div>
     </div>
   </div>
@@ -356,7 +357,7 @@
   <!-- App -->
   <div class="shell hidden" id="appView">
     <div class="topbar">
-      <div class="brandmark"><span data-brandname>Concilio</span> <span>/ Owner Portal</span></div>
+      <div class="brandmark"><span data-brandname>Concilio</span> <span>/ <span id="wsName">Owner Portal</span></span></div>
       <div class="whoami">
         <span id="userEmail"></span>
         <span class="badge" id="roleBadge">owner</span>
@@ -724,7 +725,7 @@
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.35.9 — schema migration 0035">v1.35.9</div>
+  <div class="version-tag" title="Owner Portal v1.36.0 — schema migration 0035">v1.36.0</div>
 
   <!-- Settings modal -->
   <div class="modal-overlay hidden" id="settingsModal">
@@ -742,6 +743,15 @@
 
       <div id="settingsUsersPane">
         <p class="muted" style="margin-bottom:1rem;">Everyone signs in with a magic link at their email. Adding someone sends them an invite email from the portal. Tabs control what shows in their menu.</p>
+        <div class="section-card admin-only" style="margin-bottom:0.9rem;padding:1rem;">
+          <label style="margin-bottom:0.3rem;">Workspace name</label>
+          <div class="su-actions">
+            <input type="text" id="wsRename" placeholder="Acme Holdings" style="flex:1;min-width:10rem;width:auto;">
+            <button class="btn btn--sm" id="wsRenameBtn">Save</button>
+            <span class="muted" id="wsRenameStatus"></span>
+          </div>
+          <div class="muted" style="margin-top:0.35rem;font-size:0.78rem;">Shown in the header for everyone in this workspace.</div>
+        </div>
         <div id="suList"><p class="muted">Loading…</p></div>
         <div class="section-card" style="margin:1rem 0 0;padding:1rem;">
           <h2 style="font-size:0.95rem;">Add someone</h2>
@@ -960,6 +970,7 @@
     });
 
     let profile = null;
+    let workspace = null; // the signed-in user's current workspace (workspaces row)
     let rolesList = []; // from the roles table; empty until migration 0016
     const roleInfo = (key) => rolesList.find((r) => r.key === key) || null;
     async function refreshRoles() {
@@ -1203,9 +1214,8 @@
         const picked = [...box.querySelectorAll(`[data-sutab="${i}"]:checked`)].map((c) => c.value);
         const tabs = role === "admin" || !picked.length ? null : picked;
         const st = box.querySelector(`[data-sustatus="${i}"]`); st.textContent = "Saving…";
-        const { error } = await supabase.from("allowed_owners").update({ role, tabs }).eq("email", email);
-        // Mirror onto the live profile if they've already signed up.
-        if (!error) await supabase.from("profiles").update({ role, tabs }).ilike("email", email);
+        // Updates the allowlist row, the membership and the live profile together.
+        const { error } = await supabase.rpc("set_member_role", { p_email: email, p_role: role, p_tabs: tabs });
         // Principal org + skin, when the card carries those fields.
         if (!error && role === "principal") {
           const g = (sel) => box.querySelector(`[data-${sel}="${i}"]`)?.value.trim() || "";
@@ -1214,11 +1224,12 @@
           if (g("prlogo")) brand.logo_url = g("prlogo");
           try {
             await supabase.from("principals").upsert({
+              workspace_id: profile.workspace_id,
               owner_email: email,
               name: g("prname") || email.split("@")[0],
               brand: Object.keys(brand).length ? brand : null,
               domain: g("prdomain").toLowerCase() || null,
-            }, { onConflict: "owner_email" });
+            }, { onConflict: "workspace_id,owner_email" });
             await loadPrincipals();
           } catch (_) { /* pre-0023 */ }
         }
@@ -1238,8 +1249,8 @@
         const i = btn.dataset.suremove;
         const email = box.querySelector(`[data-surow="${i}"]`).dataset.suemail;
         if (!confirm(`Remove portal access for ${email}?`)) return;
-        await supabase.from("allowed_owners").delete().eq("email", email);
-        await supabase.from("profiles").delete().ilike("email", email);
+        const { error: rmErr } = await supabase.rpc("remove_member", { p_email: email });
+        if (rmErr) { alert(rmErr.message); return; }
         logAccess("user_remove", { email });
         loadSettingsUsers();
       }));
@@ -1310,11 +1321,23 @@
       if (!error) { $("srNewName").value = ""; await refreshRoles(); loadSettingsUsers(); }
     });
 
+    $("wsRenameBtn")?.addEventListener("click", async () => {
+      const name = ($("wsRename").value || "").trim();
+      const st = $("wsRenameStatus");
+      if (!name) { st.textContent = "Enter a name."; return; }
+      const { error } = await supabase.from("workspaces").update({ name }).eq("id", profile.workspace_id);
+      if (error) { st.textContent = error.message; return; }
+      workspace = { ...(workspace || {}), name };
+      $("wsName").textContent = name;
+      logAccess("workspace_rename", { name });
+      st.textContent = "Saved ✓";
+    });
+
     $("suAddBtn")?.addEventListener("click", async () => {
       const email = ($("suNewEmail").value || "").trim().toLowerCase();
       const st = $("suAddStatus");
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { st.textContent = "Enter a valid email."; return; }
-      const { error } = await supabase.from("allowed_owners").upsert({ email, role: $("suNewRole").value }, { onConflict: "email" });
+      const { error } = await supabase.from("allowed_owners").upsert({ workspace_id: profile.workspace_id, email, role: $("suNewRole").value }, { onConflict: "workspace_id,email" });
       if (error) { st.textContent = error.message; return; }
       logAccess("user_add", { email, role: $("suNewRole").value });
       // Principals get an org record too — name/brand/domain editable on
@@ -1322,7 +1345,7 @@
       if ($("suNewRole").value === "principal") {
         try {
           await supabase.from("principals").upsert(
-            { owner_email: email, name: email.split("@")[0] }, { onConflict: "owner_email" });
+            { workspace_id: profile.workspace_id, owner_email: email, name: email.split("@")[0] }, { onConflict: "workspace_id,owner_email" });
           await loadPrincipals();
         } catch (_) { /* pre-0023 */ }
       }
@@ -1388,12 +1411,22 @@
         // Allowlisted trigger should have made this; if missing, treat as unauthorized.
         show($("loginView"), false); show($("checkEmail"), false);
         const st = $("loginStatus"); st.className = "status status--err";
-        st.textContent = "This account isn't authorized for portal access.";
+        st.textContent = "We couldn't load your profile — please sign in again.";
         show($("loginView"), true);
         await supabase.auth.signOut();
         return;
       }
       profile = data;
+      if (!profile.workspace_id) {
+        show($("loginView"), false); show($("checkEmail"), false);
+        const st = $("loginStatus"); st.className = "status status--err";
+        st.textContent = "Your workspace is still being set up — try signing in again in a moment.";
+        show($("loginView"), true);
+        await supabase.auth.signOut();
+        return;
+      }
+      const { data: ws } = await supabase.from("workspaces").select("*").eq("id", profile.workspace_id).maybeSingle();
+      workspace = ws || { id: profile.workspace_id, name: "Workspace" };
       await refreshRoles();
       enterApp(session);
     }
@@ -1407,7 +1440,7 @@
       accountant: ["financials", "documents", "invoices"],
     };
     function allowedTabs() {
-      if (isAdmin()) return ALL_TABS;
+      if (isAdmin()) return profile?.platform_admin ? ALL_TABS : ALL_TABS.filter((t) => t !== "site");
       const assigned = profile && Array.isArray(profile.tabs) && profile.tabs.length ? profile.tabs : null;
       const role = roleInfo(profile?.role);
       const roleTabs = role && Array.isArray(role.tabs) && role.tabs.length ? role.tabs : null;
@@ -1419,6 +1452,8 @@
       currentEmail = session.user.email || null;
       loadPrincipals().then(applyBrand); // signed-in principals get their skin
       $("userEmail").textContent = session.user.email;
+      $("wsName").textContent = workspace?.name || "Owner Portal";
+      const wsIn = $("wsRename"); if (wsIn) wsIn.value = workspace?.name || "";
       const rb = $("roleBadge");
       rb.textContent = (roleInfo(profile.role)?.name || (profile.role === "owner" ? "member" : profile.role)).toLowerCase();
       rb.classList.toggle("badge--admin", isAdmin());
@@ -1432,7 +1467,7 @@
       if (tabs.includes("documents")) loadDocuments();
       if (tabs.includes("invoices")) loadInvoices();
       if (tabs.includes("marketing")) loadMail();
-      if (isAdmin()) loadSite();
+      if (isAdmin() && profile?.platform_admin) loadSite();
       // One sign-in event per browser session, not per reload.
       try {
         if (!sessionStorage.getItem("concilio_logged_in")) {
@@ -2898,7 +2933,7 @@
       try {
         st.textContent = "Uploading…";
         const clean = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-        const path = "docs/" + Date.now() + "-" + Math.random().toString(36).slice(2, 8) + "-" + clean;
+        const path = profile.workspace_id + "/docs/" + Date.now() + "-" + Math.random().toString(36).slice(2, 8) + "-" + clean;
         const { error: upErr } = await supabase.storage.from("documents").upload(path, file, { contentType: file.type || undefined });
         if (upErr) throw upErr;
         const row = {
@@ -3820,7 +3855,7 @@
           if ($("pKind").value !== "entity" && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) {
             const { data: existing } = await supabase.from("allowed_owners").select("email").ilike("email", em).maybeSingle();
             if (!existing) {
-              await supabase.from("allowed_owners").upsert({ email: em, role: "owner" }, { onConflict: "email" });
+              await supabase.from("allowed_owners").upsert({ workspace_id: profile.workspace_id, email: em, role: "owner" }, { onConflict: "workspace_id,email" });
               try {
                 await sendInvite(em);
                 $("pStatus").textContent = "Saved ✓ — invite email sent";
@@ -3963,8 +3998,8 @@
           <span class="muted" id="acStatus"></span></div>
           <div class="muted" style="margin-top:0.4rem;">Tabs and roles are also managed in Settings (top right).</div>`;
         $("acUpdate").addEventListener("click", async () => {
-          await supabase.from("allowed_owners").update({ role: $("acRole").value }).eq("email", email);
-          await supabase.from("profiles").update({ role: $("acRole").value }).ilike("email", email);
+          const { error } = await supabase.rpc("set_member_role", { p_email: email, p_role: $("acRole").value, p_tabs: null });
+          if (error) { alert(error.message); return; }
           logAccess("user_update", { email, role: $("acRole").value });
           renderAccess(id, email);
         });
@@ -3977,8 +4012,8 @@
         });
         $("acRevoke").addEventListener("click", async () => {
           if (!confirm("Revoke portal access for " + email + "?")) return;
-          await supabase.from("allowed_owners").delete().eq("email", email);
-          await supabase.from("profiles").delete().ilike("email", email);
+          const { error } = await supabase.rpc("remove_member", { p_email: email });
+          if (error) { alert(error.message); return; }
           renderAccess(id, email);
           logAccess("user_remove", { email });
         });
@@ -3989,7 +4024,7 @@
           <button class="btn btn--sm" id="acGrant" style="flex:0 0 auto;">Grant access</button></div>
           <div class="muted" style="margin-top:0.4rem;">They'll sign in with a magic link or Google at this email.</div>`;
         $("acGrant").addEventListener("click", async () => {
-          await supabase.from("allowed_owners").upsert({ email, role: $("acRole").value }, { onConflict: "email" });
+          await supabase.from("allowed_owners").upsert({ workspace_id: profile.workspace_id, email, role: $("acRole").value }, { onConflict: "workspace_id,email" });
           let note = "";
           try { const v = await sendInvite(email); note = v.already ? "Sign-in link sent ✓" : "Invite email sent ✓"; }
           catch (err) { note = "Invite email failed: " + err.message; }
@@ -4323,7 +4358,7 @@
     // Upload a file: storage first, data-URL fallback (landmine 3, cap ~5MB).
     async function uploadInvoiceFile(file) {
       if (!file) return null;
-      const path = "manual/" + Date.now() + "-" + Math.random().toString(36).slice(2, 8) + "-" + file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const path = profile.workspace_id + "/manual/" + Date.now() + "-" + Math.random().toString(36).slice(2, 8) + "-" + file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
       const { error } = await supabase.storage.from("invoices").upload(path, file, { contentType: file.type || undefined });
       if (!error) return "storage:" + path;
       if (file.size > 5 * 1024 * 1024) return null; // too big for a data-URL fallback

@@ -32,7 +32,7 @@ Deno.serve(async (req) => {
   const token = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
   if (token.length < 32) return json({ error: "Unauthorized" }, 401);
   const { data: sender } = await admin.from("mail_senders")
-    .select("entity_id").eq("sync_key", token).maybeSingle();
+    .select("entity_id, workspace_id").eq("sync_key", token).maybeSingle();
   if (!sender) return json({ error: "Unauthorized" }, 401);
 
   let body: { email?: unknown; name?: unknown; source?: unknown } = {};
@@ -46,7 +46,7 @@ Deno.serve(async (req) => {
     .select("id, unsubscribed_at, bounced_at, complaint_at")
     .eq("entity_id", sender.entity_id).eq("email", email).maybeSingle();
   if (!existing) {
-    await admin.from("mail_subscribers").insert({ entity_id: sender.entity_id, email, name, source });
+    await admin.from("mail_subscribers").insert({ workspace_id: sender.workspace_id, entity_id: sender.entity_id, email, name, source });
   } else if (existing.unsubscribed_at && !existing.bounced_at && !existing.complaint_at) {
     // Fresh signup = new consent; hard suppressions stay.
     await admin.from("mail_subscribers").update({ unsubscribed_at: null }).eq("id", existing.id);

@@ -89,7 +89,7 @@ Deno.serve(async (req) => {
   const token = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
   const { data: { user } } = await createClient(SUPABASE_URL, ANON).auth.getUser(token);
   if (!user) return json({ error: "Unauthorized" }, 401);
-  const { data: prof } = await admin.from("profiles").select("role,tabs,email").eq("id", user.id).single();
+  const { data: prof } = await admin.from("profiles").select("role,tabs,email,workspace_id").eq("id", user.id).single();
   let allowed = prof?.role === "admin" || (Array.isArray(prof?.tabs) && prof.tabs.includes("marketing"));
   if (!allowed && prof?.role) {
     const { data: r } = await admin.from("roles").select("tabs").eq("key", prof.role).maybeSingle();
@@ -101,6 +101,8 @@ Deno.serve(async (req) => {
   try { body = await req.json(); } catch (_) { /* below */ }
   const entityId = String(body.entity_id || "");
   if (!entityId) return json({ error: "No entity_id" }, 400);
+  const { data: unit } = await admin.from("ownership_entities").select("workspace_id").eq("id", entityId).maybeSingle();
+  if (!unit || unit.workspace_id !== prof?.workspace_id) return json({ error: "Unit not found" }, 404);
 
   const { data: sender } = await admin.from("mail_senders").select("*").eq("entity_id", entityId).maybeSingle();
 
@@ -131,7 +133,7 @@ Deno.serve(async (req) => {
   const fresh = [...byEmail.values()].filter((r) => !have.has(r!.email));
   let added = 0;
   for (let i = 0; i < fresh.length; i += 500) {
-    const chunk = fresh.slice(i, i + 500).map((r) => ({ entity_id: entityId, ...r! }));
+    const chunk = fresh.slice(i, i + 500).map((r) => ({ workspace_id: unit.workspace_id, entity_id: entityId, ...r! }));
     const { error } = await admin.from("mail_subscribers")
       .upsert(chunk, { onConflict: "entity_id,email", ignoreDuplicates: true });
     if (error) return json({ ok: false, error: "Insert failed: " + error.message, added }, 500);

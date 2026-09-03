@@ -17,6 +17,19 @@ shared UI components in `assets/js/`.
   (slate: bg #111111, panel #1a1a1a, accent #7c8493). New UI uses the
   variables, not hard-coded colors.
 
+## Tenancy
+
+Self-serve, multi-tenant since migration 0036: every domain table has a
+`workspace_id` that defaults to `public.current_workspace()` (the
+caller's `profiles.workspace_id`) and every policy is scoped to it, so
+client code never filters by workspace — RLS does. Role helpers
+(`is_admin()` …) answer for the caller's *current* workspace. Storage
+paths are `<workspace id>/…`. New tables: add `workspace_id uuid not
+null default public.current_workspace() references workspaces(id)` and
+wrap policies with `workspace_id = public.current_workspace()`.
+Service-role code (edge functions) must set `workspace_id` explicitly.
+See `docs/MULTI_TENANCY.md`.
+
 ## Versioning
 
 The portal shows a version badge (`.version-tag` in

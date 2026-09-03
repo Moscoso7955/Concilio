@@ -63,7 +63,7 @@ Deno.serve(async (req) => {
   const token = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
   const { data: { user } } = await createClient(SUPABASE_URL, ANON).auth.getUser(token);
   if (!user) return json({ error: "Unauthorized" }, 401);
-  const { data: prof } = await admin.from("profiles").select("role,email").eq("id", user.id).single();
+  const { data: prof } = await admin.from("profiles").select("role,email,workspace_id").eq("id", user.id).single();
   if (prof?.role !== "admin") return json({ error: "Admins only" }, 403);
 
   let distId = "";
@@ -71,10 +71,10 @@ Deno.serve(async (req) => {
   if (!distId) return json({ error: "No distribution id" }, 400);
 
   const { data: dist } = await admin.from("distributions").select("*").eq("id", distId).single();
-  if (!dist) return json({ error: "Distribution not found" }, 404);
+  if (!dist || dist.workspace_id !== prof?.workspace_id) return json({ error: "Distribution not found" }, 404);
   const [{ data: ents }, { data: edges }, { data: unit }] = await Promise.all([
-    admin.from("ownership_entities").select("id,name,kind,email"),
-    admin.from("ownership_edges").select("parent_id,child_id"),
+    admin.from("ownership_entities").select("id,name,kind,email").eq("workspace_id", dist.workspace_id),
+    admin.from("ownership_edges").select("parent_id,child_id").eq("workspace_id", dist.workspace_id),
     admin.from("ownership_entities").select("name").eq("id", dist.entity_id).single(),
   ]);
   const byId = new Map((ents || []).map((e) => [e.id, e]));

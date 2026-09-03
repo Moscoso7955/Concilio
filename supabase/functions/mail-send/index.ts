@@ -77,7 +77,7 @@ Deno.serve(async (req) => {
   const token = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
   const { data: { user } } = await createClient(SUPABASE_URL, ANON).auth.getUser(token);
   if (!user) return json({ error: "Unauthorized" }, 401);
-  const { data: prof } = await admin.from("profiles").select("role,tabs,email").eq("id", user.id).single();
+  const { data: prof } = await admin.from("profiles").select("role,tabs,email,workspace_id").eq("id", user.id).single();
   let allowed = prof?.role === "admin" || (Array.isArray(prof?.tabs) && prof.tabs.includes("marketing"));
   if (!allowed && prof?.role) {
     const { data: r } = await admin.from("roles").select("tabs").eq("key", prof.role).maybeSingle();
@@ -91,7 +91,7 @@ Deno.serve(async (req) => {
   if (!body.campaign_id) return json({ error: "No campaign_id" }, 400);
 
   const { data: camp } = await admin.from("mail_campaigns").select("*").eq("id", body.campaign_id).single();
-  if (!camp) return json({ error: "Campaign not found" }, 404);
+  if (!camp || camp.workspace_id !== prof?.workspace_id) return json({ error: "Campaign not found" }, 404);
   if (mode === "real" && camp.status === "sent") return json({ error: "This campaign was already sent." }, 409);
   const { data: sender } = await admin.from("mail_senders").select("*").eq("entity_id", camp.entity_id).maybeSingle();
   if (!sender) return json({ error: "No sender profile for this unit." }, 400);
@@ -175,7 +175,7 @@ Deno.serve(async (req) => {
       if (!res.ok) throw new Error(`batch HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
       sent += chunk.length;
       await admin.from("mail_deliveries").insert(
-        chunk.map((r) => ({ campaign_id: camp.id, entity_id: camp.entity_id, email: r.email })));
+        chunk.map((r) => ({ workspace_id: camp.workspace_id, campaign_id: camp.id, entity_id: camp.entity_id, email: r.email })));
     } catch (e) {
       failed += chunk.length;
       console.log("batch failed:", String((e as Error).message || e));

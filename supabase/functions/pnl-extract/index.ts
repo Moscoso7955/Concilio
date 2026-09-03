@@ -108,7 +108,7 @@ function buildContent(bytes: Uint8Array, mime: string): unknown[] {
   return [{ type: "text", text: `P&L contents:\n${text}` }];
 }
 
-async function extractPnl(bytes: Uint8Array, mime: string) {
+async function extractPnl(bytes: Uint8Array, mime: string, ws: string | null = null) {
   const content = [
     ...buildContent(bytes, mime),
     { type: "text", text: "Extract the monthly figures per the schema. Skip anything not clearly stated." },
@@ -139,8 +139,11 @@ async function extractPnl(bytes: Uint8Array, mime: string) {
 
   // Meter usage per tenant.
   try {
-    const { data: t } = await admin.from("tenants").select("id").order("created_at").limit(1).single();
+    const { data: t } = ws
+      ? await admin.from("tenants").select("id").eq("workspace_id", ws).order("created_at").limit(1).maybeSingle()
+      : { data: null };
     await admin.from("ai_usage").insert({
+      workspace_id: ws,
       tenant_id: t?.id ?? null,
       model: "claude-opus-4-8",
       input_tokens: data.usage?.input_tokens ?? null,
@@ -161,12 +164,14 @@ Deno.serve(async (req) => {
   const token = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
   const { data: { user } } = await createClient(SUPABASE_URL, ANON).auth.getUser(token);
   if (!user) return json({ error: "Unauthorized" }, 401);
+  const { data: callerProf } = await admin.from("profiles").select("workspace_id").eq("id", user.id).maybeSingle();
+  const ws: string | null = callerProf?.workspace_id ?? null;
   try {
     const form = await req.formData();
     const file = form.get("file") as File | null;
     if (!file) return json({ error: "No file provided" }, 400);
     const bytes = new Uint8Array(await file.arrayBuffer());
-    const months = await extractPnl(bytes, file.type || "application/octet-stream");
+    const months = await extractPnl(bytes, file.type || "application/octet-stream", ws);
     await dblog("extracted", { name: file.name, size: bytes.length, months });
     return json({ ok: true, months });
   } catch (e) {

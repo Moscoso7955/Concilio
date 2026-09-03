@@ -29,7 +29,7 @@ Deno.serve(async (req) => {
   const token = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
   const { data: { user } } = await createClient(SUPABASE_URL, ANON).auth.getUser(token);
   if (!user) return json({ error: "Unauthorized" }, 401);
-  const { data: prof } = await admin.from("profiles").select("role").eq("id", user.id).single();
+  const { data: prof } = await admin.from("profiles").select("role,workspace_id").eq("id", user.id).single();
   if (prof?.role !== "admin") return json({ error: "Admins only" }, 403);
 
   try {
@@ -39,7 +39,7 @@ Deno.serve(async (req) => {
 
     // Invites are only for people already granted access — otherwise the
     // signup trigger would reject them at the door anyway.
-    const { data: allowed } = await admin.from("allowed_owners").select("email").ilike("email", clean).maybeSingle();
+    const { data: allowed } = await admin.from("allowed_owners").select("email").eq("workspace_id", prof.workspace_id).ilike("email", clean).maybeSingle();
     if (!allowed) return json({ error: "Grant access first (add them to users), then invite." }, 400);
 
     const { error } = await admin.auth.admin.inviteUserByEmail(clean, { redirectTo: REDIRECT_TO });
