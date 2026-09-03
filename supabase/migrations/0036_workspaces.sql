@@ -504,6 +504,8 @@ begin
   end if;
 end $$;
 
+revoke execute on function public.set_member_role(text, text, jsonb) from public, anon;
+revoke execute on function public.remove_member(text) from public, anon;
 grant execute on function public.set_member_role(text, text, jsonb) to authenticated;
 grant execute on function public.remove_member(text) to authenticated;
 revoke execute on function public.provision_workspace(uuid, text, text) from public, anon, authenticated;
