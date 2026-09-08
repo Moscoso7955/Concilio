@@ -728,7 +728,7 @@
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.36.0 — schema migration 0036">v1.36.0</div>
+  <div class="version-tag" title="Owner Portal v1.36.1 — schema migration 0036">v1.36.1</div>
 
   <!-- Settings modal -->
   <div class="modal-overlay hidden" id="settingsModal">
@@ -2607,7 +2607,9 @@
           await loadQboStatus();
           await loadFinancials();
           renderQboBtn();
-          s.textContent = `Synced ${data.months} month${data.months === 1 ? "" : "s"} from QuickBooks ✓`;
+          s.textContent = data.sandbox
+            ? `Sandbox test OK — parsed ${data.months} month${data.months === 1 ? "" : "s"} (figures are not saved in sandbox mode)`
+            : `Synced ${data.months} month${data.months === 1 ? "" : "s"} from QuickBooks ✓`;
         }
       } catch (e) { s.textContent = "QuickBooks: " + (e.message || e); }
       b.disabled = false;

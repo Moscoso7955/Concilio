@@ -75,7 +75,18 @@ function walkRows(
       if (topSection) {
         walkRows(row.Rows.Row, topSection, null, months, lines, netByMonth);
       } else if (section) {
-        // A parent account nested inside a section.
+        // A parent account nested inside a section. QBO puts the
+        // parent's OWN transaction amounts on its header row (seen
+        // live: "Landscaping Services" carrying its own monthly
+        // figures above its children) — emit them as the
+        // parent-own-amount line (label AND group = parent).
+        if (headerName && row.Header?.ColData) {
+          for (const m of months) {
+            const amount = num(row.Header.ColData[m.idx]?.value);
+            if (!amount) continue;
+            (lines[m.period] ||= []).push({ section, label: headerName, amount: r2(amount), group: headerName });
+          }
+        }
         walkRows(row.Rows.Row, section, headerName || parent, months, lines, netByMonth);
       }
       continue;
@@ -151,8 +162,10 @@ Deno.serve(async (req) => {
   }
   const report = await rep.json();
 
-  // Month columns → period keys, from column metadata (fall back to title).
-  const cols = report?.Columns?.Col || [];
+  // Month columns → period keys, from column metadata (fall back to
+  // title). Live responses use Columns.Column; docs say Columns.Col —
+  // accept both.
+  const cols = report?.Columns?.Column || report?.Columns?.Col || [];
   const months: { idx: number; period: string }[] = [];
   for (let i = 0; i < cols.length; i++) {
     const c = cols[i];
@@ -210,6 +223,15 @@ Deno.serve(async (req) => {
     });
   }
   if (!rows.length) return json({ error: "No monthly figures found in the QuickBooks report." }, 502);
+
+  // Sandbox mode proves the pipe but NEVER writes: a test company's
+  // figures must not overwrite a real venue's books.
+  if (QBO_ENV === "sandbox") {
+    try {
+      await admin.from("function_logs").insert({ fn: "qbo-sync", msg: "sandbox dry-run", detail: { entity: entityId, months: rows.length, from: rows[0].period, to: rows[rows.length - 1].period } });
+    } catch (_) { /* best effort */ }
+    return json({ ok: true, sandbox: true, months: rows.length, from: rows[0].period, to: rows[rows.length - 1].period });
+  }
 
   const { error } = await admin.from("financials").upsert(rows, { onConflict: "entity_id,period" });
   if (error) return json({ error: "Saving figures failed: " + error.message }, 500);
