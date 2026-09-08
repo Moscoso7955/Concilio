@@ -162,7 +162,29 @@ Deno.serve(async (req) => {
     if (isNaN(d.getTime())) continue;
     months.push({ idx: i, period: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01` });
   }
-  if (!months.length) return json({ error: "QuickBooks returned no monthly columns — is there any data this year?" }, 502);
+  if (!months.length) {
+    // Self-diagnosing: record exactly what came back so the parser can
+    // be tuned from function_logs without guessing.
+    const rowCount = (report?.Rows?.Row || []).length;
+    try {
+      await admin.from("function_logs").insert({
+        fn: "qbo-sync", msg: "no monthly columns",
+        detail: {
+          entity: entityId,
+          range: { start, end },
+          header: report?.Header ?? null,
+          columns: cols.map((c: { ColTitle?: string; ColType?: string; MetaData?: unknown }) => ({ title: c?.ColTitle, type: c?.ColType, meta: c?.MetaData })),
+          rowCount,
+          topKeys: Object.keys(report || {}),
+        },
+      });
+    } catch (_) { /* best effort */ }
+    return json({
+      error: rowCount === 0
+        ? "QuickBooks returned an empty report for this year — does the company have any transactions since Jan 1?"
+        : "QuickBooks returned no monthly columns (diagnostics logged) — sync again after the fix or ping Claude.",
+    }, 502);
+  }
 
   const lines: Record<string, Line[]> = {};
   const netByMonth: Record<string, number> = {};
