@@ -117,6 +117,30 @@ things set up once:
    are never mailed again; unsubscribes are handled automatically by
    the per-recipient link and are permanent.
 
+## QuickBooks sync (per-unit P&L pull)
+
+Each unit can link to its own QuickBooks Online company; "Sync from
+QBO" on the unit's Add/update-a-month card then pulls the YTD P&L by
+month straight from the Reports API (exact figures + full line detail;
+notes preserved). One-time setup:
+
+1. **Intuit developer app** (developer.intuit.com → Create an app →
+   QuickBooks Online, Accounting scope). Under the app's Keys &
+   credentials, add the redirect URI EXACTLY:
+   `<SUPABASE_URL>/functions/v1/qbo-callback`.
+   Sandbox keys work immediately (set the `QBO_ENV=sandbox` function
+   secret to test against a sandbox company); connecting REAL company
+   files needs the app's production keys, which Intuit gates behind
+   its app-assessment questionnaire on the same page.
+2. **Function secrets** (Supabase → Edge Functions → Secrets):
+   `QBO_CLIENT_ID`, `QBO_CLIENT_SECRET` (and `QBO_ENV=sandbox` while
+   testing; unset/`production` for real books).
+3. **Per unit:** open the unit in Reports → **Connect QBO…** → sign in
+   and pick that venue's company → back in the portal the button flips
+   to **Sync from QBO**. Tokens live server-side only (RLS denies all
+   client access; Intuit's rotating refresh tokens are persisted on
+   every sync — a unit re-prompts to connect if unused for ~100 days).
+
 Warm-up is built in (per-venue toggle on the sender profile, ON by
 default): daily send caps ramp with the venue's lifetime delivered
 volume — 150/day until 500 delivered, then 400/day to 2,000, then

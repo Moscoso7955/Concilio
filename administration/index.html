@@ -418,11 +418,13 @@
           <div class="field" style="margin-top:0.75rem;"><label>Notes</label><input type="text" id="fin_notes" placeholder="Optional"></div>
           <div class="row" style="align-items:center;">
             <button class="btn" id="finSaveBtn" style="flex:0 0 auto;">Save month</button>
+            <button class="btn btn--ghost" id="qboSyncBtn" style="flex:0 0 auto;">Sync from QBO</button>
             <button class="btn btn--ghost" id="finAiBtn" style="flex:0 0 auto;">Import P&amp;L…</button>
             <input type="file" class="file-input" id="finAiInput" accept=".pdf,image/*,.csv,.txt,.xlsx,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" multiple>
             <span class="muted" id="finFormStatus"></span>
           </div>
-          <p class="muted" style="margin-top:0.5rem;"><strong>Import P&amp;L</strong> takes P&amp;L exports (PDF, image, or spreadsheet) — select one file or several. AI reads across them, splits out each month's revenue and expenses, and imports them to this unit. A single month prefills the form for review; several save directly.</p>
+          <p class="muted" id="qboStatusLine" style="margin-top:0.5rem;"></p>
+          <p class="muted" style="margin-top:0.5rem;"><strong>Sync from QBO</strong> pulls this unit's year-to-date P&amp;L by month straight from its linked QuickBooks company — exact figures, notes preserved. <strong>Import P&amp;L</strong> takes P&amp;L exports (PDF, image, or spreadsheet); AI reads across them and imports each month.</p>
         </div>
 
         <div class="section-card" id="distCard">
@@ -726,7 +728,7 @@
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.35.3 — schema migration 0035">v1.35.3</div>
+  <div class="version-tag" title="Owner Portal v1.36.0 — schema migration 0036">v1.36.0</div>
 
   <!-- Settings modal -->
   <div class="modal-overlay hidden" id="settingsModal">
@@ -1085,6 +1087,8 @@
         case "mail_sync": return `Synced ${eh(d.unit || "")} mailing list (${Number(d.fetched) || 0} fetched, ${Number(d.added) || 0} new)`;
         case "mail_send": return `Sent campaign <strong>${eh(d.subject || "")}</strong> to ${Number(d.sent) || 0} subscribers · ${eh(d.unit || "")}`;
         case "mail_brand": return `Updated ${eh(d.unit || "a venue")}'s email branding`;
+        case "qbo_connect": return `Linked ${eh(d.unit || "a unit")} to QuickBooks`;
+        case "qbo_sync": return `Synced ${Number(d.months) || "?"} month(s) from QuickBooks${unit}`;
         default: return eh(r.event || "activity");
       }
     }
@@ -1434,7 +1438,7 @@
       if (tabs.includes("documents")) loadDocuments();
       if (tabs.includes("invoices")) loadInvoices();
       if (tabs.includes("marketing")) loadMail();
-      if (isAdmin()) loadSite();
+      if (isAdmin()) { loadSite(); loadQboStatus(); }
       // One sign-in event per browser session, not per reload.
       try {
         if (!sessionStorage.getItem("callidus_logged_in")) {
@@ -1753,6 +1757,7 @@
       let canEdit = (isAdmin() && !repViewAs) || managesUnit(repUnit);
       document.querySelectorAll('[data-panel="financials"] .admin-only').forEach((el) => show(el, canEdit));
       $("repUnitName").textContent = u.name;
+      renderQboBtn();
       document.querySelectorAll('[data-panel="financials"] .table-wrap').forEach((w) => w.scrollLeft = 0);
       const rows = repFinInRange().filter((r) => r.entity_id === repUnit);
       // Mirrored units live on a partner portal — figures arrive via
@@ -2546,6 +2551,66 @@
       st.textContent = degraded ? "Saved — run migration 0008 for per-unit data" : "Saved ✓";
       logAccess("fin_save", { unit: (repUnits.find((x) => x.id === repUnit)?.name || "unit"), period: m });
       loadFinancials();
+    });
+
+    /* ---- QuickBooks sync: each unit links to its own QBO company;
+       Sync pulls the YTD-by-month P&L via the qbo-sync function. ---- */
+    let qboStatusMap = {};
+    async function loadQboStatus() {
+      if (!isAdmin()) return;
+      try {
+        const { data, error } = await supabase.rpc("qbo_status");
+        if (!error && Array.isArray(data)) {
+          qboStatusMap = {};
+          for (const r of data) qboStatusMap[r.entity_id] = r;
+        }
+      } catch (_) { /* pre-0036 */ }
+    }
+    function renderQboBtn() {
+      const b = $("qboSyncBtn"); if (!b) return;
+      const st = qboStatusMap[repUnit];
+      b.textContent = st?.connected ? "Sync from QBO" : "Connect QBO…";
+      $("qboStatusLine").textContent = st?.connected
+        ? `QuickBooks: ${st.company_name || "connected"}${st.last_synced_at ? ` · last synced ${new Date(st.last_synced_at).toLocaleString()}` : " · never synced"}`
+        : "";
+    }
+    $("qboSyncBtn")?.addEventListener("click", async () => {
+      const b = $("qboSyncBtn"), s = $("finFormStatus");
+      if (!repUnit) { s.textContent = "Open a unit first."; return; }
+      const uName = repUnits.find((x) => x.id === repUnit)?.name || "this unit";
+      b.disabled = true;
+      try {
+        if (!qboStatusMap[repUnit]?.connected) {
+          s.textContent = "Opening QuickBooks…";
+          const res = await fetch(cfg.SUPABASE_URL + "/functions/v1/qbo-connect", {
+            method: "POST", headers: await mailFnHeaders(), body: JSON.stringify({ entity_id: repUnit }),
+          });
+          const data = await res.json();
+          if (!res.ok || data.ok === false) throw new Error(data.error || ("HTTP " + res.status));
+          window.open(data.url, "_blank", "noopener");
+          s.textContent = "Finish the QuickBooks sign-in in the new tab — this button flips to Sync when it's linked.";
+          logAccess("qbo_connect", { unit: uName });
+          let tries = 0;
+          const poll = setInterval(async () => {
+            await loadQboStatus(); renderQboBtn();
+            if (qboStatusMap[repUnit]?.connected) { s.textContent = "QuickBooks linked ✓ — click Sync from QBO."; clearInterval(poll); }
+            else if (++tries > 45) clearInterval(poll);
+          }, 4000);
+        } else {
+          s.textContent = "Pulling YTD P&L from QuickBooks…";
+          const res = await fetch(cfg.SUPABASE_URL + "/functions/v1/qbo-sync", {
+            method: "POST", headers: await mailFnHeaders(), body: JSON.stringify({ entity_id: repUnit }),
+          });
+          const data = await res.json();
+          if (!res.ok || data.ok === false) throw new Error(data.error || ("HTTP " + res.status));
+          logAccess("qbo_sync", { unit: uName, months: data.months });
+          await loadQboStatus();
+          await loadFinancials();
+          renderQboBtn();
+          s.textContent = `Synced ${data.months} month${data.months === 1 ? "" : "s"} from QuickBooks ✓`;
+        }
+      } catch (e) { s.textContent = "QuickBooks: " + (e.message || e); }
+      b.disabled = false;
     });
 
     // AI-read P&L exports (PDF/image/spreadsheet) into monthly figures.
