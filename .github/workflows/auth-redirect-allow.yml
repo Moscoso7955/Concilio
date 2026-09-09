@@ -1,0 +1,45 @@
+name: Add auth redirect URL
+
+# Appends a URL to the project's auth redirect allowlist (GoTrue
+# uri_allow_list) via the Supabase Management API — used to authorize
+# alternate portal domains (e.g. the *.vercel.app mirror) for magic-link
+# sign-in without touching the dashboard. Idempotent: an already-listed
+# URL is left alone. Manual dispatch only.
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: Redirect URL to allow (globs OK, e.g. https://callidus-coming-soon.vercel.app/**)
+        required: true
+        type: string
+
+jobs:
+  allow:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Append to uri_allow_list via Management API
+        env:
+          TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          REF: ${{ vars.SUPABASE_PROJECT_REF || 'ofliuuulagqlbdjwrnjc' }}
+          URL: ${{ inputs.url }}
+        run: |
+          code=$(curl -s -o /tmp/auth.json -w "%{http_code}" \
+            "https://api.supabase.com/v1/projects/$REF/config/auth" \
+            -H "Authorization: Bearer $TOKEN")
+          [ "$code" = "200" ] || { echo "::error::Config read failed (HTTP $code)"; exit 1; }
+          current=$(jq -r '.uri_allow_list // ""' /tmp/auth.json)
+          echo "Current allowlist: $current"
+          case ",$current," in
+            *",$URL,"*) echo "Already allowed — nothing to do."; exit 0 ;;
+          esac
+          if [ -z "$current" ]; then new="$URL"; else new="$current,$URL"; fi
+          jq -n --arg v "$new" '{uri_allow_list: $v}' > /tmp/patch.json
+          code=$(curl -s -o /tmp/resp.json -w "%{http_code}" -X PATCH \
+            "https://api.supabase.com/v1/projects/$REF/config/auth" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/json" \
+            --data @/tmp/patch.json)
+          echo "HTTP $code"
+          jq -r '.uri_allow_list // empty' /tmp/resp.json
+          [ "$code" -ge 200 ] && [ "$code" -lt 300 ]

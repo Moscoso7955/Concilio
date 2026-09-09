@@ -23,11 +23,27 @@ const admin = createClient(SUPABASE_URL, SERVICE, { auth: { persistSession: fals
 
 const SITE_URL = Deno.env.get("SITE_URL") || "https://callidusco.com";
 
-const done = (outcome: string, entity?: string | null, company?: string | null) => {
+// qbo-connect appends the starting portal origin to the state
+// (base64url after the nonce) so the browser returns to the SAME
+// domain it left — canonical or the *.vercel.app mirror. Anything
+// unparseable or untrusted falls back to SITE_URL.
+const portalOrigin = (state: string) => {
+  try {
+    const b64 = state.split(".")[1];
+    if (b64) {
+      const pad = b64 + "=".repeat((4 - (b64.length % 4)) % 4);
+      const o = atob(pad.replace(/-/g, "+").replace(/_/g, "/"));
+      if (o === SITE_URL || /^https:\/\/[a-z0-9-]+\.vercel\.app$/.test(o)) return o;
+    }
+  } catch (_) { /* fall through */ }
+  return SITE_URL;
+};
+
+const done = (base: string, outcome: string, entity?: string | null, company?: string | null) => {
   const p = new URLSearchParams({ qbo: outcome });
   if (entity) p.set("u", entity);
   if (company) p.set("c", company);
-  return new Response(null, { status: 303, headers: { Location: `${SITE_URL}/administration/?${p}` } });
+  return new Response(null, { status: 303, headers: { Location: `${base}/administration/?${p}` } });
 };
 
 Deno.serve(async (req) => {
@@ -35,13 +51,14 @@ Deno.serve(async (req) => {
   const code = url.searchParams.get("code") || "";
   const state = url.searchParams.get("state") || "";
   const realmId = url.searchParams.get("realmId") || "";
-  if (url.searchParams.get("error")) return done("cancel");
-  if (!code || !state || !realmId) return done("invalid");
+  const back = portalOrigin(state);
+  if (url.searchParams.get("error")) return done(back, "cancel");
+  if (!code || !state || !realmId) return done(back, "invalid");
 
   const cutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
   const { data: conn } = await admin.from("qbo_connections")
     .select("entity_id, state_created_at").eq("state_nonce", state).gte("state_created_at", cutoff).maybeSingle();
-  if (!conn) return done("expired");
+  if (!conn) return done(back, "expired");
 
   const res = await fetch("https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer", {
     method: "POST",
@@ -59,7 +76,7 @@ Deno.serve(async (req) => {
   if (!res.ok) {
     const detail = (await res.text()).slice(0, 300);
     try { await admin.from("function_logs").insert({ fn: "qbo-callback", msg: "token exchange failed", detail: { status: res.status, detail } }); } catch (_) { /* best effort */ }
-    return done("failed");
+    return done(back, "failed");
   }
   const tok = await res.json();
 
@@ -83,5 +100,5 @@ Deno.serve(async (req) => {
   }).eq("entity_id", conn.entity_id);
   try { await admin.from("function_logs").insert({ fn: "qbo-callback", msg: "connected", detail: { entity: conn.entity_id, realm: realmId, company: companyName } }); } catch (_) { /* best effort */ }
 
-  return done("ok", conn.entity_id, companyName);
+  return done(back, "ok", conn.entity_id, companyName);
 });

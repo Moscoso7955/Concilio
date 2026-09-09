@@ -11,7 +11,15 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const ANON = Deno.env.get("SUPABASE_ANON_KEY")!;
 const QBO_CLIENT_ID = Deno.env.get("QBO_CLIENT_ID") || "";
+const SITE_URL = Deno.env.get("SITE_URL") || "https://callidusco.com";
 const admin = createClient(SUPABASE_URL, SERVICE, { auth: { persistSession: false } });
+
+// The portal origin that started the flow rides along inside the OAuth
+// state (base64url after the nonce) so qbo-callback can land the
+// browser back on the SAME portal domain — the canonical one or the
+// *.vercel.app mirror. Only trusted origins ride along.
+const okOrigin = (o: string) => o === SITE_URL || /^https:\/\/[a-z0-9-]+\.vercel\.app$/.test(o);
+const b64url = (s: string) => btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -40,8 +48,10 @@ Deno.serve(async (req) => {
   if (!ent) return json({ error: "Unknown unit" }, 404);
 
   const nonce = crypto.randomUUID() + crypto.randomUUID().replace(/-/g, "");
+  const origin = req.headers.get("Origin") || "";
+  const state = okOrigin(origin) ? `${nonce}.${b64url(origin)}` : nonce;
   const { error } = await admin.from("qbo_connections").upsert({
-    entity_id: entityId, state_nonce: nonce, state_created_at: new Date().toISOString(),
+    entity_id: entityId, state_nonce: state, state_created_at: new Date().toISOString(),
   }, { onConflict: "entity_id" });
   if (error) return json({ error: error.message }, 500);
 
@@ -50,7 +60,7 @@ Deno.serve(async (req) => {
     scope: "com.intuit.quickbooks.accounting",
     redirect_uri: `${SUPABASE_URL}/functions/v1/qbo-callback`,
     response_type: "code",
-    state: nonce,
+    state,
   });
   return json({ ok: true, url: `https://appcenter.intuit.com/connect/oauth2?${params}` });
 });
