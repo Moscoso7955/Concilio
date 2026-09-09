@@ -728,7 +728,7 @@
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.36.2 — schema migration 0036">v1.36.2</div>
+  <div class="version-tag" title="Owner Portal v1.36.3 — schema migration 0036">v1.36.3</div>
 
   <!-- Settings modal -->
   <div class="modal-overlay hidden" id="settingsModal">
@@ -1434,7 +1434,7 @@
       // .tab styled but carry data-stab, not data-tab.
       document.querySelectorAll(".tab[data-tab]").forEach((b) => show(b, tabs.includes(b.dataset.tab)));
       restoreTab(); // land on the tab the user was on before the reload
-      loadFinancials(); loadMemos();
+      const finReady = loadFinancials(); loadMemos();
       if (tabs.includes("documents")) loadDocuments();
       if (tabs.includes("invoices")) loadInvoices();
       if (tabs.includes("marketing")) loadMail();
@@ -1455,6 +1455,29 @@
         const e = $("repUnitsEmpty"); if (e) e.textContent = "You don't have ownership in any units yet — contact your administrator.";
       }
       loadGraph();
+
+      // Returning from the same-window QuickBooks sign-in (?qbo=…, set
+      // by the qbo-callback redirect): reopen the unit's Reports view
+      // and surface the outcome instead of a standalone page.
+      const qp = new URLSearchParams(location.search);
+      const qboBack = qp.get("qbo");
+      if (qboBack) {
+        const qboUnit = qp.get("u"), qboComp = qp.get("c");
+        try { history.replaceState(null, "", location.pathname); } catch (_) {}
+        activateTab("financials");
+        try { localStorage.setItem("callidus_tab", "financials"); } catch (_) {}
+        finReady.then(async () => {
+          if (isAdmin()) await loadQboStatus();
+          if (qboUnit && repUnits.some((x) => x.id === qboUnit)) { repUnit = qboUnit; renderUnitView(); }
+          const s = $("finFormStatus");
+          if (s) s.textContent = {
+            ok: `QuickBooks connected ✓ — ${qboComp || "the company"} is linked. Click “Sync from QBO”.`,
+            cancel: "QuickBooks connection cancelled — no changes were made.",
+            expired: "QuickBooks link expired — click Connect QBO to try again.",
+            failed: "QuickBooks did not accept the sign-in — click Connect QBO to try again.",
+          }[qboBack] || "QuickBooks link was incomplete — click Connect QBO to try again.";
+        });
+      }
     }
 
     /* ---------------- Tabs (active tab survives reload) ---------------- */
@@ -2587,15 +2610,12 @@
           });
           const data = await res.json();
           if (!res.ok || data.ok === false) throw new Error(data.error || ("HTTP " + res.status));
-          window.open(data.url, "_blank", "noopener");
-          s.textContent = "Finish the QuickBooks sign-in in the new tab — this button flips to Sync when it's linked.";
           logAccess("qbo_connect", { unit: uName });
-          let tries = 0;
-          const poll = setInterval(async () => {
-            await loadQboStatus(); renderQboBtn();
-            if (qboStatusMap[repUnit]?.connected) { s.textContent = "QuickBooks linked ✓ — click Sync from QBO."; clearInterval(poll); }
-            else if (++tries > 45) clearInterval(poll);
-          }, 4000);
+          s.textContent = "Taking you to the QuickBooks sign-in…";
+          // Same-window sign-in; the callback lands back on this unit's
+          // Reports view (?qbo=… handled in enterApp).
+          location.href = data.url;
+          return;
         } else {
           s.textContent = "Pulling YTD P&L from QuickBooks…";
           const res = await fetch(cfg.SUPABASE_URL + "/functions/v1/qbo-sync", {

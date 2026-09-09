@@ -1,12 +1,13 @@
 // Intuit OAuth redirect URI. Public GET: validates the one-time state
 // nonce written by qbo-connect (15-minute window), exchanges the code
 // for tokens, records the company's realm + name on the unit's
-// connection row, and sends the browser to the static outcome page.
-// The nonce is the credential — a request without a matching fresh
-// nonce stores nothing. verify_jwt = FALSE.
+// connection row, and sends the browser back into the portal. The
+// nonce is the credential — a request without a matching fresh nonce
+// stores nothing. verify_jwt = FALSE.
 //
-// The outcome is a 303 redirect to /administration/qbo-done.html, NOT
-// HTML rendered here: the functions gateway rewrites responses to
+// The outcome is a 303 redirect to /administration/?qbo=… (the portal
+// reopens the unit's Reports view and shows the result), NOT HTML
+// rendered here: the functions gateway rewrites text/html responses to
 // text/plain (confirmed in edge logs), so a served page displays as
 // raw source in the browser.
 
@@ -22,10 +23,11 @@ const admin = createClient(SUPABASE_URL, SERVICE, { auth: { persistSession: fals
 
 const SITE_URL = Deno.env.get("SITE_URL") || "https://callidusco.com";
 
-const done = (outcome: string, company?: string | null) => {
-  const p = new URLSearchParams({ t: outcome });
+const done = (outcome: string, entity?: string | null, company?: string | null) => {
+  const p = new URLSearchParams({ qbo: outcome });
+  if (entity) p.set("u", entity);
   if (company) p.set("c", company);
-  return new Response(null, { status: 303, headers: { Location: `${SITE_URL}/administration/qbo-done.html?${p}` } });
+  return new Response(null, { status: 303, headers: { Location: `${SITE_URL}/administration/?${p}` } });
 };
 
 Deno.serve(async (req) => {
@@ -81,5 +83,5 @@ Deno.serve(async (req) => {
   }).eq("entity_id", conn.entity_id);
   try { await admin.from("function_logs").insert({ fn: "qbo-callback", msg: "connected", detail: { entity: conn.entity_id, realm: realmId, company: companyName } }); } catch (_) { /* best effort */ }
 
-  return done("ok", companyName);
+  return done("ok", conn.entity_id, companyName);
 });
