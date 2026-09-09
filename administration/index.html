@@ -145,6 +145,21 @@
     .tabchip input { display: none; }
     .tabchip:has(input:checked) { color: var(--text); border-color: var(--accent); background: rgba(124, 132, 147, 0.16); }
     .su-actions { display: flex; align-items: center; gap: 0.45rem; flex-wrap: wrap; }
+    /* Users list: one quiet row per person; click to expand the editor. */
+    .su-row { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 0.45rem; overflow: hidden; }
+    .su-head { display: flex; align-items: center; gap: 0.6rem; width: 100%; padding: 0.65rem 0.9rem; background: none; border: 0; color: var(--text); font: inherit; cursor: pointer; text-align: left; }
+    .su-head:hover { background: var(--panel-2); }
+    .su-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .su-mail { color: var(--muted); font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .su-spacer { flex: 1; }
+    .su-rolechip { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); border: 1px solid var(--border); border-radius: 999px; padding: 0.12rem 0.5rem; background: var(--panel-2); flex: 0 0 auto; }
+    .su-rolechip--admin { color: var(--text); border-color: var(--accent); }
+    .su-dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; }
+    .su-dot--on { background: #5da97f; }
+    .su-dot--off { background: none; border: 1.5px solid var(--muted); }
+    .su-caret { color: var(--muted); font-size: 0.65rem; flex: 0 0 auto; transition: transform 0.15s; }
+    .su-row.open .su-caret { transform: rotate(90deg); }
+    .su-body { padding: 0.15rem 0.9rem 0.9rem; border-top: 1px solid var(--border); }
     .pill--unpaid { color: #fbbf24; border-color: #b4790f; }
     .pill--paid { color: #a3a9b3; border-color: #4a4f58; }
     .dup-tag { color: #fca5a5; border: 1px solid var(--danger); border-radius: 6px; font-size: 0.68rem; padding: 0.05rem 0.35rem; margin-left: 0.4rem; }
@@ -730,7 +745,7 @@
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.36.7 — schema migration 0036">v1.36.7</div>
+  <div class="version-tag" title="Owner Portal v1.36.8 — schema migration 0036">v1.36.8</div>
 
   <!-- Settings modal -->
   <div class="modal-overlay hidden" id="settingsModal">
@@ -1159,13 +1174,18 @@
           : (Array.isArray(roleTabs) && roleTabs.length ? roleTabs : (ROLE_DEFAULT_TABS[r.role] || null));
         const checks = TAB_META.map(([k, label]) =>
           `<label class="tabchip"><input type="checkbox" data-sutab="${i}" value="${k}"${!tabs || tabs.includes(k) ? " checked" : ""}> ${label}</label>`).join("");
-        return `<div class="section-card" style="margin-bottom:0.75rem;padding:1rem;" data-surow="${i}" data-suemail="${escapeHtml(r.email)}">
-          <div style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;">
-            <strong>${escapeHtml(r.email)}</strong>
-            ${who ? `<span class="muted">${escapeHtml(who)}</span>` : ""}
-            ${b ? `<span class="badge">in ownership graph</span>` : ""}
-            <span class="badge${signedUp ? " badge--admin" : ""}">${signedUp ? "signed up" : "invited — hasn't signed in"}</span>
-          </div>
+        const roleName = roleRows.find((ro) => ro.key === r.role)?.name || r.role;
+        return `<div class="su-row" data-surow="${i}" data-suemail="${escapeHtml(r.email)}">
+          <button type="button" class="su-head" data-sutoggle="${i}">
+            <span class="su-dot ${signedUp ? "su-dot--on" : "su-dot--off"}" title="${signedUp ? "Signed up" : "Invited — hasn't signed in yet"}"></span>
+            <span class="su-name">${escapeHtml(who || r.email)}</span>
+            ${who ? `<span class="su-mail">${escapeHtml(r.email)}</span>` : ""}
+            <span class="su-spacer"></span>
+            <span class="su-rolechip${r.role === "admin" ? " su-rolechip--admin" : ""}">${escapeHtml(roleName)}</span>
+            <span class="su-caret">▶</span>
+          </button>
+          <div class="su-body hidden" data-subody="${i}">
+          <div class="muted" style="font-size:0.78rem;margin-top:0.5rem;">${signedUp ? "Signed up" : "Invited — hasn't signed in yet"}${b ? " · linked to an ownership box" : ""}</div>
           <div class="su-actions" style="margin-top:0.6rem;">
             <select data-surole="${i}" class="inline-select" style="padding:0.4rem 0.5rem;">
               ${roleRows.map((ro) => `<option value="${escapeHtml(ro.key)}"${r.role === ro.key ? " selected" : ""}>${escapeHtml(ro.name)}</option>`).join("")}
@@ -1195,8 +1215,18 @@
               <div class="muted" style="margin-top:0.3rem;font-size:0.78rem;">Saved by the Save button above. Assign their units in Ownership → open a unit box → Managed by.</div>
             </div>`;
           })() : ""}
+          </div>
         </div>`;
       }).join("");
+
+      // One editor open at a time keeps the list scannable.
+      box.querySelectorAll("[data-sutoggle]").forEach((h) => h.addEventListener("click", () => {
+        const body = box.querySelector(`[data-subody="${h.dataset.sutoggle}"]`);
+        const wasOpen = !body.classList.contains("hidden");
+        box.querySelectorAll("[data-subody]").forEach((b2) => b2.classList.add("hidden"));
+        box.querySelectorAll(".su-row.open").forEach((r2) => r2.classList.remove("open"));
+        if (!wasOpen) { body.classList.remove("hidden"); h.closest(".su-row").classList.add("open"); }
+      }));
 
       box.querySelectorAll("[data-surole]").forEach((sel) => sel.addEventListener("change", () => {
         const i = sel.dataset.surole;
