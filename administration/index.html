@@ -426,7 +426,11 @@
 
         <div class="banner-info hidden" id="finMirrorNote"></div>
         <div class="section-card admin-only hidden" id="finAddCard">
-          <h2>Add / update a month</h2>
+          <h2 id="finFormHead" style="cursor:pointer;display:flex;align-items:center;gap:0.55rem;">
+            <span class="su-caret" id="finFormCaret">▼</span>Add / update a month
+            <span class="muted" id="finFormHeadHint" style="font-weight:400;font-size:0.82rem;"></span>
+          </h2>
+          <div id="finFormBody">
           <div class="row">
             <div><label>Month</label><div id="fin_period_mount"></div></div>
             <div><label>Revenue</label><input type="number" step="0.01" id="fin_revenue" placeholder="0.00"></div>
@@ -442,6 +446,7 @@
           </div>
           <p class="muted" id="qboStatusLine" style="margin-top:0.5rem;"></p>
           <p class="muted" style="margin-top:0.5rem;"><strong>Sync from QBO</strong> pulls this unit's year-to-date P&amp;L by month straight from its linked QuickBooks company — exact figures, notes preserved. <strong>Import P&amp;L</strong> takes P&amp;L exports (PDF, image, or spreadsheet); AI reads across them and imports each month.</p>
+          </div>
         </div>
 
         <div class="section-card" id="distCard">
@@ -745,7 +750,7 @@
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.36.8 — schema migration 0036">v1.36.8</div>
+  <div class="version-tag" title="Owner Portal v1.36.9 — schema migration 0036">v1.36.9</div>
 
   <!-- Settings modal -->
   <div class="modal-overlay hidden" id="settingsModal">
@@ -1501,6 +1506,7 @@
         finReady.then(async () => {
           if (isAdmin()) await loadQboStatus();
           if (qboUnit && repUnits.some((x) => x.id === qboUnit)) { repUnit = qboUnit; renderUnitView(); }
+          setFinFormCollapsed(false); // surface the outcome + Sync button
           const s = $("finFormStatus");
           if (s) s.textContent = {
             ok: `QuickBooks connected ✓ — ${qboComp || "the company"} is linked. Click “Sync from QBO”.`,
@@ -2658,7 +2664,22 @@
       $("qboStatusLine").textContent = st?.connected
         ? `QuickBooks: ${st.company_name || "connected"}${st.last_synced_at ? ` · last synced ${new Date(st.last_synced_at).toLocaleString()}` : " · never synced"}`
         : "";
+      // A QBO-linked unit gets its figures from sync, so the manual
+      // entry card starts collapsed for it (per unit, until toggled).
+      if (repUnit !== finFormCardUnit) { finFormCardUnit = repUnit; setFinFormCollapsed(!!st?.connected); }
     }
+    let finFormCardUnit = null;
+    function setFinFormCollapsed(collapsed) {
+      const body = $("finFormBody"); if (!body) return;
+      show(body, !collapsed);
+      $("finFormCaret").textContent = collapsed ? "▶" : "▼";
+      const st = qboStatusMap[repUnit];
+      $("finFormHeadHint").textContent = collapsed && st?.connected
+        ? `QuickBooks: ${st.company_name || "connected"}${st.last_synced_at ? ` · synced ${new Date(st.last_synced_at).toLocaleString()}` : ""}`
+        : "";
+    }
+    $("finFormHead")?.addEventListener("click", () =>
+      setFinFormCollapsed(!$("finFormBody").classList.contains("hidden")));
     $("qboSyncBtn")?.addEventListener("click", async () => {
       const b = $("qboSyncBtn"), s = $("finFormStatus");
       if (!repUnit) { s.textContent = "Open a unit first."; return; }
