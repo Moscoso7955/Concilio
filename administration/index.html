@@ -387,6 +387,8 @@
     <section class="tab-panel" data-panel="financials">
       <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;margin-bottom:0.9rem;">
         <div id="repRangePicker"></div>
+        <button class="btn btn--ghost" id="qboSyncAllBtn" hidden>Sync all connected units</button>
+        <span class="muted" id="qboSyncAllStatus" style="font-size:0.85rem;"></span>
       </div>
       <!-- GROUP VIEW: whole-group panes on top, units below -->
       <div id="repGroupView">
@@ -728,7 +730,7 @@
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.36.5 — schema migration 0036">v1.36.5</div>
+  <div class="version-tag" title="Owner Portal v1.36.6 — schema migration 0036">v1.36.6</div>
 
   <!-- Settings modal -->
   <div class="modal-overlay hidden" id="settingsModal">
@@ -2588,7 +2590,37 @@
           for (const r of data) qboStatusMap[r.entity_id] = r;
         }
       } catch (_) { /* pre-0036 */ }
+      const all = $("qboSyncAllBtn");
+      if (all) show(all, isAdmin() && Object.values(qboStatusMap).some((s) => s.connected));
     }
+    // One click pulls the YTD P&L for every QBO-connected unit, one at
+    // a time (kind to Intuit's rate limits, readable progress).
+    $("qboSyncAllBtn")?.addEventListener("click", async () => {
+      const b = $("qboSyncAllBtn"), s = $("qboSyncAllStatus");
+      const ids = Object.keys(qboStatusMap).filter((id) => qboStatusMap[id].connected);
+      if (!ids.length) return;
+      const nameOf = (id) => repUnits.find((x) => x.id === id)?.name || qboStatusMap[id].company_name || "unit";
+      b.disabled = true;
+      const failed = [];
+      for (let i = 0; i < ids.length; i++) {
+        s.textContent = `Syncing ${nameOf(ids[i])} (${i + 1}/${ids.length})…`;
+        try {
+          const res = await fetch(cfg.SUPABASE_URL + "/functions/v1/qbo-sync", {
+            method: "POST", headers: await mailFnHeaders(), body: JSON.stringify({ entity_id: ids[i] }),
+          });
+          const data = await res.json();
+          if (!res.ok || data.ok === false) throw new Error(data.error || ("HTTP " + res.status));
+        } catch (e) { failed.push(`${nameOf(ids[i])} — ${e.message || e}`); }
+      }
+      logAccess("qbo_sync_all", { units: ids.length, failed: failed.length });
+      await loadQboStatus();
+      await loadFinancials();
+      if (repUnit) renderUnitView(); else renderGroupView();
+      s.textContent = failed.length
+        ? `Synced ${ids.length - failed.length}/${ids.length} — failed: ${failed.join("; ")}`
+        : `Synced all ${ids.length} connected units ✓`;
+      b.disabled = false;
+    });
     function renderQboBtn() {
       const b = $("qboSyncBtn"); if (!b) return;
       const st = qboStatusMap[repUnit];
