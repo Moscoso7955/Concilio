@@ -215,9 +215,11 @@ Deno.serve(async (req) => {
     if (!ls.length && !netByMonth[m.period]) continue; // untouched future/empty months
     const revenue = r2(ls.filter((l) => l.section === "Income").reduce((s, l) => s + l.amount, 0));
     const net = m.period in netByMonth ? r2(netByMonth[m.period]) : r2(revenue - ls.filter((l) => l.section !== "Income").reduce((s, l) => s + l.amount, 0));
+    // net is a GENERATED column (revenue - expenses) — writing it errors,
+    // so only revenue/expenses go in and net falls out arithmetically.
     rows.push({
       entity_id: entityId, period: m.period,
-      revenue, expenses: r2(revenue - net), net,
+      revenue, expenses: r2(revenue - net),
       notes: notesBy[m.period] ?? null,
       pnl: { lines: ls },
     });

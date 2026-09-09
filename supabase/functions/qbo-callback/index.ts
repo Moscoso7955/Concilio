@@ -1,9 +1,14 @@
 // Intuit OAuth redirect URI. Public GET: validates the one-time state
 // nonce written by qbo-connect (15-minute window), exchanges the code
 // for tokens, records the company's realm + name on the unit's
-// connection row, and renders a "you can close this tab" page. The
-// nonce is the credential — a request without a matching fresh nonce
-// stores nothing. verify_jwt = FALSE.
+// connection row, and sends the browser to the static outcome page.
+// The nonce is the credential — a request without a matching fresh
+// nonce stores nothing. verify_jwt = FALSE.
+//
+// The outcome is a 303 redirect to /administration/qbo-done.html, NOT
+// HTML rendered here: the functions gateway rewrites responses to
+// text/plain (confirmed in edge logs), so a served page displays as
+// raw source in the browser.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
@@ -15,30 +20,26 @@ const QBO_ENV = (Deno.env.get("QBO_ENV") || "production").toLowerCase();
 const API_BASE = QBO_ENV === "sandbox" ? "https://sandbox-quickbooks.api.intuit.com" : "https://quickbooks.api.intuit.com";
 const admin = createClient(SUPABASE_URL, SERVICE, { auth: { persistSession: false } });
 
-const page = (title: string, msg: string) => new Response(`<!doctype html>
-<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${title}</title></head>
-<body style="margin:0;background:#111111;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
-  <div style="max-width:420px;margin:14vh auto 0;background:#1a1a1a;border:1px solid #2f2f2f;border-radius:12px;padding:36px 32px;text-align:center;color:#e8e8e8;">
-    <h1 style="font-size:19px;margin:0 0 10px;">${title}</h1>
-    <p style="font-size:14px;line-height:1.6;color:#9aa0aa;margin:0;">${msg}</p>
-  </div>
-</body></html>`, { status: 200, headers: { "Content-Type": "text/html; charset=utf-8" } });
+const SITE_URL = Deno.env.get("SITE_URL") || "https://callidusco.com";
+
+const done = (outcome: string, company?: string | null) => {
+  const p = new URLSearchParams({ t: outcome });
+  if (company) p.set("c", company);
+  return new Response(null, { status: 303, headers: { Location: `${SITE_URL}/administration/qbo-done.html?${p}` } });
+};
 
 Deno.serve(async (req) => {
   const url = new URL(req.url);
   const code = url.searchParams.get("code") || "";
   const state = url.searchParams.get("state") || "";
   const realmId = url.searchParams.get("realmId") || "";
-  if (url.searchParams.get("error")) {
-    return page("QuickBooks connection cancelled", "No changes were made. You can close this tab.");
-  }
-  if (!code || !state || !realmId) return page("Link not recognized", "This QuickBooks link is incomplete — start again from the portal.");
+  if (url.searchParams.get("error")) return done("cancel");
+  if (!code || !state || !realmId) return done("invalid");
 
   const cutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
   const { data: conn } = await admin.from("qbo_connections")
     .select("entity_id, state_created_at").eq("state_nonce", state).gte("state_created_at", cutoff).maybeSingle();
-  if (!conn) return page("Link expired", "This QuickBooks link is stale — start again from the portal (Connect QBO).");
+  if (!conn) return done("expired");
 
   const res = await fetch("https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer", {
     method: "POST",
@@ -56,7 +57,7 @@ Deno.serve(async (req) => {
   if (!res.ok) {
     const detail = (await res.text()).slice(0, 300);
     try { await admin.from("function_logs").insert({ fn: "qbo-callback", msg: "token exchange failed", detail: { status: res.status, detail } }); } catch (_) { /* best effort */ }
-    return page("Connection failed", "QuickBooks did not accept the sign-in. Try Connect QBO again from the portal.");
+    return done("failed");
   }
   const tok = await res.json();
 
@@ -80,5 +81,5 @@ Deno.serve(async (req) => {
   }).eq("entity_id", conn.entity_id);
   try { await admin.from("function_logs").insert({ fn: "qbo-callback", msg: "connected", detail: { entity: conn.entity_id, realm: realmId, company: companyName } }); } catch (_) { /* best effort */ }
 
-  return page("QuickBooks connected ✓", `${companyName || "The company"} is now linked to this unit. Close this tab and click “Sync from QBO” in the portal.`);
+  return done("ok", companyName);
 });

@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>QuickBooks connection</title>
+<style>
+  body { margin: 0; background: #111111; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+  .card { max-width: 420px; margin: 14vh auto 0; background: #1a1a1a; border: 1px solid #2f2f2f; border-radius: 12px; padding: 36px 32px; text-align: center; color: #e8e8e8; }
+  h1 { font-size: 19px; margin: 0 0 10px; }
+  p { font-size: 14px; line-height: 1.6; color: #9aa0aa; margin: 0; }
+</style>
+</head>
+<body>
+  <div class="card"><h1 id="t"></h1><p id="m"></p></div>
+  <script>
+    // Landing page for the qbo-callback edge function (it 303-redirects
+    // here — the functions gateway serves text/plain, so HTML can't be
+    // rendered from the function itself). Outcome comes from ?t=,
+    // company name from ?c=; all inserted via textContent.
+    var q = new URLSearchParams(location.search);
+    var c = q.get("c") || "The company";
+    var M = {
+      ok:      ["QuickBooks connected ✓", c + " is now linked to this unit. Close this tab and click “Sync from QBO” in the portal."],
+      cancel:  ["QuickBooks connection cancelled", "No changes were made. You can close this tab."],
+      expired: ["Link expired", "This QuickBooks link is stale — start again from the portal (Connect QBO)."],
+      invalid: ["Link not recognized", "This QuickBooks link is incomplete — start again from the portal."],
+      failed:  ["Connection failed", "QuickBooks did not accept the sign-in. Try Connect QBO again from the portal."],
+    };
+    var x = M[q.get("t")] || M.invalid;
+    document.getElementById("t").textContent = x[0];
+    document.getElementById("m").textContent = x[1];
+    document.title = x[0];
+  </script>
+</body>
+</html>
