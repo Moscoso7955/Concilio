@@ -804,7 +804,7 @@
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.37.1 — schema migration 0037">v1.37.1</div>
+  <div class="version-tag" title="Owner Portal v1.37.2 — schema migration 0037">v1.37.2</div>
 
   <!-- Settings modal -->
   <div class="modal-overlay hidden" id="settingsModal">
@@ -977,16 +977,16 @@
 
   <div class="modal-overlay hidden" id="budgetModal">
     <div class="modal" style="max-width:min(1240px, 96vw);">
-      <div class="modal-sticky-head"><div>
-        <h3 id="budTitle" style="margin-bottom:0.1rem;">Budget maker</h3>
+      <div class="modal-sticky-head"><div style="flex:1;min-width:220px;">
+        <h3 id="budTitle" style="margin-bottom:0.1rem;white-space:nowrap;">Budget maker</h3>
         <div class="muted" id="budSub" style="font-size:0.85rem;"></div>
       </div>
-      <div style="display:flex;align-items:center;gap:0.5rem;flex:0 0 auto;">
-        <button class="btn btn--sm" id="budInformBtn" title="Read this unit's actual months and fill every assumption from their averages">Inform with AI</button>
+      <div style="display:flex;align-items:center;gap:0.5rem;flex:0 0 auto;max-width:60%;">
+        <button class="btn btn--sm" id="budInformBtn" style="flex:0 0 auto;" title="Read this unit's actual months and fill every assumption from their averages">Inform with AI</button>
         <label class="muted" style="font-size:0.8rem;">Year</label>
-        <input type="number" id="budYearIn" class="inline-select" style="width:82px;padding:0.3rem 0.45rem;background:var(--panel-2);border:1px solid var(--border);border-radius:8px;color:var(--text);font:inherit;">
-        <span class="muted" id="budSaveStatus" style="font-size:0.78rem;min-width:64px;"></span>
-        <button class="iconbtn" data-closemodal="budgetModal" style="font-size:1.5rem;" aria-label="Close">×</button>
+        <input type="number" id="budYearIn" class="inline-select" style="width:82px;flex:0 0 auto;padding:0.3rem 0.45rem;background:var(--panel-2);border:1px solid var(--border);border-radius:8px;color:var(--text);font:inherit;">
+        <span class="muted" id="budSaveStatus" style="font-size:0.72rem;min-width:64px;max-width:300px;line-height:1.35;"></span>
+        <button class="iconbtn" data-closemodal="budgetModal" style="font-size:1.5rem;flex:0 0 auto;" aria-label="Close">×</button>
       </div></div>
       <div class="bud-panels" id="budPanels"></div>
       <div class="table-wrap"><table class="bud-grid" id="budGrid"></table></div>

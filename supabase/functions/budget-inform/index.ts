@@ -35,27 +35,31 @@ Slots:
 - otherExp: below-the-line items (corporate admin, owner draws, one-off write-offs): amt = average $ per month.
 Skip suspense/clearing accounts (e.g. "998 Suspense") and pure totals — list anything skipped in notes with one short reason each. Keep account labels exactly as printed. Round money to whole dollars, percentages to two decimals.`;
 
+// Plain types only: Anthropic's structured-output validator caps the
+// number of union-typed parameters, and nullable unions here tripped
+// it ("too many parameters with union types"). Absent values come back
+// as 0 / "" and are handled client-side.
 const SCHEMA = {
   type: "object", additionalProperties: false,
   properties: {
     mix: { type: "array", items: { type: "object", additionalProperties: false, properties: {
-      label: { type: ["string", "null"] }, pct: { type: ["number", "null"] },
-      cogsLabel: { type: ["string", "null"] }, cogsGrp: { type: ["string", "null"] },
-      cogsPct: { type: ["number", "null"] }, lbw: { type: ["boolean", "null"] },
+      label: { type: "string" }, pct: { type: "number" },
+      cogsLabel: { type: "string" }, cogsGrp: { type: "string" },
+      cogsPct: { type: "number" }, lbw: { type: "boolean" },
     }, required: ["label", "pct", "cogsLabel", "cogsGrp", "cogsPct", "lbw"] } },
     wages: { type: "array", items: { type: "object", additionalProperties: false, properties: {
-      label: { type: ["string", "null"] }, pct: { type: ["number", "null"] } }, required: ["label", "pct"] } },
-    mgmtMonthly: { type: ["number", "null"] },
-    payrollTaxPct: { type: ["number", "null"] },
+      label: { type: "string" }, pct: { type: "number" } }, required: ["label", "pct"] } },
+    mgmtMonthly: { type: "number" },
+    payrollTaxPct: { type: "number" },
     comps: { type: "array", items: { type: "object", additionalProperties: false, properties: {
-      label: { type: ["string", "null"] }, pct: { type: ["number", "null"] } }, required: ["label", "pct"] } },
+      label: { type: "string" }, pct: { type: "number" } }, required: ["label", "pct"] } },
     fixedExp: { type: "array", items: { type: "object", additionalProperties: false, properties: {
-      label: { type: ["string", "null"] }, amt: { type: ["number", "null"] } }, required: ["label", "amt"] } },
+      label: { type: "string" }, amt: { type: "number" } }, required: ["label", "amt"] } },
     pctExp: { type: "array", items: { type: "object", additionalProperties: false, properties: {
-      label: { type: ["string", "null"] }, pct: { type: ["number", "null"] } }, required: ["label", "pct"] } },
+      label: { type: "string" }, pct: { type: "number" } }, required: ["label", "pct"] } },
     otherExp: { type: "array", items: { type: "object", additionalProperties: false, properties: {
-      label: { type: ["string", "null"] }, amt: { type: ["number", "null"] } }, required: ["label", "amt"] } },
-    notes: { type: "array", items: { type: ["string", "null"] } },
+      label: { type: "string" }, amt: { type: "number" } }, required: ["label", "amt"] } },
+    notes: { type: "array", items: { type: "string" } },
   },
   required: ["mix", "wages", "mgmtMonthly", "payrollTaxPct", "comps", "fixedExp", "pctExp", "otherExp", "notes"],
 };
