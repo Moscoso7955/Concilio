@@ -173,9 +173,13 @@
     .bud-row { display: flex; align-items: center; gap: 0.45rem; padding: 0.18rem 0; }
     .bud-row label { flex: 1; font-size: 0.8rem; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .bud-row .sublab { color: var(--muted); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; }
-    .bud-row input, .bud-row select { background: var(--panel); }
-    .bud-row input.num { width: 76px; text-align: right; }
-    .bud-row input.pct { width: 58px; text-align: right; }
+    /* Budget inputs are typeless, so the global input[type=…] skin
+       misses them — restate the essentials or they render UA-black. */
+    .bud-row input, .bud-mini input, .bud-grid input, .bud-row select {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+      color: var(--text); caret-color: var(--text); font: inherit; padding: 0.28rem 0.4rem; }
+    .bud-row input.num { width: 84px; text-align: right; }
+    .bud-row input.pct { width: 64px; text-align: right; }
     .bud-row input.lbl { flex: 1; min-width: 0; }
     .bud-unit { color: var(--muted); font-size: 0.76rem; width: 12px; flex: 0 0 auto; }
     .bud-del { background: none; border: 0; color: var(--muted); cursor: pointer; padding: 0 0.15rem; }
@@ -186,7 +190,7 @@
     .bud-mini { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; }
     .bud-mini div { display: flex; flex-direction: column; gap: 2px; }
     .bud-mini span { font-size: 0.6rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
-    .bud-mini input { width: 100%; text-align: right; font-size: 0.72rem; padding: 0.2rem 0.28rem; background: var(--panel); }
+    .bud-mini input { width: 100%; text-align: right; font-size: 0.72rem; padding: 0.2rem 0.28rem !important; }
     .bud-hint { color: var(--muted); font-size: 0.73rem; margin: 0.3rem 0 0; line-height: 1.45; }
     .bud-warn { color: #e08585; font-size: 0.76rem; }
     .bud-ok { color: #5da97f; font-size: 0.76rem; }
@@ -208,8 +212,8 @@
     .bud-grid td.sumc { background: #202327; font-weight: 600; }
     .bud-grid .negv { color: #e08585; }
     .bud-grid .posv { color: #5da97f; }
-    .bud-grid td input.cellrev { width: 80px; text-align: right; background: #2b2f36; border: 1px solid #3a4048;
-      border-radius: 6px; color: var(--text); font: inherit; font-size: 0.76rem; padding: 0.16rem 0.3rem; }
+    .bud-grid td input.cellrev { width: 80px; text-align: right; background: #2b2f36 !important; border: 1px solid #3a4048;
+      border-radius: 6px; font-size: 0.76rem; padding: 0.16rem 0.3rem !important; }
     .pill--unpaid { color: #fbbf24; border-color: #b4790f; }
     .pill--paid { color: #a3a9b3; border-color: #4a4f58; }
     .dup-tag { color: #fca5a5; border: 1px solid var(--danger); border-radius: 6px; font-size: 0.68rem; padding: 0.05rem 0.35rem; margin-left: 0.4rem; }
@@ -804,7 +808,7 @@
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.37.2 — schema migration 0037">v1.37.2</div>
+  <div class="version-tag" title="Owner Portal v1.37.3 — schema migration 0037">v1.37.3</div>
 
   <!-- Settings modal -->
   <div class="modal-overlay hidden" id="settingsModal">
