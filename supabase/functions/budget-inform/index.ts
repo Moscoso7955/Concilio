@@ -33,7 +33,12 @@ Slots:
 - fixedExp: operating expenses that don't scale with sales (rent, insurance, accounting, utilities, subscriptions…): amt = average $ per month.
 - pctExp: operating expenses that clearly scale with sales (credit-card/processing fees, restaurant supplies…): pct = share of revenue.
 - otherExp: below-the-line items (corporate admin, owner draws, one-off write-offs): amt = average $ per month.
-Skip suspense/clearing accounts (e.g. "998 Suspense") and pure totals — list anything skipped in notes with one short reason each. Keep account labels exactly as printed. Round money to whole dollars, percentages to two decimals.`;
+Skip suspense/clearing accounts (e.g. "998 Suspense") and pure totals — list anything skipped in notes with one short reason each. Keep account labels exactly as printed. Round money to whole dollars, percentages to two decimals.
+
+You also receive the venue's name, address and type. From those, fill the weather/events slots for its budget engine:
+- wx: 12 numbers (Jan..Dec), each the typical share of that month (0-100) when adverse weather suppresses hospitality traffic in that metro — heat advisories, severe storms, winter freezes. Use the metro's actual climate pattern.
+- weatherSensPct: a starting estimate (0-100) of the venue's revenue share exposed to weather, inferred from its type/notes (patio, rooftop, walk-up → high; fully indoor → near 0). If nothing indicates outdoor exposure, use 15-25 and say so in notes.
+- events: up to 6 recurring events or seasons in that city that materially lift hospitality revenue near the venue (fairs, festivals, stock shows, conventions, sports runs), each with its main month (0=January) and a modest uplift pct (1-8). Only events you are confident recur in that metro.`;
 
 // Plain types only: Anthropic's structured-output validator caps the
 // number of union-typed parameters, and nullable unions here tripped
@@ -59,9 +64,13 @@ const SCHEMA = {
       label: { type: "string" }, pct: { type: "number" } }, required: ["label", "pct"] } },
     otherExp: { type: "array", items: { type: "object", additionalProperties: false, properties: {
       label: { type: "string" }, amt: { type: "number" } }, required: ["label", "amt"] } },
+    wx: { type: "array", items: { type: "number" } },
+    weatherSensPct: { type: "number" },
+    events: { type: "array", items: { type: "object", additionalProperties: false, properties: {
+      name: { type: "string" }, month: { type: "integer" }, pct: { type: "number" } }, required: ["name", "month", "pct"] } },
     notes: { type: "array", items: { type: "string" } },
   },
-  required: ["mix", "wages", "mgmtMonthly", "payrollTaxPct", "comps", "fixedExp", "pctExp", "otherExp", "notes"],
+  required: ["mix", "wages", "mgmtMonthly", "payrollTaxPct", "comps", "fixedExp", "pctExp", "otherExp", "wx", "weatherSensPct", "events", "notes"],
 };
 
 Deno.serve(async (req) => {
@@ -110,9 +119,18 @@ Deno.serve(async (req) => {
     return row ? Math.round(+row.revenue || 0) : 0;
   });
 
-  const userMsg = `Unit statistics over ${months} months on file (total revenue $${Math.round(revenueTotal).toLocaleString()}):\n` +
+  const { data: ent } = await admin.from("ownership_entities")
+    .select("name, address, category, subcategory, notes").eq("id", entityId).maybeSingle();
+  const venue = [
+    `Venue: ${ent?.name || "unknown"}`,
+    ent?.address ? `Address: ${ent.address}` : "",
+    ent?.category ? `Type: ${[ent.category, ent.subcategory].filter(Boolean).join(" / ")}` : "",
+    ent?.notes ? `Notes: ${String(ent.notes).slice(0, 300)}` : "",
+  ].filter(Boolean).join("\n");
+
+  const userMsg = `${venue}\n\nUnit statistics over ${months} months on file (total revenue $${Math.round(revenueTotal).toLocaleString()}):\n` +
     JSON.stringify(lines, null, 1) +
-    `\n\nClassify every account into the engine slots per the schema.`;
+    `\n\nClassify every account into the engine slots, and fill the weather index, sensitivity estimate and city events for this venue's location, per the schema.`;
 
   let res: Response | null = null, data: any = null;
   for (let attempt = 0; attempt < 3; attempt++) {

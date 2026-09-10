@@ -819,7 +819,7 @@
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.37.5 — schema migration 0037">v1.37.5</div>
+  <div class="version-tag" title="Owner Portal v1.37.6 — schema migration 0037">v1.37.6</div>
 
   <!-- Settings modal -->
   <div class="modal-overlay hidden" id="settingsModal">
@@ -3165,7 +3165,7 @@
     // events, growth aim and the year stay as set.
     $("budInformBtn")?.addEventListener("click", async () => {
       if (!repUnit || !budS) return;
-      if (!confirm("Fill the assumptions from this unit's actual months? Your current mix, wages, comps and expense lines are replaced (weather, events and growth stay).")) return;
+      if (!confirm("Fill this budget from the unit's actual months and its location? Mix, wages, comps, expense lines, the weather index and the city events are replaced — only your growth aim stays.")) return;
       const b = $("budInformBtn"), st = $("budSaveStatus");
       b.disabled = true; st.textContent = "Reading actuals…";
       try {
@@ -3187,6 +3187,10 @@
         budS.pctExp = arr(g.pctExp).map((e) => ({ label: e.label || "EXPENSE", pct: +e.pct || 0 }));
         budS.otherExp = arr(g.otherExp).map((e) => ({ label: e.label || "OTHER", amt: Math.round(+e.amt || 0) }));
         if (arr(g.baseline).some((v) => v > 0)) budS.baseline = g.baseline.map((v) => Math.round(+v || 0));
+        if (arr(g.wx).length === 12) budS.wx = g.wx.map((v) => budR2(+v || 0));
+        if (g.weatherSensPct != null) budS.weatherSens = budR2(+g.weatherSensPct || 0);
+        if (arr(g.events).length) budS.events = g.events.map((e) => ({
+          name: e.name || "Event", month: Math.min(11, Math.max(0, +e.month || 0)), pct: +e.pct || 0 }));
         budApplyEngine();
         const skipped = arr(g.notes).filter(Boolean);
         st.textContent = `Informed from ${g.sourceMonths || "?"} months ✓`;
