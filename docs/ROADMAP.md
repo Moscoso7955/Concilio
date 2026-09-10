@@ -18,8 +18,12 @@ Parked 2026-09-02. Not started; order to be decided.
 
 ## Other
 - **Crypto** — exchange / wallet balances.
-- **QuickBooks** — carried over from Callidus (invoice `qbo` flag, chart
-  of accounts tooling). Keep as-is for now.
+- **QuickBooks** — DONE 2026-09-10: per-unit QuickBooks Online link
+  (OAuth), YTD P&L sync by month, Sync-all button, plus the budget
+  maker with "Inform with AI". Ported from the callidus repo and
+  workspace-scoped (migrations 0038, 0039). Needs `QBO_CLIENT_ID`,
+  `QBO_CLIENT_SECRET` (and `QBO_ENV=sandbox` while testing) in the
+  Supabase function secrets; see SETUP.md.
 
 ## Notes
 - Every integration is per-user: an owner links their own accounts and
