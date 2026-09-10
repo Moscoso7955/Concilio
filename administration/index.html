@@ -162,36 +162,40 @@
     .su-body { padding: 0.15rem 0.9rem 0.9rem; border-top: 1px solid var(--border); }
 
     /* ---------- Budget maker (per-unit, in its own modal) ---------- */
-    .bud-panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 10px; margin-bottom: 14px; }
-    .bud-panel { background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
-    .bud-ph { display: flex; align-items: center; gap: 0.5rem; padding: 0.55rem 0.8rem; cursor: pointer; font-size: 0.7rem;
+    .bud-panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 12px; margin-bottom: 16px; }
+    .bud-panel { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+    .bud-ph { display: flex; align-items: center; gap: 0.5rem; padding: 0.65rem 0.9rem; cursor: pointer; font-size: 0.72rem;
       text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); user-select: none; }
-    .bud-ph .caret { font-size: 0.55rem; }
+    .bud-ph:hover { background: var(--panel-2); }
+    .bud-ph .caret { font-size: 0.6rem; }
     .bud-ph .psum { margin-left: auto; text-transform: none; letter-spacing: 0; font-variant-numeric: tabular-nums; }
-    .bud-pb { padding: 0.2rem 0.8rem 0.8rem; border-top: 1px solid var(--border); }
+    .bud-pb { padding: 0.3rem 0.9rem 0.9rem; border-top: 1px solid var(--border); }
     .bud-panel.closed .bud-pb { display: none; }
-    .bud-row { display: flex; align-items: center; gap: 0.45rem; padding: 0.18rem 0; }
-    .bud-row label { flex: 1; font-size: 0.8rem; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .bud-row .sublab { color: var(--muted); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    .bud-row { display: flex; align-items: center; gap: 0.5rem; padding: 0.24rem 0; }
+    .bud-row label { flex: 1; font-size: 0.85rem; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .bud-row .sublab { color: var(--muted); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; }
     /* Budget inputs are typeless, so the global input[type=…] skin
-       misses them — restate the essentials or they render UA-black. */
+       misses them — the demo's treatment restated: light inputs that
+       pop off the darker panel. */
     .bud-row input, .bud-mini input, .bud-grid input, .bud-row select {
-      background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
-      color: var(--text); caret-color: var(--text); font: inherit; padding: 0.28rem 0.4rem; }
-    .bud-row input.num { width: 84px; text-align: right; }
-    .bud-row input.pct { width: 64px; text-align: right; }
+      background: var(--panel-2); border: 1px solid var(--border); border-radius: 9px;
+      color: var(--text); caret-color: var(--text); font: inherit; font-size: 0.88rem;
+      font-variant-numeric: tabular-nums; padding: 0.38rem 0.55rem; }
+    .bud-row input:focus, .bud-mini input:focus, .bud-grid input:focus { outline: none; border-color: var(--accent); }
+    .bud-row input.num { width: 100px; text-align: right; flex: 0 0 auto; }
+    .bud-row input.pct { width: 72px; text-align: right; flex: 0 0 auto; }
     .bud-row input.lbl { flex: 1; min-width: 0; }
     .bud-unit { color: var(--muted); font-size: 0.76rem; width: 12px; flex: 0 0 auto; }
     .bud-del { background: none; border: 0; color: var(--muted); cursor: pointer; padding: 0 0.15rem; }
     .bud-del:hover { color: #e08585; }
-    .bud-add { background: none; border: 1px dashed var(--border); border-radius: 8px; color: var(--muted); font: inherit;
-      font-size: 0.76rem; padding: 0.28rem 0.55rem; cursor: pointer; margin-top: 0.35rem; }
+    .bud-add { background: none; border: 1px dashed var(--border); border-radius: 9px; color: var(--muted); font: inherit;
+      font-size: 0.8rem; padding: 0.32rem 0.65rem; cursor: pointer; margin-top: 0.4rem; }
     .bud-add:hover { color: var(--text); border-color: var(--accent); }
-    .bud-mini { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; }
-    .bud-mini div { display: flex; flex-direction: column; gap: 2px; }
-    .bud-mini span { font-size: 0.6rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
-    .bud-mini input { width: 100%; text-align: right; font-size: 0.72rem; padding: 0.2rem 0.28rem !important; }
-    .bud-hint { color: var(--muted); font-size: 0.73rem; margin: 0.3rem 0 0; line-height: 1.45; }
+    .bud-mini { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+    .bud-mini div { display: flex; flex-direction: column; gap: 3px; }
+    .bud-mini span { font-size: 0.64rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+    .bud-mini input { width: 100%; text-align: right; font-size: 0.82rem; padding: 0.34rem 0.45rem !important; }
+    .bud-hint { color: var(--muted); font-size: 0.78rem; margin: 0.4rem 0 0; line-height: 1.55; }
     .bud-warn { color: #e08585; font-size: 0.76rem; }
     .bud-ok { color: #5da97f; font-size: 0.76rem; }
     .bud-grid { border-collapse: collapse; width: max-content; min-width: 100%; font-variant-numeric: tabular-nums; }
@@ -808,7 +812,7 @@
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.37.3 — schema migration 0037">v1.37.3</div>
+  <div class="version-tag" title="Owner Portal v1.37.4 — schema migration 0037">v1.37.4</div>
 
   <!-- Settings modal -->
   <div class="modal-overlay hidden" id="settingsModal">
