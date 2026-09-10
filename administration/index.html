@@ -160,6 +160,56 @@
     .su-caret { color: var(--muted); font-size: 0.65rem; flex: 0 0 auto; transition: transform 0.15s; }
     .su-row.open .su-caret { transform: rotate(90deg); }
     .su-body { padding: 0.15rem 0.9rem 0.9rem; border-top: 1px solid var(--border); }
+
+    /* ---------- Budget maker (per-unit, in its own modal) ---------- */
+    .bud-panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 10px; margin-bottom: 14px; }
+    .bud-panel { background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+    .bud-ph { display: flex; align-items: center; gap: 0.5rem; padding: 0.55rem 0.8rem; cursor: pointer; font-size: 0.7rem;
+      text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); user-select: none; }
+    .bud-ph .caret { font-size: 0.55rem; }
+    .bud-ph .psum { margin-left: auto; text-transform: none; letter-spacing: 0; font-variant-numeric: tabular-nums; }
+    .bud-pb { padding: 0.2rem 0.8rem 0.8rem; border-top: 1px solid var(--border); }
+    .bud-panel.closed .bud-pb { display: none; }
+    .bud-row { display: flex; align-items: center; gap: 0.45rem; padding: 0.18rem 0; }
+    .bud-row label { flex: 1; font-size: 0.8rem; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .bud-row .sublab { color: var(--muted); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    .bud-row input, .bud-row select { background: var(--panel); }
+    .bud-row input.num { width: 76px; text-align: right; }
+    .bud-row input.pct { width: 58px; text-align: right; }
+    .bud-row input.lbl { flex: 1; min-width: 0; }
+    .bud-unit { color: var(--muted); font-size: 0.76rem; width: 12px; flex: 0 0 auto; }
+    .bud-del { background: none; border: 0; color: var(--muted); cursor: pointer; padding: 0 0.15rem; }
+    .bud-del:hover { color: #e08585; }
+    .bud-add { background: none; border: 1px dashed var(--border); border-radius: 8px; color: var(--muted); font: inherit;
+      font-size: 0.76rem; padding: 0.28rem 0.55rem; cursor: pointer; margin-top: 0.35rem; }
+    .bud-add:hover { color: var(--text); border-color: var(--accent); }
+    .bud-mini { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; }
+    .bud-mini div { display: flex; flex-direction: column; gap: 2px; }
+    .bud-mini span { font-size: 0.6rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+    .bud-mini input { width: 100%; text-align: right; font-size: 0.72rem; padding: 0.2rem 0.28rem; background: var(--panel); }
+    .bud-hint { color: var(--muted); font-size: 0.73rem; margin: 0.3rem 0 0; line-height: 1.45; }
+    .bud-warn { color: #e08585; font-size: 0.76rem; }
+    .bud-ok { color: #5da97f; font-size: 0.76rem; }
+    .bud-grid { border-collapse: collapse; width: max-content; min-width: 100%; font-variant-numeric: tabular-nums; }
+    .bud-grid th, .bud-grid td { padding: 0.24rem 0.5rem; font-size: 0.78rem; white-space: nowrap; }
+    .bud-grid thead th { color: var(--muted); font-weight: 600; font-size: 0.66rem; text-transform: uppercase;
+      letter-spacing: 0.05em; text-align: right; border-bottom: 1px solid var(--border); background: var(--panel); }
+    .bud-grid th.acct, .bud-grid td.acct { position: sticky; left: 0; background: var(--panel); text-align: left;
+      min-width: 230px; max-width: 300px; overflow: hidden; text-overflow: ellipsis; z-index: 1; border-right: 1px solid var(--border); }
+    .bud-grid td.n { text-align: right; }
+    .bud-grid td.p { text-align: right; color: var(--muted); font-size: 0.68rem; border-right: 1px solid #222; }
+    .bud-grid tr.sec td { color: var(--muted); font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.06em; padding-top: 0.6rem; }
+    .bud-grid tr.grp td.acct { font-weight: 600; }
+    .bud-grid .i1 { padding-left: 1rem !important; }
+    .bud-grid .i2 { padding-left: 1.9rem !important; }
+    .bud-grid tr.tot td { border-top: 1px solid var(--border); font-weight: 600; }
+    .bud-grid tr.keyr td { border-top: 1px solid var(--accent); font-weight: 700; background: #1e2023; }
+    .bud-grid tr.netr td { border-top: 2px solid var(--accent); font-weight: 700; font-size: 0.82rem; background: #1e2023; }
+    .bud-grid td.sumc { background: #202327; font-weight: 600; }
+    .bud-grid .negv { color: #e08585; }
+    .bud-grid .posv { color: #5da97f; }
+    .bud-grid td input.cellrev { width: 80px; text-align: right; background: #2b2f36; border: 1px solid #3a4048;
+      border-radius: 6px; color: var(--text); font: inherit; font-size: 0.76rem; padding: 0.16rem 0.3rem; }
     .pill--unpaid { color: #fbbf24; border-color: #b4790f; }
     .pill--paid { color: #a3a9b3; border-color: #4a4f58; }
     .dup-tag { color: #fca5a5; border: 1px solid var(--danger); border-radius: 6px; font-size: 0.68rem; padding: 0.05rem 0.35rem; margin-left: 0.4rem; }
@@ -215,6 +265,9 @@
     #finTable th:first-child, #finTable td:first-child { position: sticky; left: 0; background: var(--panel); z-index: 1; }
     /* Sticky modal header: title + close stay visible over long statements. */
     .modal-sticky-head { position: sticky; top: 0; display: flex; justify-content: space-between; align-items: flex-start; gap: 0.75rem; background: var(--panel); z-index: 5; margin: -1.25rem -1.25rem 0.75rem; padding: 1.1rem 1.25rem 0.6rem; border-radius: 14px 14px 0 0; }
+    /* Rows were peeking through the modal's top padding strip above the
+       pinned header — an opaque apron closes that gap on every engine. */
+    .modal-sticky-head::before { content: ""; position: absolute; left: 0; right: 0; bottom: 100%; height: 1.5rem; background: var(--panel); }
     .modal-sticky-head h3 { margin-bottom: 0.1rem; }
     /* Graph pane: keep the header (and its ×) reachable while scrolling. */
     .gpane > div:first-child { position: sticky; top: 0; background: var(--panel); z-index: 3; padding: 0.4rem 0; margin-top: -0.4rem; }
@@ -421,6 +474,7 @@
         <div class="row" style="align-items:center;margin-bottom:1rem;">
           <button class="btn btn--ghost btn--sm" id="repBack" style="flex:0 0 auto;">← All units</button>
           <h2 id="repUnitName" style="flex:1;font-size:1.1rem;margin:0;"></h2>
+          <button class="btn btn--ghost btn--sm admin-only hidden" id="budgetBtn" style="flex:0 0 auto;">Budget…</button>
         </div>
         <div class="stats" id="repUnitStats"></div>
 
@@ -750,7 +804,7 @@
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.36.9 — schema migration 0036">v1.36.9</div>
+  <div class="version-tag" title="Owner Portal v1.37.0 — schema migration 0037">v1.37.0</div>
 
   <!-- Settings modal -->
   <div class="modal-overlay hidden" id="settingsModal">
@@ -917,6 +971,27 @@
       <div class="table-wrap" id="ytdModalBody"></div>
       <div class="row" style="align-items:center;margin-top:1rem;">
         <button class="btn btn--ghost" id="ytdCloseBtn" style="flex:0 0 auto;">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay hidden" id="budgetModal">
+    <div class="modal" style="max-width:min(1240px, 96vw);">
+      <div class="modal-sticky-head"><div>
+        <h3 id="budTitle" style="margin-bottom:0.1rem;">Budget maker</h3>
+        <div class="muted" id="budSub" style="font-size:0.85rem;"></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:0.5rem;flex:0 0 auto;">
+        <label class="muted" style="font-size:0.8rem;">Year</label>
+        <input type="number" id="budYearIn" class="inline-select" style="width:82px;padding:0.3rem 0.45rem;background:var(--panel-2);border:1px solid var(--border);border-radius:8px;color:var(--text);font:inherit;">
+        <span class="muted" id="budSaveStatus" style="font-size:0.78rem;min-width:64px;"></span>
+        <button class="iconbtn" data-closemodal="budgetModal" style="font-size:1.5rem;" aria-label="Close">×</button>
+      </div></div>
+      <div class="bud-panels" id="budPanels"></div>
+      <div class="table-wrap"><table class="bud-grid" id="budGrid"></table></div>
+      <div class="row" style="align-items:center;margin-top:1rem;">
+        <button class="btn btn--ghost" id="budResetBtn" style="flex:0 0 auto;">Reset to template</button>
+        <span class="muted" style="font-size:0.78rem;">Total Income cells are editable — the engine re-applies when you touch its inputs.</span>
       </div>
     </div>
   </div>
@@ -2717,6 +2792,363 @@
       } catch (e) { s.textContent = "QuickBooks: " + (e.message || e); }
       b.disabled = false;
     });
+
+    /* ---- Budget maker: per-unit, per-year P&L budget built by a revenue
+       engine — prior-year baseline × aimed growth, reshaped by weather
+       exposure and city events — over rate assumptions (sales mix, COGS %,
+       wages, comps, fixed + %-of-sales expenses). Stored in budgets
+       (entity_id, year → jsonb), admin-only via RLS. ---- */
+    const BUD_MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+    const BUD_TEMPLATE = {
+      baseline: [390000,390000,390000,400400,400400,400400,416000,416000,416000,416000,416000,416000],
+      growthPct: 4, holdTotal: true,
+      revenue: [405600,405600,405600,416416,416416,416416,432640,432640,432640,432640,432640,432640],
+      weatherSens: 20, wx: [12,10,8,10,12,8,18,20,10,5,6,10],
+      events: [
+        { name: "FW Stock Show & Rodeo", month: 0, pct: 6 },
+        { name: "Main St. Arts Festival", month: 3, pct: 4 },
+        { name: "State Fair season", month: 9, pct: 3 },
+      ],
+      mix: [
+        { label: "410 · SALES - FOOD",  pct: 50,   cogsLabel: "501 · FOOD PURCHASES",   cogsGrp: "500 · COGS - FOOD",             cogsPct: 26 },
+        { label: "413 · LIQUOR SALES",  pct: 36,   cogsLabel: "513 · LIQUOR PURCHASES", cogsGrp: "510 · COGS - LIQUOR BEER WINE", cogsPct: 20, lbw: true },
+        { label: "414 · BEER SALES",    pct: 1.5,  cogsLabel: "514 · BEER PURCHASES",   cogsGrp: "510 · COGS - LIQUOR BEER WINE", cogsPct: 25, lbw: true },
+        { label: "415 · WINE SALES",    pct: 12.5, cogsLabel: "515 · WINE PURCHASES",   cogsGrp: "510 · COGS - LIQUOR BEER WINE", cogsPct: 30, lbw: true },
+        { label: "445 · RETAIL SALES",  pct: 0,    cogsLabel: "545 · RETAIL PURCHASES", cogsGrp: "540 · COGS - RETAIL",           cogsPct: 0 },
+      ],
+      wages: [
+        { label: "522 · KITCHEN WAGES", pct: 21 }, { label: "523 · BARTENDER WAGES", pct: 3.75 },
+        { label: "524 · HOST WAGES", pct: 0.24 }, { label: "521 · PTO WAGES", pct: 1 },
+      ],
+      mgmt: [{ name: "Manager", annual: 80000 }],
+      payrollTaxPct: 4.08,
+      comps: [
+        { label: "595 · COMPS - FOOD", pct: 1.8 }, { label: "596 · COMPS - OWNER", pct: 0.5 },
+        { label: "596 · COMPS - MARKETING", pct: 0 }, { label: "596 · COMPS - LIQUOR BEER WINE", pct: 2.5 },
+      ],
+      fixedExp: [
+        { label: "603 · ADVERTISING-SOCIAL MEDIA", amt: 0 }, { label: "605 · ACCOUNTING", amt: 3000 },
+        { label: "607 · BANK CHARGES", amt: 100 }, { label: "612 · CLEANING SERVICE & SUPPLIES", amt: 3200 },
+        { label: "625 · DUES & SUBSCRIPTIONS", amt: 2250 }, { label: "627 · GLASSWARE", amt: 2000 },
+        { label: "630 · INSURANCE-GENERAL", amt: 4500 }, { label: "632 · INSURANCE-HEALTH", amt: 4000 },
+        { label: "634 · LICENSES & PERMITS", amt: 760 }, { label: "636 · LINEN & LAUNDRY", amt: 1250 },
+        { label: "640 · LEGAL", amt: 400 }, { label: "641 · EQUIPMENT LEASE", amt: 4500 },
+        { label: "647 · MENUS & PRINTING", amt: 800 }, { label: "655 · OFFICE SUPPLIES", amt: 100 },
+        { label: "657 · PEST CONTROL", amt: 110 }, { label: "659 · PROFESSIONAL SERVICES", amt: 400 },
+        { label: "660 · RENT", amt: 30000 }, { label: "661 · REPAIR & MAINTENANCE", amt: 4000 },
+        { label: "668 · SECURITY", amt: 42 }, { label: "680 · TELEPHONE", amt: 110 },
+        { label: "689 · UNIFORMS", amt: 600 }, { label: "690 · UTILITIES", amt: 4500 },
+      ],
+      pctExp: [
+        { label: "616 · CREDIT CARD EXPENSE", pct: 1.78 }, { label: "669 · RESTAURANT SUPPLIES", pct: 1.8 },
+      ],
+      otherExp: [
+        { label: "830 · CORPORATE ADMIN", amt: 0 }, { label: "860 · MANAGER BONUS", amt: 0 },
+        { label: "862 · EMERGENCY FUND MATCH", amt: 0 },
+      ],
+    };
+    let budS = null, budYear = new Date().getFullYear() + 1, budOpen = {}, budTimer = null;
+    const budClone = (o) => JSON.parse(JSON.stringify(o));
+    const budR2 = (n) => Math.round(n * 100) / 100;
+    const budMoney = (n) => (n < 0 ? "-" : "") + "$" + Math.round(Math.abs(n)).toLocaleString();
+    const budPct = (n, of) => (!of ? "—" : (100 * n / of).toFixed(1) + "%");
+    const budMgmtMo = () => budS.mgmt.reduce((s, m) => s + (+m.annual || 0), 0) / 12;
+
+    function budSave() {
+      clearTimeout(budTimer);
+      $("budSaveStatus").textContent = "Saving…";
+      budTimer = setTimeout(async () => {
+        const { error } = await supabase.from("budgets").upsert(
+          { entity_id: repUnit, year: budYear, data: budS, updated_at: new Date().toISOString() },
+          { onConflict: "entity_id,year" });
+        $("budSaveStatus").textContent = error ? "Save failed" : "Saved ✓";
+      }, 700);
+    }
+
+    function budMonthAdj() {
+      const sens = (+budS.weatherSens || 0) / 100;
+      return BUD_MONTHS.map((_, i) => {
+        const wx = 1 - sens * ((+budS.wx[i] || 0) / 100);
+        const ev = 1 + budS.events.filter((e) => +e.month === i).reduce((s, e) => s + (+e.pct || 0), 0) / 100;
+        return wx * ev;
+      });
+    }
+    function budApplyEngine() {
+      const baseSum = budS.baseline.reduce((s, v) => s + (+v || 0), 0);
+      if (baseSum) {
+        const adj = budMonthAdj();
+        const shaped = budS.baseline.map((b, i) => (+b || 0) * adj[i]);
+        const shapedSum = shaped.reduce((a, b) => a + b, 0) || 1;
+        const g = 1 + (+budS.growthPct || 0) / 100;
+        budS.revenue = budS.holdTotal
+          ? shaped.map((v) => budR2(v / shapedSum * baseSum * g))
+          : shaped.map((v) => budR2(v * g));
+      }
+      budSave(); budRenderGrid(); budRenderPanels();
+    }
+
+    function budCompute() {
+      const R = budS.revenue.map((v) => +v || 0);
+      const P = (x) => (+x.pct || 0) / 100;
+      const line = (label, cls, ind, fn) => ({ label, cls, ind, vals: R.map((r) => budR2(fn(r))) });
+      const rows = [];
+      rows.push({ label: "Ordinary Income/Expense", cls: "sec" });
+      rows.push({ label: "Income", cls: "sec" });
+      rows.push({ label: "400 · SALES", cls: "grp" });
+      const active = budS.mix.filter((m) => +m.pct > 0);
+      for (const m of active.filter((x) => !x.lbw)) rows.push(line(m.label, "", 1, (r) => r * P(m)));
+      const lbw = active.filter((x) => x.lbw);
+      if (lbw.length) {
+        rows.push({ label: "410 · SALES - LIQUOR WINE BEER", cls: "grp", ind: 1 });
+        for (const m of lbw) rows.push(line(m.label, "", 2, (r) => r * P(m)));
+        rows.push(line("Total 410 · SALES - LIQUOR WINE BEER", "tot", 1, (r) => lbw.reduce((s, m) => s + r * P(m), 0)));
+      }
+      rows.push({ label: "Total Income", cls: "keyr", vals: R.slice(), income: true });
+      rows.push({ label: "Cost of Goods Sold", cls: "sec" });
+      const groups = {};
+      for (const m of active) if (+m.cogsPct) (groups[m.cogsGrp] ||= []).push(m);
+      const cogsT = R.map(() => 0);
+      for (const [grp, ms] of Object.entries(groups)) {
+        rows.push({ label: grp, cls: "grp" });
+        for (const m of ms) rows.push(line(m.cogsLabel, "", 1, (r) => r * P(m) * (+m.cogsPct / 100)));
+        const t = line("Total " + grp, "tot", 0, (r) => ms.reduce((s, m) => s + r * P(m) * (+m.cogsPct / 100), 0));
+        rows.push(t); t.vals.forEach((v, i) => cogsT[i] += v);
+      }
+      rows.push({ label: "520 · COGS - WAGES", cls: "grp" });
+      for (const w of budS.wages) rows.push(line(w.label, "", 1, (r) => r * P(w)));
+      const mm = budMgmtMo();
+      rows.push(line("525 · MANAGEMENT WAGES", "", 1, () => mm));
+      rows.push(line("540 · PAYROLL TAXES", "", 1, (r) => r * (+budS.payrollTaxPct || 0) / 100));
+      const wt = line("Total 520 · COGS - WAGES", "tot", 0, (r) => budS.wages.reduce((s, w) => s + r * P(w), 0) + mm + r * (+budS.payrollTaxPct || 0) / 100);
+      rows.push(wt); wt.vals.forEach((v, i) => cogsT[i] += v);
+      rows.push({ label: "590 · DISCOUNTS & COMPS", cls: "grp" });
+      for (const c of budS.comps.filter((x) => +x.pct > 0)) rows.push(line(c.label, "", 1, (r) => r * P(c)));
+      const ct = line("Total 590 · DISCOUNTS & COMPS", "tot", 0, (r) => budS.comps.reduce((s, c) => s + r * P(c), 0));
+      rows.push(ct); ct.vals.forEach((v, i) => cogsT[i] += v);
+      rows.push({ label: "Total COGS", cls: "keyr", vals: cogsT.map(budR2) });
+      const gp = R.map((r, i) => budR2(r - cogsT[i]));
+      rows.push({ label: "Gross Profit", cls: "keyr", vals: gp });
+      rows.push({ label: "Expense", cls: "sec" });
+      const expT = R.map(() => 0);
+      const expLines = [
+        ...budS.fixedExp.map((e) => ({ label: e.label, fn: () => +e.amt || 0 })),
+        ...budS.pctExp.map((e) => ({ label: e.label, fn: (r) => r * (+e.pct || 0) / 100 })),
+      ].sort((a, b) => a.label.localeCompare(b.label));
+      for (const e of expLines) {
+        const l = line(e.label, "", 1, e.fn);
+        if (l.vals.every((v) => !v)) continue;
+        rows.push(l); l.vals.forEach((v, i) => expT[i] += v);
+      }
+      rows.push({ label: "Total Expense", cls: "keyr", vals: expT.map(budR2) });
+      const noi = R.map((r, i) => budR2(gp[i] - expT[i]));
+      rows.push({ label: "Net Ordinary Income", cls: "keyr", vals: noi, signed: true });
+      const otherT = R.map(() => 0);
+      const oa = budS.otherExp.filter((e) => +e.amt);
+      if (oa.length) {
+        rows.push({ label: "Other Expenses", cls: "sec" });
+        for (const e of oa) { const l = line(e.label, "", 1, () => +e.amt || 0); rows.push(l); l.vals.forEach((v, i) => otherT[i] += v); }
+        rows.push({ label: "Total Other Expenses", cls: "tot", vals: otherT.map(budR2) });
+      }
+      rows.push({ label: "Net Income", cls: "netr", vals: noi.map((v, i) => budR2(v - otherT[i])), signed: true });
+      return { rows, R };
+    }
+
+    function budRenderGrid() {
+      const { rows, R } = budCompute();
+      const yr = String(budYear).slice(-2);
+      const yearRev = R.reduce((a, b) => a + b, 0);
+      let h = "<thead><tr><th class='acct'></th>";
+      for (const m of BUD_MONTHS) h += `<th>${m.slice(0, 3)} ${yr}</th><th>%</th>`;
+      h += "<th class='sumc'>Summary</th><th>%</th></tr></thead><tbody>";
+      for (const row of rows) {
+        const ind = row.ind ? ` i${row.ind}` : "";
+        if (!row.vals) { h += `<tr class="${row.cls || ""}"><td class="acct${ind}">${escapeHtml(row.label)}</td><td colspan="26"></td></tr>`; continue; }
+        const sum = row.vals.reduce((a, b) => a + b, 0);
+        h += `<tr class="${row.cls || ""}"><td class="acct${ind}">${escapeHtml(row.label)}</td>`;
+        row.vals.forEach((v, i) => {
+          if (row.income) h += `<td class="n"><input class="cellrev" data-budrev="${i}" value="${Math.round(v)}"></td><td class="p">100%</td>`;
+          else {
+            const sign = v < 0 ? " negv" : (row.signed ? " posv" : "");
+            h += `<td class="n${sign}">${budMoney(v)}</td><td class="p">${budPct(v, R[i])}</td>`;
+          }
+        });
+        const ssign = sum < 0 ? " negv" : (row.signed ? " posv" : "");
+        h += `<td class="n sumc${ssign}">${budMoney(sum)}</td><td class="p">${budPct(sum, yearRev)}</td></tr>`;
+      }
+      $("budGrid").innerHTML = h + "</tbody>";
+      $("budGrid").querySelectorAll("[data-budrev]").forEach((inp) => inp.addEventListener("change", () => {
+        budS.revenue[+inp.dataset.budrev] = +inp.value || 0;
+        budSave(); budRenderGrid(); budRenderPanels();
+      }));
+    }
+
+    function budPanel(id, title, sum, body) {
+      const open = budOpen[id] !== false;
+      return `<div class="bud-panel${open ? "" : " closed"}" data-budpanel="${id}">
+        <div class="bud-ph" data-budtoggle="${id}"><span class="caret">▼</span>${title}<span class="psum">${sum}</span></div>
+        <div class="bud-pb">${body}</div></div>`;
+    }
+    const budField = (list, i, f, cls, unit) =>
+      `<input class="${cls}" data-budlist="${list}" data-i="${i}" data-f="${f}" value="${escapeHtml(String(budS[list][i][f]))}">` +
+      (unit ? `<span class="bud-unit">${unit}</span>` : "");
+
+    function budRenderPanels() {
+      const mixSum = budS.mix.reduce((s, m) => s + (+m.pct || 0), 0);
+      const annual = budS.revenue.reduce((s, v) => s + (+v || 0), 0);
+      const baseSum = budS.baseline.reduce((s, v) => s + (+v || 0), 0);
+      const aimed = Math.round(baseSum * (1 + (+budS.growthPct || 0) / 100));
+      const mm = budMgmtMo();
+      const mini = (list, arr) => `<div class="bud-mini">${arr.map((v, i) =>
+        `<div><span>${BUD_MONTHS[i].slice(0, 3)}</span><input data-budmini="${list}" data-i="${i}" value="${Math.round(+v || 0)}"></div>`).join("")}</div>`;
+      const monthOpts = (sel) => BUD_MONTHS.map((m, i) => `<option value="${i}"${i === +sel ? " selected" : ""}>${m.slice(0, 3)}</option>`).join("");
+
+      const revB = `
+        <div class="bud-row"><label class="sublab">Baseline months (last year's shape)</label>
+          <button class="bud-add" style="margin:0;" id="budPullBtn" title="Fill the baseline from this unit's actual months on file for ${budYear - 1}">← From ${budYear - 1} actuals</button></div>
+        ${mini("baseline", budS.baseline)}
+        <div class="bud-row" style="margin-top:0.5rem;"><label>Growth factor</label>${budField0("growthPct", "pct", "%")}</div>
+        <div class="bud-row"><label>Aimed annual total</label>
+          <input class="num" id="budAimIn" style="width:96px;" value="${aimed}"><span class="bud-unit">$</span></div>
+        <p class="bud-hint">Each month keeps its share of the baseline; growth % and the aimed total solve for each other.</p>`;
+
+      const wxB = `
+        <div class="bud-row"><label>Weather sensitivity</label>${budField0("weatherSens", "pct", "%")}</div>
+        <p class="bud-hint" style="margin:0 0 0.35rem;">Revenue share exposed to weather — Soca 0% (indoors), Bar Phoebe ~60% (half patio).</p>
+        <div class="bud-row"><label class="sublab">Adverse-weather index (% of month)</label></div>
+        ${mini("wx", budS.wx)}
+        <div class="bud-row" style="margin-top:0.45rem;"><label class="sublab">City events</label></div>` +
+        budS.events.map((e, i) => `
+        <div class="bud-row">${budField("events", i, "name", "lbl")}
+          <select data-budevmonth="${i}" style="padding:0.28rem 0.35rem;border-radius:8px;border:1px solid var(--border);color:var(--text);font:inherit;">${monthOpts(e.month)}</select>
+          ${budField("events", i, "pct", "pct", "%")}
+          <button class="bud-del" data-buddel="events" data-i="${i}">✕</button></div>`).join("") +
+        `<button class="bud-add" data-budadd="events">+ Add event</button>
+        <div class="bud-row" style="margin-top:0.45rem;"><label>Hold the aimed total (reshape only)</label>
+          <input type="checkbox" id="budHoldIn"${budS.holdTotal ? " checked" : ""}></div>`;
+
+      const mixB = budS.mix.map((m, i) => `
+        <div class="bud-row"><label title="${escapeHtml(m.label)}">${escapeHtml(m.label.replace(/^\d+ · /, ""))}</label>
+          ${budField("mix", i, "pct", "pct", "%")}<span class="bud-unit" style="width:auto;">cost</span>${budField("mix", i, "cogsPct", "pct", "%")}</div>`).join("") +
+        `<p class="${Math.abs(mixSum - 100) < 0.01 ? "bud-ok" : "bud-warn"}" style="margin:0.35rem 0 0;">Mix totals ${mixSum.toFixed(1)}%${Math.abs(mixSum - 100) < 0.01 ? " ✓" : " — should be 100%"}</p>`;
+
+      const wagB = budS.wages.map((w, i) => `
+        <div class="bud-row"><label>${escapeHtml(w.label.replace(/^\d+ · /, ""))}</label>${budField("wages", i, "pct", "pct", "%")}</div>`).join("") +
+        `<div class="bud-row"><label>540 · Payroll taxes</label>${budField0("payrollTaxPct", "pct", "%")}</div>
+        <div class="bud-row" style="margin-top:0.35rem;"><label class="sublab">Management (annual)</label></div>` +
+        budS.mgmt.map((m, i) => `
+        <div class="bud-row">${budField("mgmt", i, "name", "lbl")}${budField("mgmt", i, "annual", "num", "$")}
+          <button class="bud-del" data-buddel="mgmt" data-i="${i}">✕</button></div>`).join("") +
+        `<button class="bud-add" data-budadd="mgmt">+ Add salary</button>
+        <p class="bud-hint">Management runs ${budMoney(mm)}/month regardless of sales.</p>`;
+
+      const compB = budS.comps.map((c, i) => `
+        <div class="bud-row"><label>${escapeHtml(c.label.replace(/^\d+ · /, ""))}</label>${budField("comps", i, "pct", "pct", "%")}</div>`).join("");
+
+      const fixB = budS.fixedExp.map((e, i) => `
+        <div class="bud-row">${budField("fixedExp", i, "label", "lbl")}${budField("fixedExp", i, "amt", "num", "$")}
+          <button class="bud-del" data-buddel="fixedExp" data-i="${i}">✕</button></div>`).join("") +
+        `<button class="bud-add" data-budadd="fixedExp">+ Add expense line</button>
+        <div class="bud-row" style="margin-top:0.45rem;"><label class="sublab">% of sales</label></div>` +
+        budS.pctExp.map((e, i) => `
+        <div class="bud-row">${budField("pctExp", i, "label", "lbl")}${budField("pctExp", i, "pct", "pct", "%")}
+          <button class="bud-del" data-buddel="pctExp" data-i="${i}">✕</button></div>`).join("") +
+        `<button class="bud-add" data-budadd="pctExp">+ Add % line</button>`;
+
+      const othB = budS.otherExp.map((e, i) => `
+        <div class="bud-row">${budField("otherExp", i, "label", "lbl")}${budField("otherExp", i, "amt", "num", "$")}</div>`).join("");
+
+      $("budPanels").innerHTML =
+        budPanel("rev", "Revenue plan", budMoney(annual) + "/yr", revB) +
+        budPanel("wx", "Weather & city events", (budS.weatherSens || 0) + "% exposed · " + budS.events.length + " events", wxB) +
+        budPanel("mix", "Sales mix & cost of goods", mixSum.toFixed(1) + "% mix", mixB) +
+        budPanel("wag", "Wages & payroll", budMoney(mm) + "/mo mgmt", wagB) +
+        budPanel("comp", "Discounts & comps", budS.comps.reduce((s, c) => s + (+c.pct || 0), 0).toFixed(1) + "%", compB) +
+        budPanel("fix", "Operating expenses", budMoney(budS.fixedExp.reduce((s, e) => s + (+e.amt || 0), 0)) + "/mo fixed", fixB) +
+        budPanel("oth", "Other expenses", budMoney(budS.otherExp.reduce((s, e) => s + (+e.amt || 0), 0)) + "/mo", othB);
+      budWire();
+    }
+    // Scalar fields (growthPct, weatherSens, payrollTaxPct) share one style.
+    function budField0(key, cls, unit) {
+      return `<input class="${cls}" data-budkey="${key}" value="${budS[key]}"><span class="bud-unit">${unit}</span>`;
+    }
+
+    function budWire() {
+      const root = $("budPanels");
+      root.querySelectorAll("[data-budtoggle]").forEach((h) => h.addEventListener("click", (e) => {
+        if (e.target.closest("input,button,select")) return;
+        const id = h.dataset.budtoggle;
+        budOpen[id] = h.parentElement.classList.contains("closed");
+        h.parentElement.classList.toggle("closed");
+      }));
+      root.querySelectorAll("[data-budmini]").forEach((inp) => inp.addEventListener("change", () => {
+        budS[inp.dataset.budmini][+inp.dataset.i] = +inp.value || 0; budApplyEngine();
+      }));
+      root.querySelectorAll("[data-budkey]").forEach((inp) => inp.addEventListener("change", () => {
+        budS[inp.dataset.budkey] = +inp.value || 0;
+        if (inp.dataset.budkey === "payrollTaxPct") { budSave(); budRenderGrid(); budRenderPanels(); }
+        else budApplyEngine();
+      }));
+      root.querySelectorAll("input[data-budlist]").forEach((inp) => inp.addEventListener("change", () => {
+        const { budlist, i, f } = inp.dataset;
+        budS[budlist][+i][f] = (f === "label" || f === "name") ? inp.value : +inp.value || 0;
+        if (budlist === "events") budApplyEngine();
+        else { budSave(); budRenderGrid(); budRenderPanels(); }
+      }));
+      root.querySelectorAll("[data-budevmonth]").forEach((sel) => sel.addEventListener("change", () => {
+        budS.events[+sel.dataset.budevmonth].month = +sel.value; budApplyEngine();
+      }));
+      root.querySelectorAll("[data-buddel]").forEach((b) => b.addEventListener("click", () => {
+        budS[b.dataset.buddel].splice(+b.dataset.i, 1);
+        if (b.dataset.buddel === "events") budApplyEngine();
+        else { budSave(); budRenderPanels(); budRenderGrid(); }
+      }));
+      root.querySelectorAll("[data-budadd]").forEach((b) => b.addEventListener("click", () => {
+        const l = b.dataset.budadd;
+        if (l === "mgmt") budS.mgmt.push({ name: "New role", annual: 0 });
+        else if (l === "events") budS.events.push({ name: "New event", month: 0, pct: 0 });
+        else if (l === "pctExp") budS.pctExp.push({ label: "6xx · NEW % LINE", pct: 0 });
+        else budS.fixedExp.push({ label: "6xx · NEW EXPENSE", amt: 0 });
+        budSave(); budRenderPanels(); budRenderGrid();
+      }));
+      $("budAimIn")?.addEventListener("change", (e) => {
+        const baseSum = budS.baseline.reduce((s, v) => s + (+v || 0), 0);
+        if (baseSum) budS.growthPct = budR2(((+e.target.value || 0) / baseSum - 1) * 100);
+        budApplyEngine();
+      });
+      $("budHoldIn")?.addEventListener("change", (e) => { budS.holdTotal = e.target.checked; budApplyEngine(); });
+      $("budPullBtn")?.addEventListener("click", () => {
+        const prior = String(budYear - 1);
+        const mine = repFin.filter((r) => r.entity_id === repUnit && String(r.period).startsWith(prior));
+        if (!mine.length) { $("budSaveStatus").textContent = `No ${prior} months on file`; return; }
+        budS.baseline = BUD_MONTHS.map((_, i) => {
+          const row = mine.find((r) => +String(r.period).slice(5, 7) === i + 1);
+          return row ? Math.round(+row.revenue || 0) : 0;
+        });
+        budApplyEngine();
+      });
+    }
+
+    async function openBudget() {
+      if (!repUnit) return;
+      const u = repUnits.find((x) => x.id === repUnit);
+      $("budTitle").textContent = "Budget maker";
+      $("budSub").textContent = (u?.name || "Unit") + " — the engine builds each month from last year's shape, your growth aim, weather exposure and events.";
+      $("budYearIn").value = budYear;
+      $("budSaveStatus").textContent = "Loading…";
+      show($("budgetModal"), true);
+      const { data, error } = await supabase.from("budgets").select("data").eq("entity_id", repUnit).eq("year", budYear).maybeSingle();
+      budS = (!error && data?.data) ? data.data : budClone(BUD_TEMPLATE);
+      $("budSaveStatus").textContent = (!error && data?.data) ? "Saved ✓" : "New budget";
+      budRenderPanels(); budRenderGrid();
+      if (!data?.data) logAccess("budget_open_new", { unit: u?.name, year: budYear });
+    }
+    $("budgetBtn")?.addEventListener("click", openBudget);
+    $("budYearIn")?.addEventListener("change", (e) => { budYear = +e.target.value || budYear; openBudget(); });
+    $("budResetBtn")?.addEventListener("click", () => {
+      if (!confirm("Restore the template? This replaces the current budget for this year.")) return;
+      budS = budClone(BUD_TEMPLATE); budApplyEngine();
+    });
+    $("budgetModal")?.addEventListener("click", (e) => { if (e.target === $("budgetModal")) show($("budgetModal"), false); });
 
     // AI-read P&L exports (PDF/image/spreadsheet) into monthly figures.
     // Accepts several files at once — months are merged across all of them.
