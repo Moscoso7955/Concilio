@@ -184,6 +184,10 @@
     .bud-row input:focus, .bud-mixrow input:focus, .bud-mini input:focus, .bud-grid input:focus { outline: none; border-color: var(--accent); }
     .bud-row input.num, .bud-mixrow input.num { width: 100px; text-align: right; flex: 0 0 auto; }
     .bud-row input.pct, .bud-mixrow input.pct { width: 72px; text-align: right; flex: 0 0 auto; }
+    /* Editable name/label fields take the row's leftover space; selects
+       size to their content (the global select rule says width:100%). */
+    .bud-row input.lbl { flex: 1 1 auto; min-width: 90px; width: auto; }
+    .bud-row select, .bud-mixrow select { width: auto; flex: 0 0 auto; }
     .bud-row input.lbl { flex: 1; min-width: 0; }
     .bud-unit { color: var(--muted); font-size: 0.76rem; width: 12px; flex: 0 0 auto; }
     .bud-del { background: none; border: 0; color: var(--muted); cursor: pointer; padding: 0 0.15rem; }
@@ -819,7 +823,7 @@
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.37.7 — schema migration 0037">v1.37.7</div>
+  <div class="version-tag" title="Owner Portal v1.37.8 — schema migration 0037">v1.37.8</div>
 
   <!-- Settings modal -->
   <div class="modal-overlay hidden" id="settingsModal">
