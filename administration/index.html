@@ -165,7 +165,9 @@
     .bud-panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 12px; margin-bottom: 16px; }
     .bud-panel { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
     .bud-ph { display: flex; align-items: center; gap: 0.5rem; padding: 0.65rem 0.9rem; cursor: pointer; font-size: 0.72rem;
-      text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); user-select: none; }
+      text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); user-select: none;
+      width: 100%; background: none; border: 0; font-family: inherit; text-align: left; }
+    .bud-ph:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
     .bud-ph:hover { background: var(--panel-2); }
     .bud-ph .caret { font-size: 0.6rem; }
     .bud-ph .psum { margin-left: auto; text-transform: none; letter-spacing: 0; font-variant-numeric: tabular-nums; }
@@ -202,7 +204,11 @@
     .bud-mixrow .mixlab { font-size: 0.85rem; margin-bottom: 0.3rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .bud-mixrow .mixin { display: flex; align-items: center; gap: 0.5rem; }
     .bud-mixrow .mixin .lead { color: var(--muted); font-size: 0.74rem; flex: 1; text-align: right; white-space: nowrap; }
-    .bud-mini { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+    /* Four per row so six-figure months fit without clipping. */
+    .bud-mini { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+    .bud-scroll { max-height: 300px; overflow-y: auto; padding-right: 2px; }
+    .bud-gridwrap { max-height: 62vh; overflow: auto; }
+    .bud-driver { color: #5da97f; font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.06em; margin-left: 0.35rem; }
     .bud-mini div { display: flex; flex-direction: column; gap: 3px; }
     .bud-mini span { font-size: 0.64rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
     .bud-mini input { width: 100%; text-align: right; font-size: 0.82rem; padding: 0.34rem 0.45rem !important; }
@@ -212,9 +218,11 @@
     .bud-grid { border-collapse: collapse; width: max-content; min-width: 100%; font-variant-numeric: tabular-nums; }
     .bud-grid th, .bud-grid td { padding: 0.24rem 0.5rem; font-size: 0.78rem; white-space: nowrap; }
     .bud-grid thead th { color: var(--muted); font-weight: 600; font-size: 0.66rem; text-transform: uppercase;
-      letter-spacing: 0.05em; text-align: right; border-bottom: 1px solid var(--border); background: var(--panel); }
+      letter-spacing: 0.05em; text-align: right; border-bottom: 1px solid var(--border); background: var(--panel);
+      position: sticky; top: 0; z-index: 3; }
     .bud-grid th.acct, .bud-grid td.acct { position: sticky; left: 0; background: var(--panel); text-align: left;
       min-width: 230px; max-width: 300px; overflow: hidden; text-overflow: ellipsis; z-index: 1; border-right: 1px solid var(--border); }
+    .bud-grid thead th.acct { z-index: 4; }
     .bud-grid td.n { text-align: right; }
     .bud-grid td.p { text-align: right; color: var(--muted); font-size: 0.68rem; border-right: 1px solid #222; }
     .bud-grid tr.sec td { color: var(--muted); font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.06em; padding-top: 0.6rem; }
@@ -823,7 +831,7 @@
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.37.8 — schema migration 0037">v1.37.8</div>
+  <div class="version-tag" title="Owner Portal v1.37.9 — schema migration 0037">v1.37.9</div>
 
   <!-- Settings modal -->
   <div class="modal-overlay hidden" id="settingsModal">
@@ -1008,7 +1016,7 @@
         <button class="iconbtn" data-closemodal="budgetModal" style="font-size:1.5rem;flex:0 0 auto;" aria-label="Close">×</button>
       </div></div>
       <div class="bud-panels" id="budPanels"></div>
-      <div class="table-wrap"><table class="bud-grid" id="budGrid"></table></div>
+      <div class="table-wrap bud-gridwrap"><table class="bud-grid" id="budGrid"></table></div>
       <div class="row" style="align-items:center;margin-top:1rem;">
         <button class="btn btn--ghost" id="budResetBtn" style="flex:0 0 auto;">Reset to template</button>
         <span class="muted" style="font-size:0.78rem;">Total Income cells are editable — the engine re-applies when you touch its inputs.</span>
@@ -2881,8 +2889,21 @@
         const { error } = await supabase.from("budgets").upsert(
           { entity_id: repUnit, year: budYear, data: budS, updated_at: new Date().toISOString() },
           { onConflict: "entity_id,year" });
-        $("budSaveStatus").textContent = error ? "Save failed" : "Saved ✓";
+        $("budSaveStatus").textContent = error ? "Save failed"
+          : "Saved " + new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
       }, 700);
+    }
+
+    // A partial-year baseline (unit opened mid-year) budgets $0 for the
+    // empty months; offer to fill them from the open months' average.
+    function budFillEmptyBaseline() {
+      const nz = budS.baseline.filter((v) => +v > 0);
+      const zeros = 12 - nz.length;
+      if (!zeros || zeros === 12) return false;
+      const avg = Math.round(nz.reduce((a, b) => a + +b, 0) / nz.length);
+      if (!confirm(`${zeros} baseline month${zeros === 1 ? " has" : "s have"} no actuals (partial-year source). Fill ${zeros === 1 ? "it" : "them"} with the average of the ${nz.length} months on file — ${budMoney(avg)}?`)) return false;
+      budS.baseline = budS.baseline.map((v) => (+v > 0 ? +v : avg));
+      return true;
     }
 
     function budMonthAdj() {
@@ -2986,7 +3007,7 @@
         const sum = row.vals.reduce((a, b) => a + b, 0);
         h += `<tr class="${row.cls || ""}"><td class="acct${ind}">${escapeHtml(row.label)}</td>`;
         row.vals.forEach((v, i) => {
-          if (row.income) h += `<td class="n"><input class="cellrev" data-budrev="${i}" value="${Math.round(v)}"></td><td class="p">100%</td>`;
+          if (row.income) h += `<td class="n"><input class="cellrev" data-budrev="${i}" aria-label="Total Income ${BUD_MONTHS[i]}" value="${Math.round(v)}"></td><td class="p">100%</td>`;
           else {
             const sign = v < 0 ? " negv" : (row.signed ? " posv" : "");
             h += `<td class="n${sign}">${budMoney(v)}</td><td class="p">${budPct(v, R[i])}</td>`;
@@ -3005,12 +3026,19 @@
     function budPanel(id, title, sum, body) {
       const open = budOpen[id] !== false;
       return `<div class="bud-panel${open ? "" : " closed"}" data-budpanel="${id}">
-        <div class="bud-ph" data-budtoggle="${id}"><span class="caret">▼</span>${title}<span class="psum">${sum}</span></div>
+        <button type="button" class="bud-ph" data-budtoggle="${id}" aria-expanded="${open}"><span class="caret">${open ? "▼" : "▶"}</span>${title}<span class="psum">${sum}</span></button>
         <div class="bud-pb">${body}</div></div>`;
     }
-    const budField = (list, i, f, cls, unit) =>
-      `<input class="${cls}" data-budlist="${list}" data-i="${i}" data-f="${f}" value="${escapeHtml(String(budS[list][i][f]))}">` +
-      (unit ? `<span class="bud-unit">${unit}</span>` : "");
+    // Money is $-prefixed, percentages %-suffixed; every input carries
+    // an aria-label built from its row.
+    const budField = (list, i, f, cls, unit) => {
+      const row = budS[list][i];
+      const aria = escapeHtml(`${row.label || row.name || list} — ${f}`);
+      const ph = (f === "name" || f === "label") && !row[f] ? ' placeholder="Name"' : "";
+      const inp = `<input class="${cls}" data-budlist="${list}" data-i="${i}" data-f="${f}" aria-label="${aria}"${ph} value="${escapeHtml(String(row[f] ?? ""))}">`;
+      if (unit === "$") return `<span class="bud-unit">$</span>` + inp;
+      return inp + (unit ? `<span class="bud-unit">${unit}</span>` : "");
+    };
 
     function budRenderPanels() {
       const mixSum = budS.mix.reduce((s, m) => s + (+m.pct || 0), 0);
@@ -3022,13 +3050,16 @@
         `<div><span>${BUD_MONTHS[i].slice(0, 3)}</span><input data-budmini="${list}" data-i="${i}" value="${Math.round(+v || 0)}"></div>`).join("")}</div>`;
       const monthOpts = (sel) => BUD_MONTHS.map((m, i) => `<option value="${i}"${i === +sel ? " selected" : ""}>${m.slice(0, 3)}</option>`).join("");
 
+      const drv = (k) => budS.revDriver === k ? `<span class="bud-driver">driver</span>` : "";
       const revB = `
         <div class="bud-row"><label class="sublab">Baseline months (last year's shape)</label>
           <button class="bud-add" style="margin:0;" id="budPullBtn" title="Fill the baseline from this unit's actual months on file for ${budYear - 1}">← From ${budYear - 1} actuals</button></div>
         ${mini("baseline", budS.baseline)}
-        <div class="bud-row" style="margin-top:0.5rem;"><label>Growth factor</label>${budField0("growthPct", "pct", "%")}</div>
-        <div class="bud-row"><label>Aimed annual total</label>
-          <input class="num" id="budAimIn" style="width:96px;" value="${aimed}"><span class="bud-unit">$</span></div>
+        <div class="bud-row" style="margin-top:0.5rem;"><label>Growth factor${drv("growth")}</label>${budField0("growthPct", "pct", "%")}</div>
+        <div class="bud-row"><label>Aimed annual total${drv("aim")}</label>
+          <span class="bud-unit">$</span><input class="num" id="budAimIn" aria-label="Aimed annual total" style="width:100px;" value="${aimed}"></div>
+        <div class="bud-row"><label>Weather &amp; events reshape months only (hold this total)</label>
+          <input type="checkbox" id="budHoldIn" aria-label="Hold the aimed annual total"${budS.holdTotal ? " checked" : ""}></div>
         <p class="bud-hint">Each month keeps its share of the baseline; growth % and the aimed total solve for each other.</p>`;
 
       const wxB = `
@@ -3036,15 +3067,14 @@
         <p class="bud-hint" style="margin:0 0 0.35rem;">Revenue share exposed to weather — Soca 0% (indoors), Bar Phoebe ~60% (half patio).</p>
         <div class="bud-row"><label class="sublab">Adverse-weather index (% of month)</label></div>
         ${mini("wx", budS.wx)}
-        <div class="bud-row" style="margin-top:0.45rem;"><label class="sublab">City events</label></div>` +
+        <div class="bud-row" style="margin-top:0.45rem;"><label class="sublab">City events</label></div>
+        <p class="bud-hint" style="margin:0 0 0.3rem;">An event's % lifts that whole month's revenue.</p>` +
         budS.events.map((e, i) => `
         <div class="bud-row">${budField("events", i, "name", "lbl")}
-          <select data-budevmonth="${i}" style="padding:0.28rem 0.35rem;border-radius:8px;border:1px solid var(--border);color:var(--text);font:inherit;">${monthOpts(e.month)}</select>
+          <select data-budevmonth="${i}" aria-label="${escapeHtml(e.name || "event")} — month" style="padding:0.28rem 0.35rem;border-radius:8px;border:1px solid var(--border);color:var(--text);font:inherit;">${monthOpts(e.month)}</select>
           ${budField("events", i, "pct", "pct", "%")}
-          <button class="bud-del" data-buddel="events" data-i="${i}">✕</button></div>`).join("") +
-        `<button class="bud-add" data-budadd="events">+ Add event</button>
-        <div class="bud-row" style="margin-top:0.45rem;"><label>Hold the aimed total (reshape only)</label>
-          <input type="checkbox" id="budHoldIn"${budS.holdTotal ? " checked" : ""}></div>`;
+          <button class="bud-del" data-buddel="events" data-i="${i}" aria-label="Remove ${escapeHtml(e.name || "event")}">✕</button></div>`).join("") +
+        `<button class="bud-add" data-budadd="events">+ Add event</button>`;
 
       const mixB = budS.mix.map((m, i) => `
         <div class="bud-mixrow"><div class="mixlab" title="${escapeHtml(m.label)}">${escapeHtml(m.label)}</div>
@@ -3052,27 +3082,33 @@
           <span class="bud-unit" style="width:auto;">cost</span>${budField("mix", i, "cogsPct", "pct", "%")}</div></div>`).join("") +
         `<p class="${Math.abs(mixSum - 100) < 0.01 ? "bud-ok" : "bud-warn"}" style="margin:0.35rem 0 0;">Mix totals ${mixSum.toFixed(1)}%${Math.abs(mixSum - 100) < 0.01 ? " ✓" : " — should be 100%"}</p>`;
 
-      const wagB = budS.wages.map((w, i) => `
+      const wagB = `<div class="bud-row"><label class="sublab">Hourly labor — % of sales</label></div>` +
+        budS.wages.map((w, i) => `
         <div class="bud-row"><label>${escapeHtml(w.label.replace(/^\d+ · /, ""))}</label>${budField("wages", i, "pct", "pct", "%")}</div>`).join("") +
         `<div class="bud-row"><label>540 · Payroll taxes</label>${budField0("payrollTaxPct", "pct", "%")}</div>
         <div class="bud-row" style="margin-top:0.35rem;"><label class="sublab">Management (annual)</label></div>` +
         budS.mgmt.map((m, i) => `
         <div class="bud-row">${budField("mgmt", i, "name", "lbl")}${budField("mgmt", i, "annual", "num", "$")}
-          <button class="bud-del" data-buddel="mgmt" data-i="${i}">✕</button></div>`).join("") +
+          <button class="bud-del" data-buddel="mgmt" data-i="${i}" aria-label="Remove ${escapeHtml(m.name || "salary")}">✕</button></div>`).join("") +
         `<button class="bud-add" data-budadd="mgmt">+ Add salary</button>
         <p class="bud-hint">Management runs ${budMoney(mm)}/month regardless of sales.</p>`;
 
-      const compB = budS.comps.map((c, i) => `
+      const compB = `<div class="bud-row"><label class="sublab">% of sales</label></div>` +
+        budS.comps.map((c, i) => `
         <div class="bud-row"><label>${escapeHtml(c.label.replace(/^\d+ · /, ""))}</label>${budField("comps", i, "pct", "pct", "%")}</div>`).join("");
 
-      const fixB = budS.fixedExp.map((e, i) => `
+      // Display order: account number/name; data indexes stay intact.
+      const bySorted = (list) => budS[list].map((e, i) => [e, i])
+        .sort((a, b) => String(a[0].label).localeCompare(String(b[0].label), undefined, { numeric: true }));
+      const fixB = `<div class="bud-scroll">` +
+        bySorted("fixedExp").map(([e, i]) => `
         <div class="bud-row">${budField("fixedExp", i, "label", "lbl")}${budField("fixedExp", i, "amt", "num", "$")}
-          <button class="bud-del" data-buddel="fixedExp" data-i="${i}">✕</button></div>`).join("") +
-        `<button class="bud-add" data-budadd="fixedExp">+ Add expense line</button>
+          <button class="bud-del" data-buddel="fixedExp" data-i="${i}" aria-label="Remove ${escapeHtml(e.label || "expense")}">✕</button></div>`).join("") +
+        `</div><button class="bud-add" data-budadd="fixedExp">+ Add expense line</button>
         <div class="bud-row" style="margin-top:0.45rem;"><label class="sublab">% of sales</label></div>` +
-        budS.pctExp.map((e, i) => `
+        bySorted("pctExp").map(([e, i]) => `
         <div class="bud-row">${budField("pctExp", i, "label", "lbl")}${budField("pctExp", i, "pct", "pct", "%")}
-          <button class="bud-del" data-buddel="pctExp" data-i="${i}">✕</button></div>`).join("") +
+          <button class="bud-del" data-buddel="pctExp" data-i="${i}" aria-label="Remove ${escapeHtml(e.label || "expense")}">✕</button></div>`).join("") +
         `<button class="bud-add" data-budadd="pctExp">+ Add % line</button>`;
 
       const othB = budS.otherExp.map((e, i) => `
@@ -3080,32 +3116,36 @@
 
       $("budPanels").innerHTML =
         budPanel("rev", "Revenue plan", budMoney(annual) + "/yr", revB) +
-        budPanel("wx", "Weather & city events", (budS.weatherSens || 0) + "% exposed · " + budS.events.length + " events", wxB) +
+        budPanel("wx", "Weather & events", (budS.weatherSens || 0) + "% exposed · " + budS.events.length + " event" + (budS.events.length === 1 ? "" : "s"), wxB) +
         budPanel("mix", "Sales mix & cost of goods", mixSum.toFixed(1) + "% mix", mixB) +
         budPanel("wag", "Wages & payroll", budMoney(mm) + "/mo mgmt", wagB) +
         budPanel("comp", "Discounts & comps", budS.comps.reduce((s, c) => s + (+c.pct || 0), 0).toFixed(1) + "%", compB) +
-        budPanel("fix", "Operating expenses", budMoney(budS.fixedExp.reduce((s, e) => s + (+e.amt || 0), 0)) + "/mo fixed", fixB) +
+        budPanel("fix", "Operating expenses", budS.fixedExp.length + " lines · " + budMoney(budS.fixedExp.reduce((s, e) => s + (+e.amt || 0), 0)) + "/mo", fixB) +
         budPanel("oth", "Other expenses", budMoney(budS.otherExp.reduce((s, e) => s + (+e.amt || 0), 0)) + "/mo", othB);
       budWire();
     }
     // Scalar fields (growthPct, weatherSens, payrollTaxPct) share one style.
+    const BUD_KEY_NAMES = { growthPct: "Growth factor", weatherSens: "Weather sensitivity", payrollTaxPct: "Payroll taxes" };
     function budField0(key, cls, unit) {
-      return `<input class="${cls}" data-budkey="${key}" value="${budS[key]}"><span class="bud-unit">${unit}</span>`;
+      return `<input class="${cls}" data-budkey="${key}" aria-label="${BUD_KEY_NAMES[key] || key}" value="${budS[key]}"><span class="bud-unit">${unit}</span>`;
     }
 
     function budWire() {
       const root = $("budPanels");
-      root.querySelectorAll("[data-budtoggle]").forEach((h) => h.addEventListener("click", (e) => {
-        if (e.target.closest("input,button,select")) return;
+      root.querySelectorAll("[data-budtoggle]").forEach((h) => h.addEventListener("click", () => {
         const id = h.dataset.budtoggle;
-        budOpen[id] = h.parentElement.classList.contains("closed");
+        const nowOpen = h.parentElement.classList.contains("closed");
+        budOpen[id] = nowOpen;
         h.parentElement.classList.toggle("closed");
+        h.setAttribute("aria-expanded", String(nowOpen));
+        h.querySelector(".caret").textContent = nowOpen ? "▼" : "▶";
       }));
       root.querySelectorAll("[data-budmini]").forEach((inp) => inp.addEventListener("change", () => {
         budS[inp.dataset.budmini][+inp.dataset.i] = +inp.value || 0; budApplyEngine();
       }));
       root.querySelectorAll("[data-budkey]").forEach((inp) => inp.addEventListener("change", () => {
         budS[inp.dataset.budkey] = +inp.value || 0;
+        if (inp.dataset.budkey === "growthPct") budS.revDriver = "growth";
         if (inp.dataset.budkey === "payrollTaxPct") { budSave(); budRenderGrid(); budRenderPanels(); }
         else budApplyEngine();
       }));
@@ -3119,6 +3159,8 @@
         budS.events[+sel.dataset.budevmonth].month = +sel.value; budApplyEngine();
       }));
       root.querySelectorAll("[data-buddel]").forEach((b) => b.addEventListener("click", () => {
+        const item = budS[b.dataset.buddel][+b.dataset.i];
+        if (!confirm(`Remove ${item?.label || item?.name || "this line"}?`)) return;
         budS[b.dataset.buddel].splice(+b.dataset.i, 1);
         if (b.dataset.buddel === "events") budApplyEngine();
         else { budSave(); budRenderPanels(); budRenderGrid(); }
@@ -3126,7 +3168,7 @@
       root.querySelectorAll("[data-budadd]").forEach((b) => b.addEventListener("click", () => {
         const l = b.dataset.budadd;
         if (l === "mgmt") budS.mgmt.push({ name: "New role", annual: 0 });
-        else if (l === "events") budS.events.push({ name: "New event", month: 0, pct: 0 });
+        else if (l === "events") budS.events.push({ name: "", month: 0, pct: 0 });
         else if (l === "pctExp") budS.pctExp.push({ label: "6xx · NEW % LINE", pct: 0 });
         else budS.fixedExp.push({ label: "6xx · NEW EXPENSE", amt: 0 });
         budSave(); budRenderPanels(); budRenderGrid();
@@ -3134,6 +3176,7 @@
       $("budAimIn")?.addEventListener("change", (e) => {
         const baseSum = budS.baseline.reduce((s, v) => s + (+v || 0), 0);
         if (baseSum) budS.growthPct = budR2(((+e.target.value || 0) / baseSum - 1) * 100);
+        budS.revDriver = "aim";
         budApplyEngine();
       });
       $("budHoldIn")?.addEventListener("change", (e) => { budS.holdTotal = e.target.checked; budApplyEngine(); });
@@ -3145,6 +3188,7 @@
           const row = mine.find((r) => +String(r.period).slice(5, 7) === i + 1);
           return row ? Math.round(+row.revenue || 0) : 0;
         });
+        budFillEmptyBaseline();
         budApplyEngine();
       });
     }
@@ -3195,6 +3239,7 @@
         if (g.weatherSensPct != null) budS.weatherSens = budR2(+g.weatherSensPct || 0);
         if (arr(g.events).length) budS.events = g.events.map((e) => ({
           name: e.name || "Event", month: Math.min(11, Math.max(0, +e.month || 0)), pct: +e.pct || 0 }));
+        budFillEmptyBaseline();
         budApplyEngine();
         const skipped = arr(g.notes).filter(Boolean);
         st.textContent = `Informed from ${g.sourceMonths || "?"} months ✓`;
