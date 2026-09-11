@@ -291,7 +291,11 @@
     /* Monthly figures: keep the month visible while scrolling to actions. */
     #finTable th:first-child, #finTable td:first-child { position: sticky; left: 0; background: var(--panel); z-index: 1; }
     /* Sticky modal header: title + close stay visible over long statements. */
-    .modal-sticky-head { position: sticky; top: 0; display: flex; justify-content: space-between; align-items: flex-start; gap: 0.75rem; background: var(--panel); z-index: 5; margin: -1.25rem -1.25rem 0.75rem; padding: 1.1rem 1.25rem 0.6rem; border-radius: 14px 14px 0 0; }
+    /* No negative top margin: pulled flush, Chrome displaces the stuck
+       box down over the first content row (measured 8px). Resting in
+       normal flow costs a little air up top and overlaps nothing; when
+       scrolling, the apron below covers the padding strip above. */
+    .modal-sticky-head { position: sticky; top: 0; display: flex; justify-content: space-between; align-items: flex-start; gap: 0.75rem; background: var(--panel); z-index: 5; margin: 0 -1.25rem 0.75rem; padding: 0.2rem 1.25rem 0.6rem; border-radius: 14px 14px 0 0; }
     /* Rows were peeking through the modal's top padding strip above the
        pinned header — an opaque apron closes that gap on every engine. */
     .modal-sticky-head::before { content: ""; position: absolute; left: 0; right: 0; bottom: 100%; height: 1.5rem; background: var(--panel); }
@@ -833,7 +837,7 @@
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.38.1 — schema migration 0038">v1.38.1</div>
+  <div class="version-tag" title="Owner Portal v1.38.2 — schema migration 0038">v1.38.2</div>
 
   <!-- Settings modal -->
   <div class="modal-overlay hidden" id="settingsModal">
