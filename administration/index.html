@@ -837,7 +837,7 @@
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.38.2 — schema migration 0038">v1.38.2</div>
+  <div class="version-tag" title="Owner Portal v1.38.3 — schema migration 0038">v1.38.3</div>
 
   <!-- Settings modal -->
   <div class="modal-overlay hidden" id="settingsModal">
@@ -1240,6 +1240,7 @@
         case "qbo_sync_all": return `Synced all ${Number(d.units) || "?"} QuickBooks-connected units${Number(d.failed) ? ` (${d.failed} failed)` : ""}`;
         case "budget_open_new": return `Started a ${eh(String(d.year || ""))} budget${unit}`;
         case "budget_inform": return `AI-informed the ${eh(String(d.year || ""))} budget from actuals${unit}`;
+        case "budget_weather": return `Pulled weather history for ${eh(d.place || "the unit's city")}${unit}`;
         case "inv_entity": return `Allocated bill <strong>${eh(d.vendor || "")}</strong> to ${eh(d.entity || "")}`;
         case "ic_settle": return `Recorded settlement: <strong>${eh(d.entity || "")}</strong> owes ${eh(d.payer || "")} ${money(Number(d.total) || 0)} (${eh(d.month || "")})`;
         case "ic_unsettle": return `Undid a ${money(Number(d.total) || 0)} settlement (${eh(d.entity || "")} / ${eh(d.payer || "")})`;
@@ -3094,8 +3095,10 @@
       const wxB = `
         <div class="bud-row"><label>Weather sensitivity</label>${budField0("weatherSens", "pct", "%")}</div>
         <p class="bud-hint" style="margin:0 0 0.35rem;">Revenue share exposed to weather — Soca 0% (indoors), Bar Phoebe ~60% (half patio).</p>
-        <div class="bud-row"><label class="sublab">Adverse-weather index (% of month)</label></div>
+        <div class="bud-row"><label class="sublab">Adverse-weather index (% of month)</label>
+          <button class="bud-add" style="margin:0;" id="budWxBtn" title="Compute each month's adverse-day share from 3 years of daily history for this unit's address (heavy rain, 100°F+ heat, freezes)">← From weather history</button></div>
         ${mini("wx", budS.wx)}
+        <p class="bud-hint" style="margin:0.3rem 0 0;">A month's hit = sensitivity × index. Pull from history for measured rain/heat/freeze days, or type your own.</p>
         <div class="bud-row" style="margin-top:0.45rem;"><label class="sublab">City events</label></div>
         <p class="bud-hint" style="margin:0 0 0.3rem;">An event's % lifts that whole month's revenue.</p>` +
         budS.events.map((e, i) => `
@@ -3209,6 +3212,22 @@
         budApplyEngine();
       });
       $("budHoldIn")?.addEventListener("change", (e) => { budS.holdTotal = e.target.checked; budApplyEngine(); });
+      $("budWxBtn")?.addEventListener("click", async () => {
+        const b = $("budWxBtn"), st = $("budSaveStatus");
+        b.disabled = true; st.textContent = "Reading weather history…";
+        try {
+          const res = await fetch(cfg.SUPABASE_URL + "/functions/v1/budget-inform", {
+            method: "POST", headers: await mailFnHeaders(), body: JSON.stringify({ entity_id: repUnit, mode: "weather" }),
+          });
+          const data = await res.json();
+          if (!res.ok || data.ok === false) throw new Error(data.error || ("HTTP " + res.status));
+          budS.wx = data.wx.map((v) => +v || 0);
+          budApplyEngine();
+          st.textContent = `Weather from ${data.place}, ${data.years} ✓`;
+          logAccess("budget_weather", { unit: repUnits.find((x) => x.id === repUnit)?.name, place: data.place });
+        } catch (e) { st.textContent = "Weather: " + (e.message || e); }
+        b.disabled = false;
+      });
       $("budPullBtn")?.addEventListener("click", () => {
         const prior = String(budYear - 1);
         const mine = repFin.filter((r) => r.entity_id === repUnit && String(r.period).startsWith(prior));

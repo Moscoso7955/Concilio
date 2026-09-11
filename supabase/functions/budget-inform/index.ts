@@ -73,6 +73,48 @@ const SCHEMA = {
   required: ["mix", "wages", "mgmtMonthly", "payrollTaxPct", "comps", "fixedExp", "pctExp", "otherExp", "wx", "weatherSensPct", "events", "notes"],
 };
 
+// Historical adverse-weather index from Open-Meteo (free, keyless):
+// geocode the venue's city, pull the last 3 complete years of daily
+// history, and score each month by its share of days that suppress
+// hospitality traffic — heavy rain (≥6mm), heat (≥38°C ≈ 100°F), or
+// freeze-level cold (max ≤4°C). Returns null when the address can't
+// be geocoded; callers fall back to the model's climate estimate.
+async function weatherIndex(address: string | null) {
+  if (!address) return null;
+  const parts = String(address).split(",").map((s) => s.trim()).filter(Boolean);
+  // Street geocoders this is not: try the city-ish segments.
+  const candidates = [...new Set([parts[1], parts[parts.length - 2], parts[0]].filter(Boolean))];
+  let hit: { latitude: number; longitude: number; name: string; admin1?: string } | null = null;
+  for (const q of candidates) {
+    try {
+      const r = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=1&language=en`);
+      const d = await r.json();
+      if (d?.results?.[0]) { hit = d.results[0]; break; }
+    } catch (_) { /* try next */ }
+  }
+  if (!hit) return null;
+  const y = new Date().getFullYear();
+  const from = `${y - 3}-01-01`, to = `${y - 1}-12-31`;
+  const r = await fetch(`https://archive-api.open-meteo.com/v1/archive?latitude=${hit.latitude}&longitude=${hit.longitude}&start_date=${from}&end_date=${to}&daily=precipitation_sum,temperature_2m_max&timezone=auto`);
+  if (!r.ok) return null;
+  const d = await r.json();
+  const days: string[] = d?.daily?.time || [];
+  const rain: number[] = d?.daily?.precipitation_sum || [];
+  const tmax: number[] = d?.daily?.temperature_2m_max || [];
+  if (days.length < 300) return null;
+  const adverse = Array(12).fill(0), total = Array(12).fill(0);
+  for (let i = 0; i < days.length; i++) {
+    const m = +days[i].slice(5, 7) - 1;
+    total[m]++;
+    if ((rain[i] ?? 0) >= 6 || (tmax[i] ?? 20) >= 38 || (tmax[i] ?? 20) <= 4) adverse[m]++;
+  }
+  return {
+    wx: adverse.map((a, m) => Math.round(a / (total[m] || 1) * 100)),
+    place: [hit.name, hit.admin1].filter(Boolean).join(", "),
+    years: `${y - 3}–${y - 1}`,
+  };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
@@ -83,9 +125,19 @@ Deno.serve(async (req) => {
   const { data: prof } = await admin.from("profiles").select("role").eq("id", user.id).single();
   if (prof?.role !== "admin") return json({ error: "Admins only" }, 403);
 
-  let entityId = "", year = 0;
-  try { const b = await req.json(); entityId = String(b.entity_id || ""); year = +b.year || 0; } catch (_) { /* below */ }
-  if (!entityId || !year) return json({ error: "entity_id and year required" }, 400);
+  let entityId = "", year = 0, mode = "";
+  try { const b = await req.json(); entityId = String(b.entity_id || ""); year = +b.year || 0; mode = String(b.mode || ""); } catch (_) { /* below */ }
+  if (!entityId) return json({ error: "entity_id required" }, 400);
+
+  // Weather-only mode: just the historical index, no AI call.
+  if (mode === "weather") {
+    const { data: e } = await admin.from("ownership_entities").select("name, address").eq("id", entityId).maybeSingle();
+    if (!e?.address) return json({ error: "This unit has no address on its ownership card — add one and try again." }, 400);
+    const w = await weatherIndex(e.address);
+    if (!w) return json({ error: "Couldn't geocode the unit's address — check the city part of the address on the ownership card." }, 400);
+    return json({ ok: true, ...w });
+  }
+  if (!year) return json({ error: "entity_id and year required" }, 400);
 
   // Source months: the year before the budget year; if that's thin,
   // every month on file with line detail.
@@ -165,6 +217,16 @@ Deno.serve(async (req) => {
   try { out = JSON.parse(textBlock?.text || "{}"); } catch (_) { return json({ error: "AI returned malformed output — try again." }, 502); }
   out.baseline = baseline;
   out.sourceMonths = months;
+  // Measured beats estimated: when the address geocodes, the weather
+  // index comes from actual daily history, not the model's climate
+  // pattern.
+  try {
+    const w = await weatherIndex(ent?.address || null);
+    if (w) {
+      out.wx = w.wx;
+      out.notes = [ `Weather index measured from ${w.years} daily history for ${w.place} (heavy-rain, 100°F+, and freeze days).`, ...(out.notes || []) ];
+    }
+  } catch (_) { /* keep the model's estimate */ }
   try { await admin.from("function_logs").insert({ fn: "budget-inform", msg: "informed", detail: { entity: entityId, year, months, lines: lines.length } }); } catch (_) { /* best effort */ }
   return json({ ok: true, budget: out });
 });
