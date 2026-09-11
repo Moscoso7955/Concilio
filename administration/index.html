@@ -652,6 +652,7 @@
       <div class="inv-range-row">
         <label>Date range</label>
         <span id="invRangePicker"></span>
+        <button class="btn btn--ghost btn--sm admin-only hidden" id="icBtn" style="flex:0 0 auto;">Month-end settle-up…</button>
         <span class="muted" id="invBanner"></span>
       </div>
       <div class="toolbar-row hidden" id="invCoFilter"></div>
@@ -662,7 +663,7 @@
         <p class="muted" style="margin-bottom:0.75rem;">Emailed bills, auto-filed. Assign a GL code and confirm the vendor/amount to approve.</p>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Vendor</th><th>Date</th><th class="num">Amount</th><th>Code</th><th>File</th><th></th></tr></thead>
+            <thead><tr><th>Vendor</th><th>Date</th><th class="num">Amount</th><th>Code</th><th>For</th><th>File</th><th></th></tr></thead>
             <tbody id="reviewBody"></tbody>
           </table>
         </div>
@@ -676,6 +677,7 @@
             <thead><tr>
               <th class="sortable" data-sort="invoice_date">Invoice <span class="arrow"></span></th>
               <th class="sortable" data-sort="code">Code <span class="arrow"></span></th>
+              <th title="The entity this bill was really for — set it when one company pays for another">For</th>
               <th class="num sortable" data-sort="amount">Amount <span class="arrow"></span></th>
               <th class="sortable" data-sort="payment_status">Payment <span class="arrow"></span></th>
               <th style="text-align:center;">QBO</th>
@@ -685,7 +687,7 @@
             <tbody id="invBody"></tbody>
             <tfoot class="hidden" id="invFoot"><tr>
               <th style="text-align:left;" id="invFootCount"></th>
-              <th></th>
+              <th></th><th></th>
               <th class="num" id="invFootTotal"></th>
               <th colspan="4"></th>
             </tr></tfoot>
@@ -831,7 +833,7 @@
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.37.9 — schema migration 0037">v1.37.9</div>
+  <div class="version-tag" title="Owner Portal v1.38.0 — schema migration 0038">v1.38.0</div>
 
   <!-- Settings modal -->
   <div class="modal-overlay hidden" id="settingsModal">
@@ -998,6 +1000,23 @@
       <div class="table-wrap" id="ytdModalBody"></div>
       <div class="row" style="align-items:center;margin-top:1rem;">
         <button class="btn btn--ghost" id="ytdCloseBtn" style="flex:0 0 auto;">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay hidden" id="icModal">
+    <div class="modal" style="max-width:760px;">
+      <div class="modal-sticky-head"><div style="flex:1;min-width:200px;">
+        <h3 style="margin-bottom:0.1rem;">Month-end settle-up</h3>
+        <div class="muted" style="font-size:0.85rem;">Bills one company paid for another — documentation only, no money moves here.</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:0.5rem;flex:0 0 auto;">
+        <span id="icMonthMount"></span>
+        <button class="iconbtn" data-closemodal="icModal" style="font-size:1.5rem;" aria-label="Close">×</button>
+      </div></div>
+      <div id="icBody"><p class="muted">Loading…</p></div>
+      <div class="row" style="align-items:center;margin-top:1rem;">
+        <button class="btn btn--ghost" data-closemodal="icModal" style="flex:0 0 auto;">Close</button>
       </div>
     </div>
   </div>
@@ -1214,6 +1233,12 @@
         case "mail_brand": return `Updated ${eh(d.unit || "a venue")}'s email branding`;
         case "qbo_connect": return `Linked ${eh(d.unit || "a unit")} to QuickBooks`;
         case "qbo_sync": return `Synced ${Number(d.months) || "?"} month(s) from QuickBooks${unit}`;
+        case "qbo_sync_all": return `Synced all ${Number(d.units) || "?"} QuickBooks-connected units${Number(d.failed) ? ` (${d.failed} failed)` : ""}`;
+        case "budget_open_new": return `Started a ${eh(String(d.year || ""))} budget${unit}`;
+        case "budget_inform": return `AI-informed the ${eh(String(d.year || ""))} budget from actuals${unit}`;
+        case "inv_entity": return `Allocated bill <strong>${eh(d.vendor || "")}</strong> to ${eh(d.entity || "")}`;
+        case "ic_settle": return `Recorded settlement: <strong>${eh(d.entity || "")}</strong> owes ${eh(d.payer || "")} ${money(Number(d.total) || 0)} (${eh(d.month || "")})`;
+        case "ic_unsettle": return `Undid a ${money(Number(d.total) || 0)} settlement (${eh(d.entity || "")} / ${eh(d.payer || "")})`;
         default: return eh(r.event || "activity");
       }
     }
@@ -4842,6 +4867,16 @@
       return html;
     }
 
+    // "For" cell: which entity this bill was really for. Blank = the
+    // paying company's own expense; anything else is intercompany and
+    // shows up in the month-end settle-up.
+    const entityOpts = (sel) => '<option value="">— own</option>' +
+      [...gEnt].sort((a, b) => String(a.name).localeCompare(String(b.name)))
+        .map((e) => `<option value="${e.id}"${e.id === sel ? " selected" : ""}>${escapeHtml(e.name)}</option>`).join("");
+    const entityCell = (row) =>
+      `<select class="inline-select" data-entity="${row.id}"${isAdmin() ? "" : " disabled"} aria-label="Bill is for entity">${entityOpts(row.entity_id)}</select>` +
+      (row.ic_settlement_id ? ` <span class="badge" title="Included in a recorded month-end settlement">settled</span>` : "");
+
     const qboCell = (row) => invExtras
       ? `<button class="qbo-pill${row.qbo ? " on" : ""}" data-qbo="${row.id}"${isAdmin() ? "" : " disabled"} title="${row.qbo ? "Entered in QuickBooks — click to unmark" : "Not in QuickBooks — click to mark entered"}">QBO</button>`
       : '<span class="muted">—</span>';
@@ -4860,7 +4895,7 @@
         const tr = document.createElement("tr");
         tr.innerHTML =
           `<td>${escapeHtml(r.vendor || "")} ${companyPill(r)}</td><td>${r.invoice_date || "—"}</td><td class="num">${money(r.amount)}</td>
-           <td>${codeSelect(r)}</td><td>${fileCell(r)}</td>
+           <td>${codeSelect(r)}</td><td>${entityCell(r)}</td><td>${fileCell(r)}</td>
            <td class="num" style="white-space:nowrap;">${isAdmin() ? `<button class="btn btn--sm" data-approve="${r.id}">Approve</button> <button class="iconact del" data-delinv="${r.id}" title="Discard">✕</button>` : ""}</td>`;
         body.appendChild(tr);
       }
@@ -4898,6 +4933,7 @@
              ${r.note ? `<div class="inv-sub" title="${escapeHtml(r.note)}">${escapeHtml(r.note)}</div>` : ""}
            </td>
            <td>${codeSelect(r)}</td>
+           <td>${entityCell(r)}</td>
            <td class="num">${money(r.amount)}</td>
            <td>${statusPill(r)}</td>
            <td style="text-align:center;">${qboCell(r)}</td>
@@ -4928,6 +4964,11 @@
         renderReview(); renderLedger();
       }));
       scope.querySelectorAll("[data-code]").forEach((sel) => sel.addEventListener("change", () => inlineUpdate(sel.dataset.code, { code: sel.value || null })));
+      scope.querySelectorAll("[data-entity]").forEach((sel) => sel.addEventListener("change", () => {
+        const r = invRows.find((x) => x.id === sel.dataset.entity);
+        inlineUpdate(sel.dataset.entity, { entity_id: sel.value || null });
+        logAccess("inv_entity", { vendor: r?.vendor, entity: gEnt.find((e) => e.id === sel.value)?.name || "own" });
+      }));
       scope.querySelectorAll("[data-status]").forEach((sel) => sel.addEventListener("change", () => {
         sel.className = "pill " + (sel.value === "Unpaid" ? "pill--unpaid" : "pill--paid");
         inlineUpdate(sel.dataset.status, { payment_status: sel.value });
@@ -4990,6 +5031,121 @@
       div.querySelector("button").addEventListener("click", () => div.remove());
       sel.focus();
     }
+
+    /* ---- Month-end intercompany settle-up: for a month, group the
+       unsettled bills where the paying company differs from the entity
+       they were for, record a settlement document per pair, and stamp
+       the bills it covered. Pure documentation — the actual transfer or
+       journal entry happens wherever money really moves. ---- */
+    let icMonth = "", icPicker = null;
+    const icTenantName = (id) => invTenants.find((t) => t.id === id)?.name || "Unknown payer";
+    const icEntityName = (id) => gEnt.find((e) => e.id === id)?.name || "Unknown entity";
+
+    async function openIc() {
+      show($("icModal"), true);
+      const mount = $("icMonthMount");
+      if (!icPicker && mount && window.createMonthPicker) {
+        const prev = new Date(); prev.setDate(1); prev.setMonth(prev.getMonth() - 1);
+        icMonth = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, "0")}`;
+        icPicker = window.createMonthPicker({ mount, initial: icMonth, onChange: (v) => { icMonth = v; icRender(); } });
+      }
+      if (icPicker?.getValue) icMonth = icPicker.getValue() || icMonth;
+      icRender();
+    }
+
+    async function icRender() {
+      const box = $("icBody");
+      const inMonth = invRows.filter((r) => !r.needs_review && r.entity_id && String(r.invoice_date || "").startsWith(icMonth));
+      const open = inMonth.filter((r) => !r.ic_settlement_id);
+      const { data: setts } = await supabase.from("ic_settlements").select("*").eq("period", icMonth + "-01").order("created_at");
+      let h = "";
+      // Open pairs.
+      const groups = {};
+      for (const r of open) (groups[r.tenant_id + "|" + r.entity_id] ||= []).push(r);
+      const keys = Object.keys(groups);
+      h += `<h2 style="font-size:0.8rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;">To settle</h2>`;
+      if (!keys.length) h += `<p class="muted">Nothing to settle for this month — every allocated bill is covered${inMonth.length ? "" : " (no bills are allocated to an entity in this month)"}.</p>`;
+      for (const k of keys) {
+        const [tid, eid] = k.split("|");
+        const rows = groups[k];
+        const total = rows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+        h += `<div class="section-card" style="padding:0.9rem 1rem;margin-bottom:0.6rem;">
+          <div style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;">
+            <strong>${escapeHtml(icTenantName(tid))}</strong><span class="muted">paid for</span><strong>${escapeHtml(icEntityName(eid))}</strong>
+            <span class="muted">· ${rows.length} bill${rows.length === 1 ? "" : "s"} · ${money(total)}</span>
+            <span style="flex:1;"></span>
+            <button class="btn btn--sm" data-icrecord="${k}">Record settlement</button>
+          </div>
+          <table class="pnl-table" style="margin-top:0.5rem;"><tbody>
+            ${rows.map((r) => `<tr><td>${escapeHtml(invName(r))}</td><td class="muted">${escapeHtml(r.code || "—")}</td><td class="num">${money(r.amount)}</td></tr>`).join("")}
+          </tbody></table>
+        </div>`;
+      }
+      // Recorded settlements.
+      if ((setts || []).length) {
+        h += `<h2 style="font-size:0.8rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-top:1rem;">Recorded</h2>`;
+        for (const s of setts) {
+          h += `<div class="section-card" style="padding:0.9rem 1rem;margin-bottom:0.6rem;">
+            <div style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;">
+              <strong>${escapeHtml(icEntityName(s.entity_id))}</strong><span class="muted">owes</span><strong>${escapeHtml(icTenantName(s.tenant_id))}</strong>
+              <span class="muted">· ${s.invoice_count} bill${s.invoice_count === 1 ? "" : "s"} · ${money(s.total)} · recorded ${new Date(s.created_at).toLocaleDateString()}${s.created_by ? " by " + escapeHtml(s.created_by) : ""}</span>
+              <span style="flex:1;"></span>
+              <button class="btn btn--ghost btn--sm" data-icstmt="${s.id}">Copy statement</button>
+              <button class="iconact del" data-icundo="${s.id}" title="Undo — releases these bills back to the open list">✕</button>
+            </div>
+          </div>`;
+        }
+      }
+      box.innerHTML = h;
+
+      box.querySelectorAll("[data-icrecord]").forEach((b) => b.addEventListener("click", async () => {
+        const [tid, eid] = b.dataset.icrecord.split("|");
+        const rows = (groups[b.dataset.icrecord] || []);
+        const total = rows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+        if (!confirm(`Record: ${icEntityName(eid)} owes ${icTenantName(tid)} ${money(total)} for ${rows.length} bill${rows.length === 1 ? "" : "s"} (${icMonth})?`)) return;
+        const { data: ins, error } = await supabase.from("ic_settlements").insert({
+          period: icMonth + "-01", tenant_id: tid, entity_id: eid,
+          total, invoice_count: rows.length, created_by: currentEmail,
+        }).select("id").single();
+        if (error) { alert(error.message); return; }
+        const ids = rows.map((r) => r.id);
+        const { error: e2 } = await supabase.from("invoices").update({ ic_settlement_id: ins.id }).in("id", ids);
+        if (e2) { alert(e2.message); return; }
+        for (const r of rows) r.ic_settlement_id = ins.id;
+        logAccess("ic_settle", { payer: icTenantName(tid), entity: icEntityName(eid), total, count: rows.length, month: icMonth });
+        icRender(); renderLedger();
+      }));
+      box.querySelectorAll("[data-icundo]").forEach((b) => b.addEventListener("click", async () => {
+        const s = (setts || []).find((x) => x.id === b.dataset.icundo);
+        if (!confirm(`Undo the ${money(s?.total || 0)} settlement? The bills go back to the open list.`)) return;
+        await supabase.from("invoices").update({ ic_settlement_id: null }).eq("ic_settlement_id", b.dataset.icundo);
+        await supabase.from("ic_settlements").delete().eq("id", b.dataset.icundo);
+        for (const r of invRows) if (r.ic_settlement_id === b.dataset.icundo) r.ic_settlement_id = null;
+        logAccess("ic_unsettle", { payer: icTenantName(s?.tenant_id), entity: icEntityName(s?.entity_id), total: s?.total });
+        icRender(); renderLedger();
+      }));
+      box.querySelectorAll("[data-icstmt]").forEach((b) => b.addEventListener("click", async () => {
+        const s = (setts || []).find((x) => x.id === b.dataset.icstmt);
+        const bills = invRows.filter((r) => r.ic_settlement_id === s.id);
+        const monthName = new Date(icMonth + "-15T12:00:00").toLocaleDateString("en-US", { month: "long", year: "numeric" });
+        const text = [
+          `INTERCOMPANY SETTLEMENT STATEMENT`,
+          `${monthName}`,
+          ``,
+          `${icEntityName(s.entity_id)} owes ${icTenantName(s.tenant_id)}: ${money(s.total)}`,
+          `${s.invoice_count} bill${s.invoice_count === 1 ? "" : "s"} paid by ${icTenantName(s.tenant_id)} on behalf of ${icEntityName(s.entity_id)}:`,
+          ``,
+          ...bills.map((r) => `  ${r.invoice_date || "—"}  ${(r.vendor || "").padEnd(32)}  ${r.code || "—"}  ${money(r.amount)}`),
+          ``,
+          `Recorded ${new Date(s.created_at).toLocaleString()}${s.created_by ? " by " + s.created_by : ""} · CallidusCo Owner Portal`,
+          `Documentation of allocation only — record the transfer/journal entry in the books.`,
+        ].join("\n");
+        try { await navigator.clipboard.writeText(text); b.textContent = "Copied ✓"; setTimeout(() => (b.textContent = "Copy statement"), 1500); }
+        catch (_) { alert(text); }
+      }));
+    }
+    $("icBtn")?.addEventListener("click", openIc);
+    $("icModal")?.addEventListener("click", (e) => { if (e.target === $("icModal")) show($("icModal"), false); });
 
     async function inlineUpdate(id, patch) { // optimistic; reload on error to roll back
       const row = invRows.find((r) => r.id === id); if (row) Object.assign(row, patch, patch.code ? { category: glCat[patch.code] } : {});
