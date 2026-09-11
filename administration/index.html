@@ -177,13 +177,13 @@
     /* Budget inputs are typeless, so the global input[type=…] skin
        misses them — the demo's treatment restated: light inputs that
        pop off the darker panel. */
-    .bud-row input, .bud-mini input, .bud-grid input, .bud-row select {
+    .bud-row input, .bud-mixrow input, .bud-mini input, .bud-grid input, .bud-row select, .bud-mixrow select {
       background: var(--panel-2); border: 1px solid var(--border); border-radius: 9px;
       color: var(--text); caret-color: var(--text); font: inherit; font-size: 0.88rem;
       font-variant-numeric: tabular-nums; padding: 0.38rem 0.55rem; }
-    .bud-row input:focus, .bud-mini input:focus, .bud-grid input:focus { outline: none; border-color: var(--accent); }
-    .bud-row input.num { width: 100px; text-align: right; flex: 0 0 auto; }
-    .bud-row input.pct { width: 72px; text-align: right; flex: 0 0 auto; }
+    .bud-row input:focus, .bud-mixrow input:focus, .bud-mini input:focus, .bud-grid input:focus { outline: none; border-color: var(--accent); }
+    .bud-row input.num, .bud-mixrow input.num { width: 100px; text-align: right; flex: 0 0 auto; }
+    .bud-row input.pct, .bud-mixrow input.pct { width: 72px; text-align: right; flex: 0 0 auto; }
     .bud-row input.lbl { flex: 1; min-width: 0; }
     .bud-unit { color: var(--muted); font-size: 0.76rem; width: 12px; flex: 0 0 auto; }
     .bud-del { background: none; border: 0; color: var(--muted); cursor: pointer; padding: 0 0.15rem; }
@@ -197,7 +197,7 @@
     .bud-mixrow + .bud-mixrow { border-top: 1px solid #222; }
     .bud-mixrow .mixlab { font-size: 0.85rem; margin-bottom: 0.3rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .bud-mixrow .mixin { display: flex; align-items: center; gap: 0.5rem; }
-    .bud-mixrow .mixin .lead { color: var(--muted); font-size: 0.74rem; flex: 1; text-align: right; }
+    .bud-mixrow .mixin .lead { color: var(--muted); font-size: 0.74rem; flex: 1; text-align: right; white-space: nowrap; }
     .bud-mini { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
     .bud-mini div { display: flex; flex-direction: column; gap: 3px; }
     .bud-mini span { font-size: 0.64rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
@@ -819,7 +819,7 @@
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.37.6 — schema migration 0037">v1.37.6</div>
+  <div class="version-tag" title="Owner Portal v1.37.7 — schema migration 0037">v1.37.7</div>
 
   <!-- Settings modal -->
   <div class="modal-overlay hidden" id="settingsModal">
