@@ -833,7 +833,7 @@
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.38.0 — schema migration 0038">v1.38.0</div>
+  <div class="version-tag" title="Owner Portal v1.38.1 — schema migration 0038">v1.38.1</div>
 
   <!-- Settings modal -->
   <div class="modal-overlay hidden" id="settingsModal">
@@ -4795,12 +4795,14 @@
         const p = await supabase.from("invoices_list").select("qbo").limit(1);
         invExtras = !p.error;
       }
-      const [{ data, error }, tRes] = await Promise.all([
+      const [{ data, error }, tRes, eRes] = await Promise.all([
         supabase.from("invoices_list").select("*").order("created_at", { ascending: false }),
         supabase.from("tenants").select("id,name,inbound_token").order("created_at"),
+        supabase.from("ownership_entities").select("id,name").order("name"),
       ]);
       invRows = (!error && data) || [];
       invTenants = (!tRes.error && tRes.data) || [];
+      invEntities = (!eRes.error && eRes.data) || [];
       renderCoFilter();
       renderReview();
       renderLedger();
@@ -4869,10 +4871,11 @@
 
     // "For" cell: which entity this bill was really for. Blank = the
     // paying company's own expense; anything else is intercompany and
-    // shows up in the month-end settle-up.
+    // shows up in the month-end settle-up. Own list — the ownership
+    // graph loads asynchronously and can't be relied on here.
+    let invEntities = [];
     const entityOpts = (sel) => '<option value="">— own</option>' +
-      [...gEnt].sort((a, b) => String(a.name).localeCompare(String(b.name)))
-        .map((e) => `<option value="${e.id}"${e.id === sel ? " selected" : ""}>${escapeHtml(e.name)}</option>`).join("");
+      invEntities.map((e) => `<option value="${e.id}"${e.id === sel ? " selected" : ""}>${escapeHtml(e.name)}</option>`).join("");
     const entityCell = (row) =>
       `<select class="inline-select" data-entity="${row.id}"${isAdmin() ? "" : " disabled"} aria-label="Bill is for entity">${entityOpts(row.entity_id)}</select>` +
       (row.ic_settlement_id ? ` <span class="badge" title="Included in a recorded month-end settlement">settled</span>` : "");
@@ -4967,7 +4970,7 @@
       scope.querySelectorAll("[data-entity]").forEach((sel) => sel.addEventListener("change", () => {
         const r = invRows.find((x) => x.id === sel.dataset.entity);
         inlineUpdate(sel.dataset.entity, { entity_id: sel.value || null });
-        logAccess("inv_entity", { vendor: r?.vendor, entity: gEnt.find((e) => e.id === sel.value)?.name || "own" });
+        logAccess("inv_entity", { vendor: r?.vendor, entity: invEntities.find((e) => e.id === sel.value)?.name || "own" });
       }));
       scope.querySelectorAll("[data-status]").forEach((sel) => sel.addEventListener("change", () => {
         sel.className = "pill " + (sel.value === "Unpaid" ? "pill--unpaid" : "pill--paid");
@@ -5039,7 +5042,7 @@
        journal entry happens wherever money really moves. ---- */
     let icMonth = "", icPicker = null;
     const icTenantName = (id) => invTenants.find((t) => t.id === id)?.name || "Unknown payer";
-    const icEntityName = (id) => gEnt.find((e) => e.id === id)?.name || "Unknown entity";
+    const icEntityName = (id) => invEntities.find((e) => e.id === id)?.name || "Unknown entity";
 
     async function openIc() {
       show($("icModal"), true);
@@ -5063,8 +5066,18 @@
       const groups = {};
       for (const r of open) (groups[r.tenant_id + "|" + r.entity_id] ||= []).push(r);
       const keys = Object.keys(groups);
-      h += `<h2 style="font-size:0.8rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;">To settle</h2>`;
-      if (!keys.length) h += `<p class="muted">Nothing to settle for this month — every allocated bill is covered${inMonth.length ? "" : " (no bills are allocated to an entity in this month)"}.</p>`;
+      h += `<h2 style="font-size:0.8rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin:0.4rem 0 0.6rem;">To settle</h2>`;
+      if (!keys.length) {
+        // Point at where the open allocations actually are.
+        const others = [...new Set(invRows
+          .filter((r) => !r.needs_review && r.entity_id && !r.ic_settlement_id && r.invoice_date)
+          .map((r) => String(r.invoice_date).slice(0, 7)))].filter((m) => m !== icMonth).sort();
+        const mName = (m) => new Date(m + "-15T12:00:00").toLocaleDateString("en-US", { month: "short", year: "numeric" });
+        h += `<p class="muted">Nothing to settle for this month.` +
+          (others.length
+            ? ` Open allocations exist in <strong>${others.map(mName).join(", ")}</strong> — switch the month above.`
+            : inMonth.length ? "" : ` No bills are allocated to an entity yet — set a bill's <strong>For</strong> column in the ledger and it shows up here.`) + `</p>`;
+      }
       for (const k of keys) {
         const [tid, eid] = k.split("|");
         const rows = groups[k];
@@ -5083,7 +5096,7 @@
       }
       // Recorded settlements.
       if ((setts || []).length) {
-        h += `<h2 style="font-size:0.8rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-top:1rem;">Recorded</h2>`;
+        h += `<h2 style="font-size:0.8rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin:1rem 0 0.6rem;">Recorded</h2>`;
         for (const s of setts) {
           h += `<div class="section-card" style="padding:0.9rem 1rem;margin-bottom:0.6rem;">
             <div style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;">
