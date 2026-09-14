@@ -837,7 +837,7 @@
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.38.3 — schema migration 0038">v1.38.3</div>
+  <div class="version-tag" title="Owner Portal v1.39.0 — schema migration 0039">v1.39.0</div>
 
   <!-- Settings modal -->
   <div class="modal-overlay hidden" id="settingsModal">
@@ -1242,6 +1242,7 @@
         case "budget_inform": return `AI-informed the ${eh(String(d.year || ""))} budget from actuals${unit}`;
         case "budget_weather": return `Pulled weather history for ${eh(d.place || "the unit's city")}${unit}`;
         case "inv_entity": return `Allocated bill <strong>${eh(d.vendor || "")}</strong> to ${eh(d.entity || "")}`;
+        case "inv_paidby": return `Set bill <strong>${eh(d.vendor || "")}</strong> payer to ${eh(d.entity || "")}`;
         case "ic_settle": return `Recorded settlement: <strong>${eh(d.entity || "")}</strong> owes ${eh(d.payer || "")} ${money(Number(d.total) || 0)} (${eh(d.month || "")})`;
         case "ic_unsettle": return `Undid a ${money(Number(d.total) || 0)} settlement (${eh(d.entity || "")} / ${eh(d.payer || "")})`;
         default: return eh(r.event || "activity");
@@ -4897,11 +4898,25 @@
     // shows up in the month-end settle-up. Own list — the ownership
     // graph loads asynchronously and can't be relied on here.
     let invEntities = [];
-    const entityOpts = (sel) => '<option value="">— own</option>' +
+    const entityOpts = (sel, blank) => `<option value="">${blank}</option>` +
       invEntities.map((e) => `<option value="${e.id}"${e.id === sel ? " selected" : ""}>${escapeHtml(e.name)}</option>`).join("");
+    // The bill's company (Callidus / Callidus FBH) maps to its entity as
+    // the default payer; "paid by" can then be ANY entity — Phoebe's
+    // card buying for Soca settles the same as a Callidus card buying
+    // for Phoebe.
+    const tenantEntityId = (tid) => {
+      const t = invTenants.find((x) => x.id === tid); if (!t) return null;
+      const nm = String(t.name).toLowerCase() === "callidus" ? "callidus holdings" : String(t.name).toLowerCase();
+      return invEntities.find((e) => String(e.name).toLowerCase() === nm)?.id || null;
+    };
+    const payerOf = (row) => row.paid_by_entity_id || tenantEntityId(row.tenant_id);
     const entityCell = (row) =>
-      `<select class="inline-select" data-entity="${row.id}"${isAdmin() ? "" : " disabled"} aria-label="Bill is for entity">${entityOpts(row.entity_id)}</select>` +
-      (row.ic_settlement_id ? ` <span class="badge" title="Included in a recorded month-end settlement">settled</span>` : "");
+      `<select class="inline-select" data-entity="${row.id}"${isAdmin() ? "" : " disabled"} aria-label="Bill is for entity">${entityOpts(row.entity_id, "— own")}</select>` +
+      (row.ic_settlement_id ? ` <span class="badge" title="Included in a recorded month-end settlement">settled</span>` : "") +
+      (row.entity_id ? `<div style="display:flex;align-items:center;gap:0.3rem;margin-top:0.2rem;">
+        <span class="muted" style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.04em;flex:0 0 auto;">paid by</span>
+        <select class="inline-select" data-paidby="${row.id}"${isAdmin() ? "" : " disabled"} aria-label="Bill paid by entity">${entityOpts(payerOf(row), "—")}</select>
+      </div>` : "");
 
     const qboCell = (row) => invExtras
       ? `<button class="qbo-pill${row.qbo ? " on" : ""}" data-qbo="${row.id}"${isAdmin() ? "" : " disabled"} title="${row.qbo ? "Entered in QuickBooks — click to unmark" : "Not in QuickBooks — click to mark entered"}">QBO</button>`
@@ -4994,6 +5009,12 @@
         const r = invRows.find((x) => x.id === sel.dataset.entity);
         inlineUpdate(sel.dataset.entity, { entity_id: sel.value || null });
         logAccess("inv_entity", { vendor: r?.vendor, entity: invEntities.find((e) => e.id === sel.value)?.name || "own" });
+        renderReview(); renderLedger(); // show/hide the paid-by row
+      }));
+      scope.querySelectorAll("[data-paidby]").forEach((sel) => sel.addEventListener("change", () => {
+        const r = invRows.find((x) => x.id === sel.dataset.paidby);
+        inlineUpdate(sel.dataset.paidby, { paid_by_entity_id: sel.value || null });
+        logAccess("inv_paidby", { vendor: r?.vendor, entity: invEntities.find((e) => e.id === sel.value)?.name || "—" });
       }));
       scope.querySelectorAll("[data-status]").forEach((sel) => sel.addEventListener("change", () => {
         sel.className = "pill " + (sel.value === "Unpaid" ? "pill--unpaid" : "pill--paid");
@@ -5064,8 +5085,11 @@
        the bills it covered. Pure documentation — the actual transfer or
        journal entry happens wherever money really moves. ---- */
     let icMonth = "", icPicker = null;
-    const icTenantName = (id) => invTenants.find((t) => t.id === id)?.name || "Unknown payer";
     const icEntityName = (id) => invEntities.find((e) => e.id === id)?.name || "Unknown entity";
+    // Older settlements recorded the paying company; new ones record the
+    // payer entity.
+    const icPayerName = (s) => s.payer_entity_id ? icEntityName(s.payer_entity_id)
+      : (invTenants.find((t) => t.id === s.tenant_id)?.name || "Unknown payer");
 
     async function openIc() {
       show($("icModal"), true);
@@ -5085,9 +5109,14 @@
       const open = inMonth.filter((r) => !r.ic_settlement_id);
       const { data: setts } = await supabase.from("ic_settlements").select("*").eq("period", icMonth + "-01").order("created_at");
       let h = "";
-      // Open pairs.
+      // Open pairs: payer entity → beneficiary entity. A bill whose
+      // payer IS its entity is the payer's own expense — nothing owed.
       const groups = {};
-      for (const r of open) (groups[r.tenant_id + "|" + r.entity_id] ||= []).push(r);
+      for (const r of open) {
+        const payer = payerOf(r);
+        if (!payer || payer === r.entity_id) continue;
+        (groups[payer + "|" + r.entity_id] ||= []).push(r);
+      }
       const keys = Object.keys(groups);
       h += `<h2 style="font-size:0.8rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin:0.4rem 0 0.6rem;">To settle</h2>`;
       if (!keys.length) {
@@ -5102,12 +5131,12 @@
             : inMonth.length ? "" : ` No bills are allocated to an entity yet — set a bill's <strong>For</strong> column in the ledger and it shows up here.`) + `</p>`;
       }
       for (const k of keys) {
-        const [tid, eid] = k.split("|");
+        const [pid, eid] = k.split("|");
         const rows = groups[k];
         const total = rows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
         h += `<div class="section-card" style="padding:0.9rem 1rem;margin-bottom:0.6rem;">
           <div style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;">
-            <strong>${escapeHtml(icTenantName(tid))}</strong><span class="muted">paid for</span><strong>${escapeHtml(icEntityName(eid))}</strong>
+            <strong>${escapeHtml(icEntityName(pid))}</strong><span class="muted">paid for</span><strong>${escapeHtml(icEntityName(eid))}</strong>
             <span class="muted">· ${rows.length} bill${rows.length === 1 ? "" : "s"} · ${money(total)}</span>
             <span style="flex:1;"></span>
             <button class="btn btn--sm" data-icrecord="${k}">Record settlement</button>
@@ -5123,7 +5152,7 @@
         for (const s of setts) {
           h += `<div class="section-card" style="padding:0.9rem 1rem;margin-bottom:0.6rem;">
             <div style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;">
-              <strong>${escapeHtml(icEntityName(s.entity_id))}</strong><span class="muted">owes</span><strong>${escapeHtml(icTenantName(s.tenant_id))}</strong>
+              <strong>${escapeHtml(icEntityName(s.entity_id))}</strong><span class="muted">owes</span><strong>${escapeHtml(icPayerName(s))}</strong>
               <span class="muted">· ${s.invoice_count} bill${s.invoice_count === 1 ? "" : "s"} · ${money(s.total)} · recorded ${new Date(s.created_at).toLocaleDateString()}${s.created_by ? " by " + escapeHtml(s.created_by) : ""}</span>
               <span style="flex:1;"></span>
               <button class="btn btn--ghost btn--sm" data-icstmt="${s.id}">Copy statement</button>
@@ -5135,12 +5164,12 @@
       box.innerHTML = h;
 
       box.querySelectorAll("[data-icrecord]").forEach((b) => b.addEventListener("click", async () => {
-        const [tid, eid] = b.dataset.icrecord.split("|");
+        const [pid, eid] = b.dataset.icrecord.split("|");
         const rows = (groups[b.dataset.icrecord] || []);
         const total = rows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
-        if (!confirm(`Record: ${icEntityName(eid)} owes ${icTenantName(tid)} ${money(total)} for ${rows.length} bill${rows.length === 1 ? "" : "s"} (${icMonth})?`)) return;
+        if (!confirm(`Record: ${icEntityName(eid)} owes ${icEntityName(pid)} ${money(total)} for ${rows.length} bill${rows.length === 1 ? "" : "s"} (${icMonth})?`)) return;
         const { data: ins, error } = await supabase.from("ic_settlements").insert({
-          period: icMonth + "-01", tenant_id: tid, entity_id: eid,
+          period: icMonth + "-01", payer_entity_id: pid, entity_id: eid,
           total, invoice_count: rows.length, created_by: currentEmail,
         }).select("id").single();
         if (error) { alert(error.message); return; }
@@ -5148,7 +5177,7 @@
         const { error: e2 } = await supabase.from("invoices").update({ ic_settlement_id: ins.id }).in("id", ids);
         if (e2) { alert(e2.message); return; }
         for (const r of rows) r.ic_settlement_id = ins.id;
-        logAccess("ic_settle", { payer: icTenantName(tid), entity: icEntityName(eid), total, count: rows.length, month: icMonth });
+        logAccess("ic_settle", { payer: icEntityName(pid), entity: icEntityName(eid), total, count: rows.length, month: icMonth });
         icRender(); renderLedger();
       }));
       box.querySelectorAll("[data-icundo]").forEach((b) => b.addEventListener("click", async () => {
@@ -5157,7 +5186,7 @@
         await supabase.from("invoices").update({ ic_settlement_id: null }).eq("ic_settlement_id", b.dataset.icundo);
         await supabase.from("ic_settlements").delete().eq("id", b.dataset.icundo);
         for (const r of invRows) if (r.ic_settlement_id === b.dataset.icundo) r.ic_settlement_id = null;
-        logAccess("ic_unsettle", { payer: icTenantName(s?.tenant_id), entity: icEntityName(s?.entity_id), total: s?.total });
+        logAccess("ic_unsettle", { payer: s ? icPayerName(s) : "?", entity: icEntityName(s?.entity_id), total: s?.total });
         icRender(); renderLedger();
       }));
       box.querySelectorAll("[data-icstmt]").forEach((b) => b.addEventListener("click", async () => {
@@ -5168,8 +5197,8 @@
           `INTERCOMPANY SETTLEMENT STATEMENT`,
           `${monthName}`,
           ``,
-          `${icEntityName(s.entity_id)} owes ${icTenantName(s.tenant_id)}: ${money(s.total)}`,
-          `${s.invoice_count} bill${s.invoice_count === 1 ? "" : "s"} paid by ${icTenantName(s.tenant_id)} on behalf of ${icEntityName(s.entity_id)}:`,
+          `${icEntityName(s.entity_id)} owes ${icPayerName(s)}: ${money(s.total)}`,
+          `${s.invoice_count} bill${s.invoice_count === 1 ? "" : "s"} paid by ${icPayerName(s)} on behalf of ${icEntityName(s.entity_id)}:`,
           ``,
           ...bills.map((r) => `  ${r.invoice_date || "—"}  ${(r.vendor || "").padEnd(32)}  ${r.code || "—"}  ${money(r.amount)}`),
           ``,
