@@ -225,7 +225,24 @@ Deno.serve(async (req) => {
       pnl: { lines: ls },
     });
   }
-  if (!rows.length) return json({ error: "No monthly figures found in the QuickBooks report." }, 502);
+  if (!rows.length) {
+    // Columns were found but every month came back empty. Log what the
+    // report actually contained so an empty company and a parser miss
+    // are distinguishable from function_logs.
+    const topRows = (report?.Rows?.Row || []) as Row[];
+    const sample = (topRows[0]?.Rows?.Row || []).slice(0, 3).map((r) => ({ group: r.group, type: r.type, first: r.ColData?.[0]?.value ?? r.Header?.ColData?.[0]?.value, cells: (r.ColData || r.Header?.ColData || []).slice(1, 4).map((c) => c.value) }));
+    try {
+      await admin.from("function_logs").insert({
+        fn: "qbo-sync", msg: "no monthly figures",
+        detail: {
+          entity: entityId, range: { start, end }, months: months.map((m) => m.period),
+          topRows: topRows.map((r) => ({ group: r.group, type: r.type, header: r.Header?.ColData?.[0]?.value, children: (r.Rows?.Row || []).length })),
+          netByMonth, sample,
+        },
+      });
+    } catch (_) { /* best effort */ }
+    return json({ error: "QuickBooks returned no monthly figures for this year — the company may have no transactions since Jan 1 (details logged)." }, 502);
+  }
 
   // Sandbox mode proves the pipe but NEVER writes: a test company's
   // figures must not overwrite a real venue's books.
