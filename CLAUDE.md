@@ -30,6 +30,14 @@ wrap policies with `workspace_id = public.current_workspace()`.
 Service-role code (edge functions) must set `workspace_id` explicitly.
 See `docs/MULTI_TENANCY.md`.
 
+## Syncing from callidus
+
+Features are refined in `Moscoso7955/callidus-coming-soon` and merged
+into this repo on request ("sync from callidus"). The procedure and the
+per-sync adaptation checklist (renumber migrations, add workspace_id,
+scope functions, rename domains) are in `docs/SYNC_FROM_CALLIDUS.md`.
+Keep its migration mapping table current.
+
 ## Versioning
 
 The portal shows a version badge (`.version-tag` in
