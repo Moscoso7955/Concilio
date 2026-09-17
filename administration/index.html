@@ -1177,7 +1177,7 @@
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.54.4 — schema migration 0054">v1.54.4</div>
+  <div class="version-tag" title="Owner Portal v1.54.5 — schema migration 0054">v1.54.5</div>
 
   <!-- Settings modal -->
   <div class="modal-overlay hidden" id="settingsModal">
@@ -1670,6 +1670,7 @@
         case "digest_send": return `Sent the task digest manually (${+d.sent || 0} recipient${+d.sent === 1 ? "" : "s"})`;
         case "ic_paid": return `Marked settlement <strong>${eh(d.entity || "")} → ${eh(d.payer || "")}</strong> (${eh(d.total || "")}) as paid`;
         case "ic_statement": return `Filed settlement statement <strong>${eh(d.title || "")}</strong> to Documents`;
+        case "own_box_user": return `Created ownership box for <strong>${eh(d.name || d.email || "")}</strong> from their user card`;
         case "manager_unit": return `${d.on ? "Assigned" : "Unassigned"} <strong>${eh(d.unit || "")}</strong> ${d.on ? "to" : "from"} manager ${eh(d.manager || "")}`;
         case "recur_add": return `Added ${eh(d.cadence || "")} recurring task <strong>${eh(d.title || "")}</strong>`;
         case "recur_delete": return `Deleted recurring task <strong>${eh(d.title || "")}</strong>`;
@@ -1781,6 +1782,8 @@
             </select>
             <button class="btn btn--sm" data-susave="${i}">Save</button>
             <button class="btn btn--ghost btn--sm" data-suinvite="${i}">${signedUp ? "Send sign-in link" : "Send invite"}</button>
+            ${b ? `<button class="btn btn--ghost btn--sm" data-sugoto="${b.id}">View in Ownership</button>`
+                : `<button class="btn btn--ghost btn--sm" data-subox="${i}" data-subname="${escapeHtml(who || "")}" title="Make their box in the Ownership chart, pre-linked to this sign-in">Create ownership box</button>`}
             <button class="btn btn--danger btn--sm" data-suremove="${i}">Remove</button>
             <span class="muted" data-sustatus="${i}"></span>
           </div>
@@ -1821,6 +1824,37 @@
         const i = sel.dataset.surole;
         const tabsDiv = box.querySelector(`[data-sutabs="${i}"]`);
         if (tabsDiv) tabsDiv.hidden = sel.value === "admin";
+      }));
+      // One-click path from a user to their ownership box: create it
+      // pre-linked (name + email set) and land in the chart with the
+      // pane open, ready to draw edges — or jump to the existing box.
+      const gotoBox = (id) => {
+        show($("settingsModal"), false);
+        activateTab("owners");
+        try { localStorage.setItem("callidus_tab", "owners"); } catch (_) {}
+        const b2 = gEnt.find((x) => x.id === id); if (!b2) return;
+        gSel = id; render(); openPane(id); focusNode(b2.position_x, b2.position_y);
+      };
+      box.querySelectorAll("[data-sugoto]").forEach((btn) => btn.addEventListener("click", () => gotoBox(btn.dataset.sugoto)));
+      box.querySelectorAll("[data-subox]").forEach((btn) => btn.addEventListener("click", async () => {
+        const i2 = btn.dataset.subox;
+        const email = box.querySelector(`[data-surow="${i2}"]`).dataset.suemail;
+        const name = btn.dataset.subname ||
+          email.split("@")[0].replace(/[._-]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+        btn.disabled = true; btn.textContent = "Creating…";
+        try {
+          const view = $("ownViewport");
+          const x = Math.max(GMARGIN, snap(((view?.scrollLeft || 0) + 140) / gZoom + Math.random() * 120));
+          const y = Math.max(GMARGIN, snap(((view?.scrollTop || 0) + 110) / gZoom + Math.random() * 100));
+          const ent = await gStore.addEntity({ name, kind: "individual", email, position_x: x, position_y: y });
+          gEnt.push(ent);
+          logAccess("own_box_user", { name, email });
+          gotoBox(ent.id);
+          toast(`Box created for ${name} — drag its bottom handle onto a company's top to set what they own.`, "ok", 6000);
+        } catch (e) {
+          toast("Couldn't create the box: " + (e.message || e), "err");
+          btn.disabled = false; btn.textContent = "Create ownership box";
+        }
       }));
       box.querySelectorAll("[data-susave]").forEach((btn) => btn.addEventListener("click", async () => {
         const i = btn.dataset.susave;
@@ -5845,7 +5879,10 @@
             ${gPrincipals.map((p) => `<option value="${p.id}"${e.managed_by === p.id ? " selected" : ""}>${escapeHtml(p.name)}</option>`).join("")}
           </select>
         </div>
-        <div class="field" id="pEmailField"><label>Email</label><input type="email" id="pEmail" value="${escapeHtml(e.email || "")}" placeholder="optional"></div>
+        <div class="field" id="pEmailField"><label>Portal user / email</label>
+          <select id="pUserPick" class="inline-select" style="width:100%;padding:0.6rem 0.7rem;margin-bottom:0.35rem;"><option value="">Loading portal users…</option></select>
+          <input type="email" id="pEmail" value="${escapeHtml(e.email || "")}" placeholder="or type an email — links this box to that sign-in">
+        </div>
         <div class="field">
           <div style="display:flex;justify-content:space-between;align-items:center;"><label>Links (<span id="pLinkN">${(e.links || []).length}</span>/${MAX_LINKS})</label>
             <button class="iconbtn" id="pAddLink" style="color:var(--accent);">+ Add link</button></div>
@@ -5871,6 +5908,21 @@
           <span class="muted" id="pStatus"></span>
         </div>`;
       show(pane, true);
+      // Link-to-user picker: choose a portal user instead of typing the
+      // email by hand (typos break the link silently).
+      supabase.from("allowed_owners").select("email,full_name").order("email").then(({ data }) => {
+        const pick = $("pUserPick"); if (!pick) return;
+        const cur = ($("pEmail")?.value || "").toLowerCase();
+        pick.innerHTML = `<option value="">— pick a portal user (or type below) —</option>` +
+          (data || []).filter((u) => u.email && !u.email.includes("<"))
+            .map((u) => `<option value="${escapeHtml(u.email)}"${u.email.toLowerCase() === cur ? " selected" : ""}>${escapeHtml(u.full_name || u.email)}${u.full_name ? ` — ${escapeHtml(u.email)}` : ""}</option>`).join("");
+      });
+      $("pUserPick")?.addEventListener("change", () => {
+        const v = $("pUserPick").value; if (!v) return;
+        $("pEmail").value = v;
+        const nm = ($("pUserPick").selectedOptions[0]?.textContent || "").split(" — ")[0].trim();
+        if (nm && (!$("pName").value.trim() || $("pName").value.trim() === "New box")) $("pName").value = nm;
+      });
 
       // Local editable links state
       let links = (e.links || []).map((l) => ({ ...l }));
