@@ -603,6 +603,7 @@
             <div><label>Repeats</label><select id="op_r_cad" class="inline-select" style="padding:0.5rem;">
               <option value="daily">Daily</option><option value="weekly" selected>Weekly</option><option value="monthly">Monthly</option></select></div>
             <div id="op_r_daywrap"><label>On</label><select id="op_r_day" class="inline-select" style="padding:0.5rem;"></select></div>
+            <div><label>At</label><select id="op_r_time" class="inline-select" style="padding:0.5rem;"></select></div>
             <div><label>Takes (min)</label><input type="number" id="op_r_min" step="5" min="5" style="width:88px;" placeholder="30"></div>
             <button class="btn" id="opRecurAdd" style="flex:0 0 auto;">Add recurring</button>
           </div>
@@ -979,7 +980,7 @@
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.45.0 — schema migration 0045">v1.45.0</div>
+  <div class="version-tag" title="Owner Portal v1.46.0 — schema migration 0046">v1.46.0</div>
 
   <!-- Settings modal -->
   <div class="modal-overlay hidden" id="settingsModal">
@@ -3078,6 +3079,11 @@
               : Array.from({ length: 28 }, (_, i) => `<option value="${i + 1}">Day ${i + 1}</option>`).join("");
           };
           $("op_r_cad").addEventListener("change", dayOpts); dayOpts();
+          // 15-minute steps, 5:00–23:00, defaulting to 9:00 AM.
+          $("op_r_time").innerHTML = Array.from({ length: (23 - 5) * 4 + 1 }, (_, i) => {
+            const m = 5 * 60 + i * 15, hh = String(Math.floor(m / 60)).padStart(2, "0"), mm = String(m % 60).padStart(2, "0");
+            return `<option value="${hh}:${mm}"${hh === "09" && mm === "00" ? " selected" : ""}>${mgFmt12(hh + ":" + mm)}</option>`;
+          }).join("");
           $("opRecurAdd").addEventListener("click", async () => {
             const title = $("op_r_title").value.trim();
             if (!title) { $("op_r_title").focus(); return; }
@@ -3086,6 +3092,7 @@
               title, entity_id: $("op_r_entity").value || null,
               assignee_email: $("op_r_assignee").value || currentEmail,
               cadence: cad, byday: cad === "daily" ? null : +$("op_r_day").value || 1,
+              start_time: $("op_r_time").value || null,
               est_minutes: +$("op_r_min").value || null,
               created_by: currentEmail,
             }).select("id").single();
@@ -3187,9 +3194,13 @@
     // "Add to Google Calendar": a template link prefilled with the next
     // occurrence at 9:00 AM, a block sized by the estimate, and the
     // matching RRULE — works for any Google account, no integration.
+    const mgFmt12 = (hhmm) => {
+      const [h, m] = String(hhmm || "09:00").split(":").map(Number);
+      return `${((h + 11) % 12) + 1}:${String(m).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
+    };
     function mgGcalUrl(r) {
       const { due } = mgRecurDue(r);
-      const start = new Date(due + "T09:00:00");
+      const start = new Date(due + "T" + (String(r.start_time || "09:00").slice(0, 5)) + ":00");
       if (start < new Date(mgToday() + "T00:00:00")) {
         if (r.cadence === "daily") start.setDate(start.getDate() + 1);
         else if (r.cadence === "weekly") start.setDate(start.getDate() + 7);
@@ -3217,9 +3228,10 @@
     // Ops pane: recurring definitions.
     const MG_DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
     function mgRecurLabel(r) {
-      if (r.cadence === "daily") return "Daily";
-      if (r.cadence === "weekly") return "Weekly · " + (MG_DOW[(+r.byday || 1) - 1] || "Mon");
-      return "Monthly · day " + (+r.byday || 1);
+      const at = r.start_time ? " · " + mgFmt12(String(r.start_time).slice(0, 5)) : "";
+      if (r.cadence === "daily") return "Daily" + at;
+      if (r.cadence === "weekly") return "Weekly · " + (MG_DOW[(+r.byday || 1) - 1] || "Mon") + at;
+      return "Monthly · day " + (+r.byday || 1) + at;
     }
     function mgRenderRecur() {
       if (!isAdmin()) return;
