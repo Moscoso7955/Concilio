@@ -182,6 +182,8 @@
     .mg-act { background: none; border: 0; color: var(--muted); cursor: pointer; padding: 0.1rem 0.25rem; font-size: 0.9rem; flex: 0 0 auto; }
     .mg-act:hover { color: var(--text); }
     .mg-act.del:hover { color: #e08585; }
+    .mg-gcal { display: inline-flex; align-items: center; gap: 0.35rem; background: var(--panel-2, #222); border: 1px solid var(--border, #2f2f2f); border-radius: 999px; color: var(--text); cursor: pointer; padding: 0.28rem 0.75rem; font-size: 0.78rem; font-weight: 600; white-space: nowrap; flex: 0 0 auto; }
+    .mg-gcal:hover { border-color: var(--accent); color: #fff; }
     .mg-uchip { font-size: 0.78rem; border: 1px solid var(--border); border-radius: 999px; padding: 0.22rem 0.65rem;
       background: var(--panel-2); color: var(--muted); cursor: pointer; font-family: inherit; }
     .mg-uchip.on { border-color: var(--accent); color: var(--text); background: #23262b; }
@@ -980,7 +982,7 @@
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.47.0 — schema migration 0047">v1.47.0</div>
+  <div class="version-tag" title="Owner Portal v1.47.1 — schema migration 0047">v1.47.1</div>
 
   <!-- Settings modal -->
   <div class="modal-overlay hidden" id="settingsModal">
@@ -3260,7 +3262,7 @@
       return "https://calendar.google.com/calendar/render?" + p.toString();
     }
     const mgGcalBtn = (r) =>
-      `<button type="button" class="mg-act" data-gcal="${r.id}" title="Add to Google Calendar" aria-label="Add ${escapeHtml(r.title)} to Google Calendar">📅</button>`;
+      `<button type="button" class="mg-gcal" data-gcal="${r.id}" title="Add to Google Calendar" aria-label="Add ${escapeHtml(r.title)} to Google Calendar">📅 Add to Calendar</button>`;
     const mgTimeOpts = (sel) => Array.from({ length: (23 - 5) * 4 + 1 }, (_, i) => {
       const m = 5 * 60 + i * 15, hh = String(Math.floor(m / 60)).padStart(2, "0"), mm = String(m % 60).padStart(2, "0");
       const v = hh + ":" + mm;
