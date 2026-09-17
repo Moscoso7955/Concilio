@@ -206,6 +206,17 @@
     .mg-noterow input { flex: 1; min-width: 0; background: #111; border: 1px solid #2c2c2c; border-radius: 7px; color: var(--text); padding: 0.45rem 0.6rem; font-size: 0.85rem; }
     .mg-noterow input:focus { outline: none; border-color: var(--accent); }
     .mg-run { color: #5da97f; font-weight: 600; font-size: 0.8rem; white-space: nowrap; }
+    /* Toasts + styled confirm — replaces the browser's native popups. */
+    .toast-wrap { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); z-index: 400;
+      display: flex; flex-direction: column; gap: 0.5rem; align-items: center; pointer-events: none; }
+    .toast { background: #1f2226; border: 1px solid var(--border); border-radius: 10px; padding: 0.6rem 1rem;
+      color: var(--text); font-size: 0.88rem; box-shadow: 0 8px 24px rgba(0,0,0,0.5); pointer-events: auto;
+      max-width: min(480px, 90vw); animation: toastin 0.18s ease; }
+    .toast--err { border-color: #b45555; color: #f0b7b7; }
+    .toast--ok { border-color: #3f6f55; }
+    @keyframes toastin { from { opacity: 0; transform: translateY(8px); } }
+    .field-err { border-color: #e08585 !important; box-shadow: 0 0 0 1px rgba(224,133,133,0.25) !important; }
+    .section-card.timing { border-color: #5da97f; box-shadow: 0 0 0 1px rgba(93,169,127,0.2); }
     .mg-uchip { font-size: 0.78rem; border: 1px solid var(--border); border-radius: 999px; padding: 0.22rem 0.65rem;
       background: var(--panel-2); color: var(--muted); cursor: pointer; font-family: inherit; }
     .mg-uchip.on { border-color: var(--accent); color: #0d0f12; background: var(--accent); font-weight: 700; }
@@ -687,7 +698,7 @@
         <span class="muted" style="font-size:0.85rem;">Viewing</span>
         <select id="mgWho" class="inline-select" style="padding:0.4rem 0.55rem;"></select>
       </div>
-      <div class="section-card">
+      <div class="section-card" id="mgTimeCard">
         <h2>Time</h2>
         <div class="muted" style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.25rem;">Live timer</div>
         <div class="row" style="align-items:flex-end;flex-wrap:wrap;">
@@ -723,6 +734,8 @@
           <button class="btn btn--ghost btn--sm" id="mgIcsBtn" title="Subscribe in Google Calendar — your assignments appear automatically">Calendar feed</button>
           <label class="tabchip"><input type="checkbox" id="mgShowDone"> Show done</label>
         </div>
+        <p class="muted" style="font-size:0.75rem;margin:-0.35rem 0 0.7rem;">
+          <span style="color:var(--muted);">○</span> open · <span style="color:#d9a441;">◐</span> in progress · <span style="color:#5da97f;">●</span> done — click the dot to advance, click a title for notes &amp; progress</p>
         <div class="row" style="align-items:flex-end;flex-wrap:wrap;margin-bottom:0.9rem;">
           <div style="flex:2;min-width:210px;"><label>Task</label><input type="text" id="mg_k_title" placeholder="What needs doing?"></div>
           <div><label>Unit / entity</label><select id="mg_k_entity" class="inline-select" style="min-width:150px;padding:0.5rem;"></select></div>
@@ -1164,7 +1177,7 @@
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.54.3 — schema migration 0054">v1.54.3</div>
+  <div class="version-tag" title="Owner Portal v1.54.4 — schema migration 0054">v1.54.4</div>
 
   <!-- Settings modal -->
   <div class="modal-overlay hidden" id="settingsModal">
@@ -1351,6 +1364,17 @@
     </div>
   </div>
 
+  <!-- Styled confirm (replaces window.confirm in the newer panes) -->
+  <div class="modal-overlay hidden" id="confirmModal" style="z-index:380;">
+    <div class="modal" style="max-width:420px;">
+      <p id="confirmMsg" style="margin:0 0 1.1rem;white-space:pre-wrap;"></p>
+      <div class="row" style="align-items:center;">
+        <button class="btn" id="confirmYes" style="flex:0 0 auto;">Confirm</button>
+        <button class="btn btn--ghost" id="confirmNo" style="flex:0 0 auto;">Cancel</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Calendar-feed (ICS) subscribe modal -->
   <div class="modal-overlay hidden" id="icsModal">
     <div class="modal" style="max-width:540px;">
@@ -1465,6 +1489,35 @@
       return (v < 0 ? "-$" : "$") + Math.abs(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     };
     const monthLabel = (d) => new Date(d + "T00:00:00").toLocaleDateString(undefined, { year: "numeric", month: "short" });
+
+    // In-app notices instead of browser popups: toast() for outcomes,
+    // ask() for confirmations (styled modal, resolves true/false),
+    // flashErr() to point at the field a guard is complaining about.
+    function toast(msg, kind = "ok", ms = 3600) {
+      let wrap = document.getElementById("toastWrap");
+      if (!wrap) { wrap = document.createElement("div"); wrap.id = "toastWrap"; wrap.className = "toast-wrap"; document.body.appendChild(wrap); }
+      const el = document.createElement("div");
+      el.className = "toast " + (kind === "err" ? "toast--err" : "toast--ok");
+      el.textContent = msg;
+      wrap.appendChild(el);
+      setTimeout(() => { el.style.transition = "opacity 0.25s"; el.style.opacity = "0"; setTimeout(() => el.remove(), 260); }, ms);
+    }
+    let confirmResolve = null;
+    function ask(msg, yesLabel = "Confirm") {
+      return new Promise((res) => {
+        confirmResolve = res;
+        $("confirmMsg").textContent = msg;
+        $("confirmYes").textContent = yesLabel;
+        show($("confirmModal"), true);
+        $("confirmYes").focus();
+      });
+    }
+    const confirmDone = (v) => { show($("confirmModal"), false); if (confirmResolve) { confirmResolve(v); confirmResolve = null; } };
+    $("confirmYes")?.addEventListener("click", () => confirmDone(true));
+    $("confirmNo")?.addEventListener("click", () => confirmDone(false));
+    $("confirmModal")?.addEventListener("click", (e) => { if (e.target === $("confirmModal")) confirmDone(false); });
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape" && confirmResolve) confirmDone(false); });
+    const flashErr = (el) => { if (!el) return; el.classList.add("field-err"); setTimeout(() => el.classList.remove("field-err"), 1800); };
 
     if (!configured) { show($("notConfigured"), true); throw new Error("not configured"); }
 
@@ -1866,7 +1919,7 @@
         const key = box.querySelector(`[data-srrow="${btn.dataset.srdel}"]`).dataset.srkey;
         if (!confirm(`Delete the "${key}" role?`)) return;
         const { error } = await supabase.from("roles").delete().eq("key", key);
-        if (error) { alert(error.message); return; }
+        if (error) { toast(error.message, "err"); return; }
         logAccess("role_delete", { role: key });
         await refreshRoles(); loadSettingsUsers();
       }));
@@ -3295,6 +3348,24 @@
     }, 1000);
     const mgRunning = (email) => mgTime.find((r) => !r.stopped_at && r.started_at &&
       (r.user_email || "").toLowerCase() === (email || "").toLowerCase());
+    // Minutes → clock-style "1:24" (consistent with the week table).
+    const mgHm = (min) => `${Math.floor((min || 0) / 60)}:${String(Math.round(min || 0) % 60).padStart(2, "0")}`;
+    // "Wed, Sep 17" for row dates.
+    const mgDay = (iso) => new Date(iso + "T12:00:00").toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
+    // Next occurrence of a recurring definition, as a friendly word.
+    function mgNextDue(r) {
+      let { due } = mgRecurDue(r);
+      if (due < mgToday()) {
+        const d = new Date(due + "T12:00:00");
+        if (r.cadence === "daily") d.setDate(d.getDate() + 1);
+        else if (r.cadence === "weekly") d.setDate(d.getDate() + 7);
+        else d.setMonth(d.getMonth() + 1);
+        due = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      }
+      const t = new Date(); t.setDate(t.getDate() + 1);
+      const tomorrow = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
+      return due === mgToday() ? "today" : due === tomorrow ? "tomorrow" : mgDay(due);
+    }
     const mgName = (email) => {
       const u = mgUsers.find((x) => (x.email || "").toLowerCase() === String(email || "").toLowerCase());
       if (u?.full_name) return u.full_name;
@@ -3355,7 +3426,7 @@
               est_minutes: +$("op_r_min").value || null,
               created_by: currentEmail,
             }).select("id").single();
-            if (error) { alert(error.message); return; }
+            if (error) { toast(error.message, "err"); return; }
             if (ins?.id) mgNotify({ recurring_id: ins.id });
             logAccess("recur_add", { title, cadence: cad });
             $("op_r_title").value = ""; $("op_r_min").value = "";
@@ -3482,7 +3553,7 @@
       if (!showIt) return;
       $("mgTeamList").innerHTML = mgTeam.map((m) => `
         <div class="mg-node"><strong>${escapeHtml(m.full_name || mgName(m.email))}</strong>
-          <span class="tw">${mgHrs(m.week_minutes)}h this week · ${m.open_tasks} open${m.doing_tasks ? ` · ${m.doing_tasks} in progress` : ""}</span></div>`).join("");
+          <span class="tw">${mgHm(m.week_minutes)} this week · ${m.open_tasks} open${m.doing_tasks ? ` · ${m.doing_tasks} in progress` : ""}</span></div>`).join("");
     }
 
     // Ops pane: a report card per manager.
@@ -3500,7 +3571,7 @@
         return `<div class="mg-opcard">
           <h3>${escapeHtml(m.full_name || mgName(m.email))}${late ? ` <span style="color:#e08585;font-size:0.72rem;font-weight:700;border:1px solid #e08585;border-radius:999px;padding:0.1rem 0.5rem;vertical-align:2px;">${late} overdue</span>` : ""}</h3>
           ${run ? `<div class="stat-line mg-run">● Timer running — <span data-mglive="${run.started_at}"></span>${run.entity_id ? " · " + escapeHtml(mgEntName(run.entity_id)) : ""}${run.note ? " · " + escapeHtml(run.note) : ""}</div>` : ""}
-          <div class="stat-line">${mgHrs(m.week_minutes)}h this week · ${m.open_tasks} open · ${m.doing_tasks} in progress</div>
+          <div class="stat-line">${mgHm(m.week_minutes)} this week · ${m.open_tasks} open · ${m.doing_tasks} in progress</div>
           <div class="stat-line">${units.length ? escapeHtml(units.join(" · ")) : "No units assigned"}</div>
           ${open.length ? `<div class="stat-line" style="margin-top:0.4rem;">${open.map((t) => `• ${escapeHtml(t.title)}`).join("<br>")}</div>` : ""}
         </div>`;
@@ -3580,6 +3651,7 @@
         <div class="mg-recur${r.active ? "" : " done"}">
           <strong style="flex:1;min-width:140px;${r.active ? "" : "color:var(--muted);"}">${escapeHtml(r.title)}</strong>
           <span class="mg-chip">${mgRecurLabel(r)}</span>
+          ${r.active ? `<span class="mg-chip" title="Next occurrence">next: ${mgNextDue(r)}</span>` : ""}
           ${r.entity_id ? `<span class="mg-chip">${escapeHtml(mgEntName(r.entity_id))}</span>` : ""}
           ${r.assignee_email ? `<span class="mg-chip">${escapeHtml(mgName(r.assignee_email))}</span>` : ""}
           ${r.est_minutes ? `<span class="mg-chip">${+r.est_minutes} min</span>` : ""}
@@ -3593,7 +3665,7 @@
       }));
       box.querySelectorAll("[data-recdel]").forEach((b) => b.addEventListener("click", async () => {
         const r = mgRecurs.find((x) => x.id === b.dataset.recdel);
-        if (!confirm(`Delete recurring task “${r?.title}”? Already-spawned tasks stay.`)) return;
+        if (!(await ask(`Delete recurring task “${r?.title}”? Already-spawned tasks stay.`, "Delete"))) return;
         await supabase.from("recurring_tasks").delete().eq("id", b.dataset.recdel);
         logAccess("recur_delete", { title: r?.title });
         mgRefresh();
@@ -3611,12 +3683,12 @@
       const node = (label, sub, depth) => `<div class="mg-node" style="padding-left:${depth * 1.3}rem;">${depth ? '<span class="muted">└</span>' : ""}<strong>${escapeHtml(label)}</strong>${sub ? `<span class="tw">${sub}</span>` : ""}</div>`;
       const branch = (email, depth) => (byBoss[email.toLowerCase()] || []).map((m) => {
         placed.add(m.email);
-        return node(m.full_name || mgName(m.email), `${mgHrs(m.week_minutes)}h wk · ${m.open_tasks + m.doing_tasks} tasks`, depth) + branch(m.email, depth + 1);
+        return node(m.full_name || mgName(m.email), `${mgHm(m.week_minutes)} wk · ${m.open_tasks + m.doing_tasks} tasks`, depth) + branch(m.email, depth + 1);
       }).join("");
       let h = admins.map((a) => node(a.full_name || mgName(a.email), "admin", 0) + branch(a.email, 1)).join("");
       const loose = mgTeam.filter((m) => !placed.has(m.email));
       if (loose.length) h += `<div class="muted" style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.06em;margin:0.7rem 0 0.2rem;">Unassigned</div>` +
-        loose.map((m) => node(m.full_name || mgName(m.email), `${mgHrs(m.week_minutes)}h wk`, 0)).join("");
+        loose.map((m) => node(m.full_name || mgName(m.email), `${mgHm(m.week_minutes)} wk`, 0)).join("");
       tree.innerHTML = h || '<p class="muted">No managers yet.</p>';
       // Admin editor: one reports-to select per manager.
       if (isAdmin()) {
@@ -3629,9 +3701,9 @@
             <select class="inline-select" data-orgset="${escapeHtml(m.email)}" style="padding:0.3rem 0.45rem;">${bossOpts(m.reports_to)}</select></div>`).join("");
         $("orgEdit").querySelectorAll("[data-orgset]").forEach((sel) => sel.addEventListener("change", async () => {
           const boss = sel.value || null;
-          if (boss && boss.toLowerCase() === sel.dataset.orgset.toLowerCase()) { alert("A manager can't report to themselves."); return; }
+          if (boss && boss.toLowerCase() === sel.dataset.orgset.toLowerCase()) { toast("A manager can't report to themselves.", "err"); return; }
           const { error } = await supabase.from("manager_org").upsert({ manager_email: sel.dataset.orgset, reports_to: boss, updated_at: new Date().toISOString() }, { onConflict: "manager_email" });
-          if (error) { alert(error.message); return; }
+          if (error) { toast(error.message, "err"); return; }
           logAccess("org_set", { manager: mgName(sel.dataset.orgset), boss: boss ? mgName(boss) : "top level" });
           mgRefresh();
         }));
@@ -3666,11 +3738,11 @@
         const on = b.classList.contains("on");
         // A chip tap is a live write — one stray scroll-brush on a phone
         // shouldn't silently reassign a unit.
-        if (!confirm(`${on ? "Remove" : "Assign"} ${mgEntName(eid)} ${on ? "from" : "to"} ${mgName(email)}?`)) return;
+        if (!(await ask(`${on ? "Remove" : "Assign"} ${mgEntName(eid)} ${on ? "from" : "to"} ${mgName(email)}?`, on ? "Remove" : "Assign"))) return;
         const { error } = on
           ? await supabase.from("manager_units").delete().eq("manager_email", email).eq("entity_id", eid)
           : await supabase.from("manager_units").insert({ manager_email: email, entity_id: eid });
-        if (error) { alert(error.message); return; }
+        if (error) { toast(error.message, "err"); return; }
         logAccess("manager_unit", { manager: mgName(email), unit: mgEntName(eid), on: !on });
         if (on) mgMgrUnits = mgMgrUnits.filter((r) => !((r.manager_email || "").toLowerCase() === email.toLowerCase() && r.entity_id === eid));
         else mgMgrUnits.push({ manager_email: email, entity_id: eid });
@@ -3694,7 +3766,7 @@
       const when = (ts) => new Date(ts).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
       const label = (d) => {
         const p = d.payload || {};
-        if (d.kind === "time_entry") return `${mgHrs(p.minutes)}h · ${escapeHtml(mgEntName(p.entity_id) || "general")}${p.note ? " · " + escapeHtml(p.note) : ""} (${escapeHtml(mgName(p.user_email))})`;
+        if (d.kind === "time_entry") return `${mgHm(p.minutes)} · ${escapeHtml(mgEntName(p.entity_id) || "general")}${p.note ? " · " + escapeHtml(p.note) : ""} (${escapeHtml(mgName(p.user_email))})`;
         if (d.kind === "task_note") return `“${escapeHtml(String(p.body || "").slice(0, 60))}”`;
         return escapeHtml(p.title || "");
       };
@@ -3730,16 +3802,16 @@
       box.querySelectorAll("[data-mgrestore]").forEach((b) => b.addEventListener("click", async () => {
         b.disabled = true; b.textContent = "Restoring…";
         const { error } = await supabase.rpc("restore_deleted", { p_id: b.dataset.mgrestore });
-        if (error) { alert(error.message); b.disabled = false; b.textContent = "Restore"; return; }
+        if (error) { toast(error.message, "err"); b.disabled = false; b.textContent = "Restore"; return; }
         const d = mgDeleted.find((x) => x.id === b.dataset.mgrestore);
         logAccess("mg_restore", { kind: d?.kind, title: d?.payload?.title || d?.payload?.note || "" });
         mgRefresh();
       }));
       box.querySelectorAll("[data-mgpurge]").forEach((b) => b.addEventListener("click", async () => {
         const d = mgDeleted.find((x) => x.id === b.dataset.mgpurge);
-        if (!confirm(`Permanently erase this ${KIND[d?.kind] || "item"} from the log? It can never be restored afterwards.`)) return;
+        if (!(await ask(`Permanently erase this ${KIND[d?.kind] || "item"} from the log? It can never be restored afterwards.`, "Erase forever"))) return;
         const { error } = await supabase.from("deleted_items").delete().eq("id", b.dataset.mgpurge);
-        if (error) { alert(error.message); return; }
+        if (error) { toast(error.message, "err"); return; }
         logAccess("mg_purge", { kind: d?.kind, title: d?.payload?.title || d?.payload?.note || "" });
         mgDeleted = mgDeleted.filter((x) => x.id !== b.dataset.mgpurge);
         mgRenderActivity();
@@ -3749,8 +3821,10 @@
     function mgRenderTimer() {
       const b = $("mgTimerBtn"), el = $("mgTimerElapsed");
       clearInterval(mgTick);
+      $("mgTimeCard")?.classList.toggle("timing", !!mgTimer);
       if (mgTimer) {
         b.textContent = "Stop & log";
+        el.classList.add("mg-run");
         const tick = () => {
           const s = Math.max(0, Math.floor((Date.now() - new Date(mgTimer.started_at)) / 1000));
           el.textContent = `${Math.floor(s / 3600)}:${String(Math.floor(s / 60) % 60).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
@@ -3758,7 +3832,7 @@
         tick(); mgTick = setInterval(tick, 1000);
         $("mg_t_note").value = mgTimer.note || "";
         $("mg_t_entity").value = mgTimer.entity_id || "";
-      } else { b.textContent = "Start timer"; el.textContent = ""; }
+      } else { b.textContent = "Start timer"; el.textContent = ""; el.classList.remove("mg-run"); }
     }
 
     // Sub-tabs: Ops (admins) / Manage / Org Chart.
@@ -3770,14 +3844,14 @@
     }));
     $("mgTimerBtn")?.addEventListener("click", async () => {
       if (!mgTimer) {
-        if (!$("mg_t_entity").value) { alert("Pick the unit / entity you're working on first."); $("mg_t_entity").focus(); return; }
-        if (!$("mg_t_note").value.trim()) { alert("Say what you're on before starting the timer."); $("mg_t_note").focus(); return; }
+        if (!$("mg_t_entity").value) { toast("Pick the unit / entity you're working on first.", "err"); flashErr($("mg_t_entity")); $("mg_t_entity").focus(); return; }
+        if (!$("mg_t_note").value.trim()) { toast("Say what you're on before starting the timer.", "err"); flashErr($("mg_t_note")); $("mg_t_note").focus(); return; }
         const { data, error } = await supabase.from("time_entries").insert({
           user_email: currentEmail, entity_id: $("mg_t_entity").value,
           note: $("mg_t_note").value.trim(),
           started_at: new Date().toISOString(), work_date: mgToday(),
         }).select("*").single();
-        if (error) { alert(error.message); return; }
+        if (error) { toast(error.message, "err"); return; }
         mgTimer = data; mgRenderTimer();
       } else {
         const minutes = Math.max(1, Math.round((Date.now() - new Date(mgTimer.started_at)) / 60000));
@@ -3786,7 +3860,7 @@
           note: $("mg_t_note").value.trim() || mgTimer.note || null,
           entity_id: $("mg_t_entity").value || null,
         }).eq("id", mgTimer.id);
-        if (error) { alert(error.message); return; }
+        if (error) { toast(error.message, "err"); return; }
         mgTimer = null; $("mg_t_note").value = "";
         mgWhoReveal(currentEmail);
         mgRefresh();
@@ -3794,13 +3868,13 @@
     });
     $("mgAddTime")?.addEventListener("click", async () => {
       const hours = parseFloat($("mg_m_hours").value);
-      if (!hours || hours <= 0) { alert("Enter the hours to log (e.g. 1.5)."); return; }
+      if (!hours || hours <= 0) { toast("Enter the hours to log (e.g. 1.5).", "err"); flashErr($("mg_m_hours")); $("mg_m_hours").focus(); return; }
       const { error } = await supabase.from("time_entries").insert({
         user_email: currentEmail, entity_id: $("mg_m_entity").value || null,
         note: $("mg_m_note").value.trim() || null,
         work_date: mgToday(), minutes: Math.round(hours * 60),
       });
-      if (error) { alert(error.message); return; }
+      if (error) { toast(error.message, "err"); return; }
       $("mg_m_hours").value = ""; $("mg_m_note").value = "";
       mgWhoReveal(currentEmail);
       mgRefresh();
@@ -3821,7 +3895,7 @@
         const task = r.task_id ? mgTasks.find((t) => t.id === r.task_id) : null;
         const live = !r.stopped_at && r.started_at;
         const tr = document.createElement("tr");
-        tr.innerHTML = `<td>${r.work_date}</td>
+        tr.innerHTML = `<td>${mgDay(r.work_date)}</td>
           <td class="mg-whocol${showWho ? "" : " hidden"}">${escapeHtml(mgName(r.user_email))}</td>
           <td>${escapeHtml(mgEntName(r.entity_id) || "—")}</td>
           <td class="muted">${escapeHtml(task?.title || r.note || "")}</td>
@@ -3832,9 +3906,10 @@
         body.appendChild(tr);
       }
       const total = rows.reduce((s, r) => s + mgSecs(r), 0);
-      $("mgWeekTotal").textContent = rows.length ? `${mgClock(total)} this week` : "";
+      const runCount = rows.filter((r) => !r.stopped_at && r.started_at).length;
+      $("mgWeekTotal").textContent = rows.length ? `${mgClock(total)} this week${runCount ? ` · ${runCount} running` : ""}` : "";
       body.querySelectorAll("[data-mgtdel]").forEach((b) => b.addEventListener("click", async () => {
-        if (!confirm("Delete this time entry?")) return;
+        if (!(await ask("Delete this time entry?", "Delete"))) return;
         await supabase.from("time_entries").delete().eq("id", b.dataset.mgtdel);
         mgRefresh();
       }));
@@ -3926,7 +4001,7 @@
           ? (t.status === "done" ? "open" : "done")
           : (t.status === "open" ? "doing" : t.status === "doing" ? "done" : "open");
         const { error } = await supabase.from("tasks").update({ status: next, done_at: next === "done" ? new Date().toISOString() : null }).eq("id", t.id);
-        if (error) { alert(error.message); return; }
+        if (error) { toast(error.message, "err"); return; }
         t.status = next;
         if (next === "done") logAccess("task_done", { title: t.title });
         mgRenderTasks();
@@ -3950,7 +4025,7 @@
         const reassigned = (patch.assignee_email || "").toLowerCase() !== (t.assignee_email || "").toLowerCase();
         b.disabled = true; b.textContent = "Saving…";
         const { error } = await supabase.from("tasks").update(patch).eq("id", t.id);
-        if (error) { alert(error.message); b.disabled = false; b.textContent = "Save"; return; }
+        if (error) { toast(error.message, "err"); b.disabled = false; b.textContent = "Save"; return; }
         Object.assign(t, patch);
         logAccess("task_edit", { title: t.title, who: reassigned ? mgName(t.assignee_email) : undefined });
         if (reassigned && (t.assignee_email || "").toLowerCase() !== me) mgNotify({ task_id: t.id });
@@ -3959,8 +4034,10 @@
       }));
       box.querySelectorAll("[data-mgopen]").forEach((s) => s.addEventListener("click", () => {
         const id = s.dataset.mgopen;
-        mgOpenTasks.has(id) ? mgOpenTasks.delete(id) : mgOpenTasks.add(id);
+        const opening = !mgOpenTasks.has(id);
+        opening ? mgOpenTasks.add(id) : mgOpenTasks.delete(id);
         mgRenderTasks();
+        if (opening) box.querySelector(`[data-mgnotein="${id}"]`)?.focus({ preventScroll: true });
       }));
       box.querySelectorAll("[data-mgprog]").forEach((sl) => {
         sl.addEventListener("input", () => {
@@ -3970,7 +4047,7 @@
         sl.addEventListener("change", async () => {
           const t = mgTasks.find((x) => x.id === sl.dataset.mgprog);
           const { error } = await supabase.from("tasks").update({ progress: +sl.value }).eq("id", t.id);
-          if (error) { alert(error.message); return; }
+          if (error) { toast(error.message, "err"); return; }
           t.progress = +sl.value;
           logAccess("task_progress", { title: t.title, pct: t.progress });
           mgRenderTasks();
@@ -3981,7 +4058,7 @@
         const body = (inp?.value || "").trim();
         if (!body) { inp?.focus(); return; }
         const { data, error } = await supabase.from("task_notes").insert({ task_id: id, author_email: currentEmail, body }).select("*").single();
-        if (error) { alert(error.message); return; }
+        if (error) { toast(error.message, "err"); return; }
         mgNotes.push(data);
         logAccess("task_note", { title: mgTasks.find((x) => x.id === id)?.title });
         mgRenderTasks();
@@ -3992,7 +4069,7 @@
       }));
       box.querySelectorAll("[data-mgndel]").forEach((b) => b.addEventListener("click", async () => {
         const { error } = await supabase.from("task_notes").delete().eq("id", b.dataset.mgndel);
-        if (error) { alert(error.message); return; }
+        if (error) { toast(error.message, "err"); return; }
         mgNotes = mgNotes.filter((n) => n.id !== b.dataset.mgndel);
         mgRenderTasks();
       }));
@@ -4003,25 +4080,25 @@
         b.textContent = ok ? "Nudged ✓" : "Nudge";
         b.disabled = !!ok;
         if (ok) { mgNudged.add(t.id); logAccess("task_nudge", { title: t.title, who: t.assignee_email }); }
-        else alert("Couldn't send the nudge email — try again in a moment.");
+        else toast("Couldn't send the nudge email — try again in a moment.", "err");
       }));
       box.querySelectorAll("[data-mgdel]").forEach((b) => b.addEventListener("click", async () => {
         const t = mgTasks.find((x) => x.id === b.dataset.mgdel);
-        if (!confirm(`Delete task “${t?.title}”?`)) return;
+        if (!(await ask(`Delete task “${t?.title}”?`, "Delete"))) return;
         const { error } = await supabase.from("tasks").delete().eq("id", b.dataset.mgdel);
-        if (error) { alert(error.message); return; }
+        if (error) { toast(error.message, "err"); return; }
         logAccess("task_delete", { title: t?.title });
         mgRefresh();
       }));
       mgWireGcal(box);
       box.querySelectorAll("[data-mgtimer]").forEach((b) => b.addEventListener("click", async () => {
-        if (mgTimer) { alert("A timer is already running — stop it first."); return; }
+        if (mgTimer) { toast("A timer is already running — stop it first.", "err"); return; }
         const t = mgTasks.find((x) => x.id === b.dataset.mgtimer);
         const { data, error } = await supabase.from("time_entries").insert({
           user_email: currentEmail, entity_id: t.entity_id || null, task_id: t.id,
           note: t.title, started_at: new Date().toISOString(), work_date: mgToday(),
         }).select("*").single();
-        if (error) { alert(error.message); return; }
+        if (error) { toast(error.message, "err"); return; }
         mgTimer = data; mgRenderTimer();
         window.scrollTo({ top: 0, behavior: "smooth" });
       }));
@@ -4030,7 +4107,7 @@
     // Personal ICS feed: mint (or fetch) the token, hand over the URL.
     $("mgIcsBtn")?.addEventListener("click", async () => {
       const { data, error } = await supabase.rpc("my_ical_token");
-      if (error) { alert(error.message); return; }
+      if (error) { toast(error.message, "err"); return; }
       $("icsUrl").value = `${cfg.SUPABASE_URL}/functions/v1/task-feed?t=${data}`;
       show($("icsModal"), true);
     });
@@ -4046,10 +4123,10 @@
         const res = await fetch(cfg.SUPABASE_URL + "/functions/v1/daily-digest", { method: "POST", headers: await mailFnHeaders() });
         const j = await res.json().catch(() => ({}));
         if (res.ok) {
-          alert(j.sent?.length ? "Digest sent to: " + j.sent.join(", ") : "Nobody has tasks due today or overdue — nothing to send.");
+          toast(j.sent?.length ? "Digest sent to: " + j.sent.join(", ") : "Nobody has tasks due today or overdue — nothing to send.");
           logAccess("digest_send", { sent: (j.sent || []).length });
-        } else alert("Digest failed: " + (j.error || res.status));
-      } catch (e) { alert("Digest failed: " + (e.message || e)); }
+        } else toast("Digest failed: " + (j.error || res.status), "err");
+      } catch (e) { toast("Digest failed: " + (e.message || e), "err"); }
       b.disabled = false; b.textContent = "Send digest now";
     });
     // Assignment emails: fire-and-forget — the task is saved either way.
@@ -4070,7 +4147,7 @@
         due_date: mgDuePick?.getValue() || null,
         created_by: currentEmail,
       }).select("id").single();
-      if (error) { alert(error.message); return; }
+      if (error) { toast(error.message, "err"); return; }
       if (ins?.id) mgNotify({ task_id: ins.id });
       logAccess("task_add", { title });
       $("mg_k_title").value = ""; mgDuePick?.setValue("");
@@ -6264,7 +6341,7 @@
         const i = invTenants.findIndex((t) => t.id === r.tenant_id);
         const next = invTenants[(i + 1) % invTenants.length];
         const { error } = await supabase.from("invoices").update({ tenant_id: next.id }).eq("id", r.id);
-        if (error) { alert("Couldn't switch company: " + error.message); return; }
+        if (error) { toast("Couldn't switch company: " + error.message, "err"); return; }
         r.tenant_id = next.id;
         logAccess("inv_company", { vendor: r.vendor, company: next.name });
         renderReview(); renderLedger();
@@ -6316,7 +6393,7 @@
       row.splits = clean.length ? clean : null;
       renderLedger();
       const { error } = await supabase.from("invoices").update({ splits: row.splits }).eq("id", id);
-      if (error) { alert(error.message); loadInvoices(); }
+      if (error) { toast(error.message, "err"); loadInvoices(); }
     }
     function editSplit(key, patch) {
       const [id, i] = key.split("|");
@@ -6465,22 +6542,22 @@
         const [pid, eid] = b.dataset.icrecord.split("|");
         const rows = (groups[b.dataset.icrecord] || []);
         const total = rows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
-        if (!confirm(`Record: ${icEntityName(eid)} owes ${icEntityName(pid)} ${money(total)} for ${rows.length} bill${rows.length === 1 ? "" : "s"} (${icMonth})?`)) return;
+        if (!(await ask(`Record: ${icEntityName(eid)} owes ${icEntityName(pid)} ${money(total)} for ${rows.length} bill${rows.length === 1 ? "" : "s"} (${icMonth})?`, "Record"))) return;
         const { data: ins, error } = await supabase.from("ic_settlements").insert({
           period: icMonth + "-01", payer_entity_id: pid, entity_id: eid,
           total, invoice_count: rows.length, created_by: currentEmail,
         }).select("id").single();
-        if (error) { alert(error.message); return; }
+        if (error) { toast(error.message, "err"); return; }
         const ids = rows.map((r) => r.id);
         const { error: e2 } = await supabase.from("invoices").update({ ic_settlement_id: ins.id }).in("id", ids);
-        if (e2) { alert(e2.message); return; }
+        if (e2) { toast(e2.message, "err"); return; }
         for (const r of rows) r.ic_settlement_id = ins.id;
         logAccess("ic_settle", { payer: icEntityName(pid), entity: icEntityName(eid), total, count: rows.length, month: icMonth });
         icRender(); renderLedger();
       }));
       box.querySelectorAll("[data-icundo]").forEach((b) => b.addEventListener("click", async () => {
         const s = (setts || []).find((x) => x.id === b.dataset.icundo);
-        if (!confirm(`Undo the ${money(s?.total || 0)} settlement? The bills go back to the open list.`)) return;
+        if (!(await ask(`Undo the ${money(s?.total || 0)} settlement? The bills go back to the open list.`, "Undo"))) return;
         await supabase.from("invoices").update({ ic_settlement_id: null }).eq("ic_settlement_id", b.dataset.icundo);
         await supabase.from("ic_settlements").delete().eq("id", b.dataset.icundo);
         for (const r of invRows) if (r.ic_settlement_id === b.dataset.icundo) r.ic_settlement_id = null;
@@ -6511,24 +6588,24 @@
       }));
       box.querySelectorAll("[data-icpaid]").forEach((b) => b.addEventListener("click", async () => {
         const s = (setts || []).find((x) => x.id === b.dataset.icpaid);
-        if (!confirm(`Mark the ${money(s?.total || 0)} settlement (${icEntityName(s?.entity_id)} → ${icPayerName(s)}) as paid?`)) return;
+        if (!(await ask(`Mark the ${money(s?.total || 0)} settlement (${icEntityName(s?.entity_id)} → ${icPayerName(s)}) as paid?`, "Mark paid"))) return;
         const { error } = await supabase.from("ic_settlements").update({ paid_at: new Date().toISOString() }).eq("id", b.dataset.icpaid);
-        if (error) { alert(error.message); return; }
+        if (error) { toast(error.message, "err"); return; }
         logAccess("ic_paid", { entity: icEntityName(s?.entity_id), payer: icPayerName(s), total: money(s?.total) });
         icRender();
       }));
       box.querySelectorAll("[data-icunpaid]").forEach((c) => c.addEventListener("click", async () => {
         const s = (setts || []).find((x) => x.id === c.dataset.icunpaid);
-        if (!confirm(`Unmark this settlement as paid?`)) return;
+        if (!(await ask(`Unmark this settlement as paid?`, "Unmark"))) return;
         const { error } = await supabase.from("ic_settlements").update({ paid_at: null }).eq("id", c.dataset.icunpaid);
-        if (error) { alert(error.message); return; }
+        if (error) { toast(error.message, "err"); return; }
         icRender();
       }));
       box.querySelectorAll("[data-icfile]").forEach((b) => b.addEventListener("click", async () => {
         const s = (setts || []).find((x) => x.id === b.dataset.icfile);
         const monthName = new Date(icMonth + "-15T12:00:00").toLocaleDateString("en-US", { month: "long", year: "numeric" });
         const title = `Intercompany settlement — ${icEntityName(s.entity_id)} → ${icPayerName(s)} (${monthName})`;
-        if (!confirm(`File "${title}" to Documents (staff-only)?`)) return;
+        if (!(await ask(`File "${title}" to Documents (staff-only)?`, "File it"))) return;
         b.disabled = true; b.textContent = "Filing…";
         try {
           const blob = new Blob([icStatementText(s)], { type: "text/plain" });
@@ -6546,7 +6623,7 @@
           logAccess("ic_statement", { title });
           b.textContent = "Filed ✓";
           loadDocuments();
-        } catch (e) { alert("Filing failed: " + (e.message || e)); b.disabled = false; b.textContent = "File to Documents"; }
+        } catch (e) { toast("Filing failed: " + (e.message || e), "err"); b.disabled = false; b.textContent = "File to Documents"; }
       }));
     }
     $("icBtn")?.addEventListener("click", openIc);
@@ -6555,16 +6632,16 @@
     async function inlineUpdate(id, patch) { // optimistic; reload on error to roll back
       const row = invRows.find((r) => r.id === id); if (row) Object.assign(row, patch, patch.code ? { category: glCat[patch.code] } : {});
       const { error } = await supabase.from("invoices").update(patch).eq("id", id);
-      if (error) { alert(error.message); loadInvoices(); }
+      if (error) { toast(error.message, "err"); loadInvoices(); }
     }
 
     async function approveInvoice(id) {
       const row = invRows.find((r) => r.id === id);
-      if (!row.vendor || row.vendor.toLowerCase() === "unknown vendor") return alert("Set a real vendor before approving.");
-      if (row.amount == null) return alert("Set an amount before approving.");
-      if (!row.code) return alert("Assign a GL code before approving.");
+      if (!row.vendor || row.vendor.toLowerCase() === "unknown vendor") return toast("Set a real vendor before approving.", "err");
+      if (row.amount == null) return toast("Set an amount before approving.", "err");
+      if (!row.code) return toast("Assign a GL code before approving.", "err");
       const { error } = await supabase.from("invoices").update({ needs_review: false }).eq("id", id);
-      if (error) return alert(error.message);
+      if (error) return toast(error.message, "err");
       loadInvoices();
     }
 
