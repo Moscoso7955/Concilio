@@ -899,7 +899,7 @@
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.40.0 — schema migration 0040">v1.40.0</div>
+  <div class="version-tag" title="Owner Portal v1.40.1 — schema migration 0040">v1.40.1</div>
 
   <!-- Settings modal -->
   <div class="modal-overlay hidden" id="settingsModal">
@@ -2955,7 +2955,9 @@
 
     async function loadMgmt() {
       const [eRes, uRes] = await Promise.all([
-        supabase.from("ownership_entities").select("id,name").order("name"),
+        // Companies/venues only — time and tasks land on a business,
+        // never on a person (people are the assignee/tracker side).
+        supabase.from("ownership_entities").select("id,name").eq("kind", "entity").order("name"),
         supabase.from("profiles").select("email,full_name").order("full_name"),
       ]);
       mgEntities = eRes.data || [];
