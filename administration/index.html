@@ -980,7 +980,7 @@
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.46.1 — schema migration 0046">v1.46.1</div>
+  <div class="version-tag" title="Owner Portal v1.46.2 — schema migration 0046">v1.46.2</div>
 
   <!-- Settings modal -->
   <div class="modal-overlay hidden" id="settingsModal">
@@ -3083,9 +3083,11 @@
           mgDatePick = createDatePicker({ mount: $("mg_m_date"), initial: mgToday() });
           mgDuePick = createDatePicker({ mount: $("mg_k_due"), initial: "" });
         }
+        $("mg_k_assignee").addEventListener("change", mgRenderUnitSelects);
         if (isAdmin()) {
           $("op_r_entity").innerHTML = mgEntOpts("");
           $("op_r_assignee").innerHTML = $("mg_k_assignee").innerHTML;
+          $("op_r_assignee").addEventListener("change", mgRenderUnitSelects);
           const dayOpts = () => {
             const cad = $("op_r_cad").value;
             show($("op_r_daywrap"), cad !== "daily");
@@ -3145,7 +3147,7 @@
       mgMgrUnits = muRes.data || [];
       mgTeam = teamRes.data || [];
       mgRenderTimer(); mgRenderTime(); mgRenderTasks(); mgRenderManagers();
-      mgRenderTeam(); mgRenderOps(); mgRenderRecur(); mgRenderOrg();
+      mgRenderTeam(); mgRenderOps(); mgRenderRecur(); mgRenderOrg(); mgRenderUnitSelects();
     }
 
     let mgRecurs = [], mgTeam = [];
@@ -3173,6 +3175,29 @@
         // 23505 = this period's instance already exists — expected.
         if (error && error.code !== "23505") console.warn("recurring spawn:", error.message);
       }
+    }
+
+    // Unit selectors follow the person: their assigned units lead, the
+    // rest demote to "Other units" (full list when nothing's assigned).
+    const mgUnitIdsOf = (email) => {
+      const e = (email || "").toLowerCase();
+      return new Set(mgMgrUnits.filter((r) => (r.manager_email || "").toLowerCase() === e).map((r) => r.entity_id));
+    };
+    function mgScopedOpts(email, sel) {
+      const mine = mgUnitIdsOf(email);
+      if (!mine.size) return mgEntOpts(sel);
+      const opt = (e) => `<option value="${e.id}"${e.id === sel ? " selected" : ""}>${escapeHtml(e.name)}</option>`;
+      const theirs = mgEntities.filter((e) => mine.has(e.id));
+      const rest = mgEntities.filter((e) => !mine.has(e.id));
+      return `<option value="">— general</option>` + theirs.map(opt).join("") +
+        (rest.length ? `<optgroup label="Other units">${rest.map(opt).join("")}</optgroup>` : "");
+    }
+    function mgRenderUnitSelects() {
+      const keep = (id) => $(id)?.value || "";
+      $("mg_t_entity").innerHTML = mgScopedOpts(currentEmail, keep("mg_t_entity"));
+      $("mg_m_entity").innerHTML = mgScopedOpts(currentEmail, keep("mg_m_entity"));
+      $("mg_k_entity").innerHTML = mgScopedOpts($("mg_k_assignee")?.value || currentEmail, keep("mg_k_entity"));
+      if ($("op_r_entity") && isAdmin()) $("op_r_entity").innerHTML = mgScopedOpts($("op_r_assignee")?.value || currentEmail, keep("op_r_entity"));
     }
 
     // Manage pane: "Your team" — a manager's branch (admins use Ops).
