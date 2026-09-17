@@ -747,10 +747,16 @@
         </div>
 
         <div class="section-card">
-          <h2>Activity — deleted items</h2>
-          <p class="muted" style="margin-bottom:0.75rem;">Everything deleted from Management lands here and can be brought back. Restoring a task also restores its notes.</p>
-          <div id="opDeletedList"></div>
-          <p class="muted hidden" id="opDeletedEmpty">Nothing has been deleted.</p>
+          <button type="button" id="opDelHead" aria-expanded="false" style="display:flex;align-items:center;gap:0.6rem;width:100%;background:none;border:0;padding:0;cursor:pointer;font:inherit;color:inherit;text-align:left;">
+            <h2 style="margin:0;">Activity — deleted items</h2>
+            <span class="muted" id="opDelCount" style="font-size:0.82rem;"></span>
+            <span class="muted" id="opDelCaret" style="margin-left:auto;">▸</span>
+          </button>
+          <div id="opDelBody" class="hidden">
+            <p class="muted" style="margin:0.6rem 0 0.75rem;">Everything deleted from Management lands here and can be brought back. Restoring a task also restores its notes.</p>
+            <div id="opDeletedList"></div>
+            <p class="muted hidden" id="opDeletedEmpty">Nothing has been deleted.</p>
+          </div>
         </div>
       </div><!-- /Ops -->
 
@@ -1129,7 +1135,7 @@
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.51.0 — schema migration 0051">v1.51.0</div>
+  <div class="version-tag" title="Owner Portal v1.51.1 — schema migration 0051">v1.51.1</div>
 
   <!-- Settings modal -->
   <div class="modal-overlay hidden" id="settingsModal">
@@ -3596,10 +3602,21 @@
     }
 
     // Ops: the deletion log — every removed task / time entry /
-    // recurring definition / note, restorable in place.
+    // recurring definition / note, restorable in place. Collapsed by
+    // default; it's a safety net, not a working list.
+    $("opDelHead")?.addEventListener("click", () => {
+      const open = $("opDelBody").classList.contains("hidden");
+      show($("opDelBody"), open);
+      $("opDelHead").setAttribute("aria-expanded", String(open));
+      $("opDelCaret").textContent = open ? "▾" : "▸";
+    });
     function mgRenderActivity() {
       if (!isAdmin()) return;
       const box = $("opDeletedList"); if (!box) return;
+      const c = $("opDelCount");
+      if (c) c.textContent = mgDeleted.length
+        ? `${mgDeleted.length} item${mgDeleted.length === 1 ? "" : "s"}${mgDeleted.some((d) => !d.restored_at) ? "" : " · all restored"}`
+        : "empty";
       show($("opDeletedEmpty"), mgDeleted.length === 0);
       const KIND = { task: "Task", time_entry: "Time entry", recurring_task: "Recurring task", task_note: "Note" };
       const when = (ts) => new Date(ts).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
