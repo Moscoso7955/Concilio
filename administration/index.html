@@ -1129,7 +1129,7 @@
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.50.1 — schema migration 0050">v1.50.1</div>
+  <div class="version-tag" title="Owner Portal v1.51.0 — schema migration 0051">v1.51.0</div>
 
   <!-- Settings modal -->
   <div class="modal-overlay hidden" id="settingsModal">
@@ -3337,6 +3337,7 @@
 
     let mgRecurs = [], mgTeam = [], mgNotes = [], mgDeleted = [];
     const mgOpenTasks = new Set(); // task ids with the detail panel expanded
+    const mgNudged = new Set(); // tasks nudged this session — survives re-renders
     // Current period key + due date for a recurring definition.
     function mgRecurDue(r) {
       const now = new Date();
@@ -3412,7 +3413,7 @@
       show($("opEmpty"), mgTeam.length === 0);
       box.innerHTML = mgTeam.map((m) => {
         const units = mgMgrUnits.filter((r) => (r.manager_email || "").toLowerCase() === m.email)
-          .map((r) => mgEntName(r.entity_id)).filter(Boolean);
+          .map((r) => mgEntName(r.entity_id)).filter(Boolean).sort((a, b) => a.localeCompare(b));
         const open = mgTasks.filter((t) => (t.assignee_email || "").toLowerCase() === m.email && t.status !== "done").slice(0, 3);
         return `<div class="mg-opcard">
           <h3>${escapeHtml(m.full_name || mgName(m.email))}</h3>
@@ -3774,7 +3775,9 @@
             <div class="mg-noterow">
               <input type="text" data-mgnotein="${t.id}" placeholder="Add a note…" maxlength="1000" aria-label="New note">
               <button class="mg-gcal" data-mgnoteadd="${t.id}">Add note</button>
-              ${canNudge ? `<button class="mg-gcal" data-mgnudge="${t.id}" title="Email ${escapeHtml(mgName(t.assignee_email))} asking for an update">Nudge</button>` : ""}
+              ${canNudge ? (mgNudged.has(t.id)
+                ? `<button class="mg-gcal" disabled>Nudged ✓</button>`
+                : `<button class="mg-gcal" data-mgnudge="${t.id}" title="Email ${escapeHtml(mgName(t.assignee_email))} asking for an update">Nudge</button>`) : ""}
             </div>`;
           box.appendChild(det);
         }
@@ -3835,7 +3838,7 @@
         const ok = await mgNotify({ task_id: t.id, nudge: true });
         b.textContent = ok ? "Nudged ✓" : "Nudge";
         b.disabled = !!ok;
-        if (ok) logAccess("task_nudge", { title: t.title, who: t.assignee_email });
+        if (ok) { mgNudged.add(t.id); logAccess("task_nudge", { title: t.title, who: t.assignee_email }); }
         else alert("Couldn't send the nudge email — try again in a moment.");
       }));
       box.querySelectorAll("[data-mgdel]").forEach((b) => b.addEventListener("click", async () => {
