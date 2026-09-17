@@ -178,6 +178,12 @@
     .mg-act { background: none; border: 0; color: var(--muted); cursor: pointer; padding: 0.1rem 0.25rem; font-size: 0.9rem; flex: 0 0 auto; }
     .mg-act:hover { color: var(--text); }
     .mg-act.del:hover { color: #e08585; }
+    .mg-uchip { font-size: 0.78rem; border: 1px solid var(--border); border-radius: 999px; padding: 0.22rem 0.65rem;
+      background: var(--panel-2); color: var(--muted); cursor: pointer; font-family: inherit; }
+    .mg-uchip.on { border-color: var(--accent); color: var(--text); background: #23262b; }
+    .mg-mgr { border: 1px solid var(--border); border-radius: 10px; padding: 0.7rem 0.9rem; margin-bottom: 0.55rem; background: var(--panel); }
+    .mg-mgr-head { display: flex; align-items: baseline; gap: 0.55rem; flex-wrap: wrap; margin-bottom: 0.55rem; }
+    .mg-mgr-units { display: flex; gap: 0.4rem; flex-wrap: wrap; }
 
     /* ---------- Budget maker (per-unit, in its own modal) ---------- */
     .bud-panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 12px; margin-bottom: 16px; }
@@ -528,6 +534,13 @@
           <tbody id="mgTimeBody"></tbody>
         </table></div>
         <p class="muted hidden" id="mgTimeEmpty">Nothing logged this week yet.</p>
+      </div>
+
+      <div class="section-card admin-only hidden" id="mgMgrCard">
+        <h2>Managers</h2>
+        <p class="muted" style="margin-bottom:0.75rem;">Everyone on the management role, and the units they run — toggle a unit to assign it. Only admins see this section.</p>
+        <div id="mgMgrList"></div>
+        <p class="muted hidden" id="mgMgrEmpty">Nobody has the management role yet — set it on a user in Settings → Users (and make sure the role's tabs include Management).</p>
       </div>
 
       <div class="section-card">
@@ -902,7 +915,7 @@
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.41.1 — schema migration 0041">v1.41.1</div>
+  <div class="version-tag" title="Owner Portal v1.42.0 — schema migration 0042">v1.42.0</div>
 
   <!-- Settings modal -->
   <div class="modal-overlay hidden" id="settingsModal">
@@ -1311,6 +1324,7 @@
         case "task_add": return `Added task <strong>${eh(d.title || "")}</strong>`;
         case "task_done": return `Completed task <strong>${eh(d.title || "")}</strong>`;
         case "task_delete": return `Deleted task <strong>${eh(d.title || "")}</strong>`;
+        case "manager_unit": return `${d.on ? "Assigned" : "Unassigned"} <strong>${eh(d.unit || "")}</strong> ${d.on ? "to" : "from"} manager ${eh(d.manager || "")}`;
         case "ic_settle": return `Recorded settlement: <strong>${eh(d.entity || "")}</strong> owes ${eh(d.payer || "")} ${money(Number(d.total) || 0)} (${eh(d.month || "")})`;
         case "ic_unsettle": return `Undid a ${money(Number(d.total) || 0)} settlement (${eh(d.entity || "")} / ${eh(d.payer || "")})`;
         default: return eh(r.event || "activity");
@@ -2947,7 +2961,10 @@
     let mgWhoSel = "me", mgDatePick = null, mgDuePick = null, mgInit = false;
     const mgToday = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
     const mgMonday = () => { const d = new Date(); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
-    const mgHrs = (min) => (Math.round((min || 0) / 6) / 10).toFixed(1);
+    const mgHrs = (min) => {
+      const h = (min || 0) / 60;
+      return (h > 0 && h < 0.1 ? 0.1 : Math.round(h * 10) / 10).toFixed(1);
+    };
     const mgName = (email) => {
       const u = mgUsers.find((x) => (x.email || "").toLowerCase() === String(email || "").toLowerCase());
       if (u?.full_name) return u.full_name;
@@ -2991,16 +3008,55 @@
     }
 
     async function mgRefresh() {
-      const [tRes, tmRes, runRes] = await Promise.all([
+      const [tRes, tmRes, runRes, muRes] = await Promise.all([
         supabase.from("tasks").select("*").order("created_at", { ascending: false }).limit(400),
         supabase.from("time_entries").select("*").gte("work_date", mgMonday()).order("work_date", { ascending: false }).order("created_at", { ascending: false }).limit(500),
         supabase.from("time_entries").select("*").is("stopped_at", null).not("started_at", "is", null)
           .ilike("user_email", currentEmail || "?").limit(1),
+        supabase.from("manager_units").select("*"),
       ]);
       mgTasks = tRes.data || [];
       mgTime = tmRes.data || [];
       mgTimer = (runRes.data || [])[0] || null;
-      mgRenderTimer(); mgRenderTime(); mgRenderTasks();
+      mgMgrUnits = muRes.data || [];
+      mgRenderTimer(); mgRenderTime(); mgRenderTasks(); mgRenderManagers();
+    }
+
+    // Managers section (admins only): the management-role roster, each
+    // with toggleable unit assignments backed by manager_units.
+    let mgMgrUnits = [];
+    function mgRenderManagers() {
+      if (!isAdmin()) return;
+      const managers = mgUsers.filter((u) => u.role === "management");
+      show($("mgMgrEmpty"), managers.length === 0);
+      const box = $("mgMgrList"); box.innerHTML = "";
+      for (const m of managers) {
+        const mine = new Set(mgMgrUnits.filter((r) => (r.manager_email || "").toLowerCase() === (m.email || "").toLowerCase()).map((r) => r.entity_id));
+        const div = document.createElement("div");
+        div.className = "mg-mgr";
+        div.innerHTML = `
+          <div class="mg-mgr-head">
+            <strong>${escapeHtml(m.full_name || mgName(m.email))}</strong>
+            <span class="muted" style="font-size:0.82rem;">${escapeHtml(m.email)}</span>
+            <span class="muted" style="font-size:0.78rem;">· ${mine.size} unit${mine.size === 1 ? "" : "s"}</span>
+          </div>
+          <div class="mg-mgr-units">${mgEntities.map((e) =>
+            `<button type="button" class="mg-uchip${mine.has(e.id) ? " on" : ""}" data-mgmu="${escapeHtml(m.email)}|${e.id}" aria-pressed="${mine.has(e.id)}">${escapeHtml(e.name)}</button>`).join("")}
+          </div>`;
+        box.appendChild(div);
+      }
+      box.querySelectorAll("[data-mgmu]").forEach((b) => b.addEventListener("click", async () => {
+        const [email, eid] = b.dataset.mgmu.split("|");
+        const on = b.classList.contains("on");
+        const { error } = on
+          ? await supabase.from("manager_units").delete().eq("manager_email", email).eq("entity_id", eid)
+          : await supabase.from("manager_units").insert({ manager_email: email, entity_id: eid });
+        if (error) { alert(error.message); return; }
+        logAccess("manager_unit", { manager: mgName(email), unit: mgEntName(eid), on: !on });
+        if (on) mgMgrUnits = mgMgrUnits.filter((r) => !((r.manager_email || "").toLowerCase() === email.toLowerCase() && r.entity_id === eid));
+        else mgMgrUnits.push({ manager_email: email, entity_id: eid });
+        mgRenderManagers();
+      }));
     }
 
     function mgRenderTimer() {
