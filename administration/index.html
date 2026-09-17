@@ -831,6 +831,16 @@
           <div id="repUnits" class="unit-grid"></div>
           <p class="muted" id="repUnitsEmpty">No units yet. In the <strong>Ownership</strong> tab, open an entity and turn on “Show this unit in Reports.”</p>
         </div>
+
+        <!-- Net intercompany position at a glance (admins; shown by
+             renderGroupView, not the admin-only class). -->
+        <div class="section-card hidden" id="repIcCard">
+          <div style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;margin-bottom:0.5rem;">
+            <h2 style="margin:0;">Intercompany</h2><span style="flex:1;"></span>
+            <button class="btn btn--ghost btn--sm" id="repIcOpen">Settle up…</button>
+          </div>
+          <div id="repIcBody"><p class="muted" style="margin:0;">Loading…</p></div>
+        </div>
       </div>
 
       <!-- UNIT DRILL-IN -->
@@ -1191,7 +1201,7 @@
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.55.0 — schema migration 0055">v1.55.0</div>
+  <div class="version-tag" title="Owner Portal v1.56.0 — schema migration 0056">v1.56.0</div>
 
   <!-- Settings modal -->
   <div class="modal-overlay hidden" id="settingsModal">
@@ -1700,6 +1710,9 @@
         case "ic_statement": return `Filed settlement statement <strong>${eh(d.title || "")}</strong> to Documents`;
         case "own_box_user": return `Created ownership box for <strong>${eh(d.name || d.email || "")}</strong> from their user card`;
         case "bal_view": return `Viewed the balance sheet for <strong>${eh(d.unit || "")}</strong> (${eh(String(d.period || "").slice(0, 7))})`;
+        case "ic_net_settle": return `Net-settled <strong>${eh(d.entity || "")} → ${eh(d.payer || "")}</strong> for <strong>${money(Number(d.total) || 0)}</strong> (${+d.count || 0} items)`;
+        case "ic_recur_add": return `Added standing charge <strong>${eh(d.memo || "")}</strong> — ${eh(d.entity || "")} pays ${eh(d.payer || "")} ${eh(d.amount || "")}/mo`;
+        case "ic_recur_del": return `Deleted standing charge <strong>${eh(d.memo || "")}</strong>`;
         case "manager_unit": return `${d.on ? "Assigned" : "Unassigned"} <strong>${eh(d.unit || "")}</strong> ${d.on ? "to" : "from"} manager ${eh(d.manager || "")}`;
         case "recur_add": return `Added ${eh(d.cadence || "")} recurring task <strong>${eh(d.title || "")}</strong>`;
         case "recur_delete": return `Deleted recurring task <strong>${eh(d.title || "")}</strong>`;
@@ -2436,6 +2449,8 @@
       }
       $("repGroupStats").innerHTML = statCards(periodAgg(finRows), shareAny ? { label: shareLabel(), amount: shareSum } : null);
       fitStats($("repGroupStats"));
+      show($("repIcCard"), isAdmin() && !repViewAs);
+      if (isAdmin() && !repViewAs) repIcRefresh();
       const grid = $("repUnits"); grid.innerHTML = "";
       show($("repUnitsEmpty"), units.length === 0);
       const addCard = (u) => {
@@ -6299,6 +6314,7 @@
       renderCoFilter();
       renderReview();
       renderLedger();
+      repIcRefresh(); // group-view net-position card depends on invRows
     }
 
     async function loadEmailBar() {
@@ -6572,187 +6588,366 @@
       icRender();
     }
 
-    async function icRender() {
-      const box = $("icBody");
-      const inMonth = invRows.filter((r) => !r.needs_review && r.entity_id && String(r.invoice_date || "").startsWith(icMonth));
-      const open = inMonth.filter((r) => !r.ic_settlement_id);
-      const { data: setts } = await supabase.from("ic_settlements").select("*").eq("period", icMonth + "-01").order("created_at");
-      let h = "";
-      // Open pairs: payer entity → beneficiary entity. A bill whose
-      // payer IS its entity is the payer's own expense — nothing owed.
-      const groups = {};
-      for (const r of open) {
-        const payer = payerOf(r);
-        if (!payer || payer === r.entity_id) continue;
-        (groups[payer + "|" + r.entity_id] ||= []).push(r);
-      }
-      const keys = Object.keys(groups);
-      // Net position: everything outstanding right now — unsettled
-      // allocations plus recorded-but-unpaid settlements — netted per
-      // entity pair, so one transfer squares each relationship.
-      const net = {}; // "a|b" (ids sorted) → +amount means b owes a
-      const addOwed = (payer, ent, amt) => { // ent owes payer amt
+    /* ---- Intercompany: standing charges, net math, statements ---- */
+    let icRecurs = [], icAllSetts = [];
+    const icMonthName = (p) => new Date(String(p).slice(0, 7) + "-15T12:00:00").toLocaleDateString("en-US", { month: "long", year: "numeric" });
+    const icOpenBills = () => invRows.filter((r) => !r.needs_review && r.entity_id && !r.ic_settlement_id && payerOf(r) && payerOf(r) !== r.entity_id);
+
+    // Materialize this month's standing charges — one row per recurring
+    // per month, never for months before the charge existed.
+    async function icMaterializeCharges(period) {
+      const { data: recurs } = await supabase.from("ic_recurring").select("*").order("created_at");
+      icRecurs = recurs || [];
+      const rows = icRecurs
+        .filter((r) => r.active && r.provider_entity_id !== r.entity_id)
+        .filter((r) => period >= String(r.created_at).slice(0, 7) + "-01")
+        .map((r) => ({ recurring_id: r.id, period, provider_entity_id: r.provider_entity_id, entity_id: r.entity_id, amount: r.amount, memo: r.memo }));
+      if (rows.length) await supabase.from("ic_charges").upsert(rows, { onConflict: "recurring_id,period", ignoreDuplicates: true });
+    }
+
+    // Everything outstanding — unsettled bills + standing charges +
+    // recorded-but-unpaid settlements — netted per entity pair.
+    async function icNetData() {
+      const [{ data: unpaid }, { data: charges }] = await Promise.all([
+        supabase.from("ic_settlements").select("*").is("paid_at", null),
+        supabase.from("ic_charges").select("*").is("ic_settlement_id", null),
+      ]);
+      const net = {}, unsettled = {};
+      const addOwed = (payer, ent, amt) => {
         const [a, b] = [payer, ent].sort();
         net[a + "|" + b] = (net[a + "|" + b] || 0) + (payer === a ? amt : -amt);
       };
-      for (const k of keys) {
-        const [pid, eid] = k.split("|");
-        addOwed(pid, eid, groups[k].reduce((s, r) => s + (Number(r.amount) || 0), 0));
+      for (const r of icOpenBills()) {
+        const payer = payerOf(r);
+        addOwed(payer, r.entity_id, Number(r.amount) || 0);
+        (unsettled[[payer, r.entity_id].sort().join("|")] ||= { bills: [], charges: [] }).bills.push(r);
       }
-      const { data: unpaid } = await supabase.from("ic_settlements").select("*").is("paid_at", null);
+      for (const c of charges || []) {
+        if (c.provider_entity_id === c.entity_id) continue;
+        addOwed(c.provider_entity_id, c.entity_id, Number(c.amount) || 0);
+        (unsettled[[c.provider_entity_id, c.entity_id].sort().join("|")] ||= { bills: [], charges: [] }).charges.push(c);
+      }
       for (const s of unpaid || []) {
         const pid = s.payer_entity_id || tenantEntityId(s.tenant_id);
         if (pid && s.entity_id && pid !== s.entity_id) addOwed(pid, s.entity_id, Number(s.total) || 0);
       }
-      const netPairs = Object.entries(net).filter(([, v]) => Math.abs(v) > 0.004);
-      if (netPairs.length) {
-        h += `<h2 style="font-size:0.8rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin:0.4rem 0 0.6rem;">Net position — all outstanding</h2>
-          <div class="section-card" style="padding:0.8rem 1rem;margin-bottom:1rem;">` +
-          netPairs.map(([k, v]) => {
-            const [a, b] = k.split("|");
-            const from = v > 0 ? b : a, to = v > 0 ? a : b;
-            return `<div style="display:flex;align-items:center;gap:0.5rem;padding:0.25rem 0;">
-              <strong>${escapeHtml(icEntityName(from))}</strong><span class="muted">owes</span><strong>${escapeHtml(icEntityName(to))}</strong>
-              <span style="flex:1;"></span><strong style="font-variant-numeric:tabular-nums;">${money(Math.abs(v))}</strong></div>`;
-          }).join("") +
-          `<div class="muted" style="font-size:0.75rem;margin-top:0.4rem;">Netted across every month's unsettled bills and unpaid settlements — one transfer per pair squares it.</div></div>`;
+      const pairs = Object.entries(net).filter(([, v]) => Math.abs(v) > 0.004).map(([k, v]) => {
+        const [a, b] = k.split("|");
+        return { key: k, from: v > 0 ? b : a, to: v > 0 ? a : b, amount: Math.abs(v) };
+      });
+      return { pairs, unsettled, charges: charges || [] };
+    }
+
+    // Statement: covered bills + standing charges (both directions on a
+    // net settlement) plus copy-paste bookkeeping entries for each file.
+    async function icStatementText(s) {
+      const bills = invRows.filter((r) => r.ic_settlement_id === s.id);
+      const { data: chg } = await supabase.from("ic_charges").select("*").eq("ic_settlement_id", s.id);
+      const cred = s.payer_entity_id || tenantEntityId(s.tenant_id);
+      const credName = icPayerName(s), debName = icEntityName(s.entity_id);
+      const line = (date, label, code, amt) =>
+        `  ${String(date || "—").slice(0, 10).padEnd(12)}${String(label || "").slice(0, 34).padEnd(36)}${String(code || "—").padEnd(6)}${money(amt)}`;
+      const fwd = [], rev = [];
+      for (const r of bills) (payerOf(r) === cred ? fwd : rev).push(line(r.invoice_date, r.vendor, r.code, r.amount));
+      for (const c of chg || []) (c.provider_entity_id === cred ? fwd : rev).push(line(c.period, (c.memo || "Standing charge") + " · standing", "—", c.amount));
+      const out = [
+        `INTERCOMPANY SETTLEMENT STATEMENT${s.kind === "net" ? " — NET" : ""}`,
+        icMonthName(s.period),
+        ``,
+        `${debName} owes ${credName}: ${money(s.total)}`,
+        ``,
+        `Paid by ${credName} on behalf of ${debName}:`,
+        ...(fwd.length ? fwd : ["  (none)"]),
+      ];
+      if (rev.length) out.push(``, `Less — paid by ${debName} on behalf of ${credName}:`, ...rev);
+      out.push(
+        ``,
+        `BOOKKEEPING ENTRIES (post in each company file)`,
+        `${credName}'s books:`,
+        `  Dr  Due from ${debName}  ${money(s.total)}`,
+        `  Cr  Intercompany reallocation (or the original expense accounts)  ${money(s.total)}`,
+        `${debName}'s books:`,
+        `  Dr  Expenses (as allocated above)  ${money(s.total)}`,
+        `  Cr  Due to ${credName}  ${money(s.total)}`,
+        `When the transfer clears:`,
+        `  ${debName}: Dr Due to ${credName} / Cr Bank  ${money(s.total)}`,
+        `  ${credName}: Dr Bank / Cr Due from ${debName}  ${money(s.total)}`,
+        ``,
+        `Recorded ${new Date(s.created_at).toLocaleString()}${s.created_by ? " by " + s.created_by : ""}${s.paid_at ? ` · PAID ${new Date(s.paid_at).toLocaleDateString()}` : ""} · CallidusCo Owner Portal`,
+        `Documentation of allocation only — post the entries above in the books.`,
+      );
+      return out.join("\n");
+    }
+
+    // PDF statements via jsPDF (lazy CDN load; text file if it fails).
+    let icJsPdf = null;
+    const icLoadPdf = () => icJsPdf ||= new Promise((res, rej) => {
+      const sc = document.createElement("script");
+      sc.src = "https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js";
+      sc.onload = () => res(window.jspdf.jsPDF);
+      sc.onerror = () => { icJsPdf = null; rej(new Error("jsPDF failed to load")); };
+      document.head.appendChild(sc);
+    });
+    async function icFileStatement(s, { silent = false } = {}) {
+      const title = `Intercompany settlement — ${icEntityName(s.entity_id)} → ${icPayerName(s)} (${icMonthName(s.period)})${s.kind === "net" ? " · net" : ""}`;
+      const text = await icStatementText(s);
+      let blob, ext, mime;
+      try {
+        const JsPDF = await icLoadPdf();
+        const doc = new JsPDF({ unit: "pt", format: "letter" });
+        doc.setFont("courier", "normal"); doc.setFontSize(9);
+        let y = 48;
+        for (const ln of text.split("\n")) {
+          if (y > 744) { doc.addPage(); y = 48; }
+          doc.text(ln, 48, y); y += 12;
+        }
+        blob = doc.output("blob"); ext = "pdf"; mime = "application/pdf";
+      } catch (_) {
+        blob = new Blob([text], { type: "text/plain" }); ext = "txt"; mime = "text/plain";
       }
-      h += `<h2 style="font-size:0.8rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin:0.4rem 0 0.6rem;">To settle</h2>`;
+      const path = `docs/${Date.now()}-ic-settlement-${String(s.period).slice(0, 7)}.${ext}`;
+      const { error: upErr } = await supabase.storage.from("documents").upload(path, blob, { contentType: mime });
+      if (upErr) throw upErr;
+      const { error: insErr } = await supabase.from("documents").insert({
+        title, description: `${s.invoice_count} item${s.invoice_count === 1 ? "" : "s"} · ${money(s.total)}`,
+        category: "Intercompany", doc_date: String(s.period).slice(0, 10),
+        entity_id: null, recipients: null, // no unit, no people → staff only
+        file_path: path, file_name: `settlement-${String(s.period).slice(0, 7)}.${ext}`, mime, size_bytes: blob.size,
+        uploaded_by: profile.id, uploaded_by_name: profile.full_name || profile.email,
+      });
+      if (insErr) throw insErr;
+      logAccess("ic_statement", { title });
+      if (!silent) toast("Statement filed to Documents ✓");
+      loadDocuments();
+    }
+
+    // One settlement row + attach its bills and charges + auto-file the
+    // PDF statement. Shared by pair-record and net-settle.
+    async function icRecordSettlement({ payer, entity, total, bills, charges, kind }) {
+      const { data: ins, error } = await supabase.from("ic_settlements").insert({
+        period: icMonth + "-01", payer_entity_id: payer, entity_id: entity,
+        total: Math.round(total * 100) / 100, invoice_count: bills.length + charges.length,
+        created_by: currentEmail, kind,
+      }).select("*").single();
+      if (error) { toast(error.message, "err"); return null; }
+      if (bills.length) {
+        const { error: e2 } = await supabase.from("invoices").update({ ic_settlement_id: ins.id }).in("id", bills.map((r) => r.id));
+        if (e2) { toast(e2.message, "err"); return null; }
+        for (const r of bills) r.ic_settlement_id = ins.id;
+      }
+      if (charges.length) await supabase.from("ic_charges").update({ ic_settlement_id: ins.id }).in("id", charges.map((c) => c.id));
+      try { await icFileStatement(ins, { silent: true }); } catch (_) { toast("Recorded — but auto-filing the statement failed. Use File PDF on the settlement.", "err"); }
+      return ins;
+    }
+
+    async function icRender() {
+      const box = $("icBody");
+      await icMaterializeCharges(icMonth + "-01");
+      const [settAllRes, netData] = await Promise.all([
+        supabase.from("ic_settlements").select("*").order("period", { ascending: false }).order("created_at", { ascending: false }).limit(80),
+        icNetData(),
+      ]);
+      icAllSetts = settAllRes.data || [];
+      const { pairs, unsettled, charges } = netData;
+      const head = (t) => `<h2 style="font-size:0.8rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin:1rem 0 0.6rem;">${t}</h2>`;
+      let h = "";
+
+      // Net position, with a one-transfer settle per pair.
+      if (pairs.length) {
+        h += head("Net position — all outstanding") +
+          `<div class="section-card" style="padding:0.8rem 1rem;margin-bottom:0.4rem;">` +
+          pairs.map((p) => {
+            const u = unsettled[p.key];
+            const n = u ? u.bills.length + u.charges.length : 0;
+            return `<div style="display:flex;align-items:center;gap:0.5rem;padding:0.3rem 0;flex-wrap:wrap;">
+              <strong>${escapeHtml(icEntityName(p.from))}</strong><span class="muted">owes</span><strong>${escapeHtml(icEntityName(p.to))}</strong>
+              <span style="flex:1;"></span><strong style="font-variant-numeric:tabular-nums;">${money(p.amount)}</strong>
+              ${n ? `<button class="btn btn--sm" data-icnet="${p.key}" title="One settlement covering all ${n} unsettled items between these two — both directions, every month">Settle net</button>` : ""}
+            </div>`;
+          }).join("") +
+          `<div class="muted" style="font-size:0.75rem;margin-top:0.4rem;">Netted across every month's unsettled bills, standing charges, and unpaid settlements — one transfer per pair squares it. Settle net records the unsettled items; already-recorded settlements clear with Mark paid below.</div></div>`;
+      }
+
+      // This month's open items, paired payer → beneficiary.
+      const groups = {};
+      for (const r of icOpenBills().filter((r) => String(r.invoice_date || "").startsWith(icMonth)))
+        (groups[payerOf(r) + "|" + r.entity_id] ||= { bills: [], charges: [] }).bills.push(r);
+      for (const c of charges.filter((c) => String(c.period).startsWith(icMonth)))
+        (groups[c.provider_entity_id + "|" + c.entity_id] ||= { bills: [], charges: [] }).charges.push(c);
+      const keys = Object.keys(groups);
+      h += head(`To settle — ${icMonthName(icMonth + "-01")}`);
       if (!keys.length) {
-        // Point at where the open allocations actually are.
-        const others = [...new Set(invRows
-          .filter((r) => !r.needs_review && r.entity_id && !r.ic_settlement_id && r.invoice_date)
+        const others = [...new Set(icOpenBills().filter((r) => r.invoice_date)
           .map((r) => String(r.invoice_date).slice(0, 7)))].filter((m) => m !== icMonth).sort();
         const mName = (m) => new Date(m + "-15T12:00:00").toLocaleDateString("en-US", { month: "short", year: "numeric" });
         h += `<p class="muted">Nothing to settle for this month.` +
           (others.length
-            ? ` Open allocations exist in <strong>${others.map(mName).join(", ")}</strong> — switch the month above.`
-            : inMonth.length ? "" : ` No bills are allocated to an entity yet — set a bill's <strong>For</strong> column in the ledger and it shows up here.`) + `</p>`;
+            ? ` Open allocations exist in <strong>${others.map(mName).join(", ")}</strong> — switch the month above, or use Settle net.`
+            : ` No bills are allocated to an entity yet — set a bill's <strong>For</strong> column in the ledger and it shows up here.`) + `</p>`;
       }
       for (const k of keys) {
         const [pid, eid] = k.split("|");
-        const rows = groups[k];
-        const total = rows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+        const g = groups[k];
+        const total = g.bills.reduce((s, r) => s + (Number(r.amount) || 0), 0) + g.charges.reduce((s, c) => s + (Number(c.amount) || 0), 0);
+        const nItems = g.bills.length + g.charges.length;
         h += `<div class="section-card" style="padding:0.9rem 1rem;margin-bottom:0.6rem;">
           <div style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;">
-            <strong>${escapeHtml(icEntityName(pid))}</strong><span class="muted">paid for</span><strong>${escapeHtml(icEntityName(eid))}</strong>
-            <span class="muted">· ${rows.length} bill${rows.length === 1 ? "" : "s"} · ${money(total)}</span>
+            <strong>${escapeHtml(icEntityName(pid))}</strong><span class="muted">is owed by</span><strong>${escapeHtml(icEntityName(eid))}</strong>
+            <span class="muted">· ${nItems} item${nItems === 1 ? "" : "s"} · ${money(total)}</span>
             <span style="flex:1;"></span>
             <button class="btn btn--sm" data-icrecord="${k}">Record settlement</button>
           </div>
           <table class="pnl-table" style="margin-top:0.5rem;"><tbody>
-            ${rows.map((r) => `<tr><td>${escapeHtml(invName(r))}</td><td class="muted">${escapeHtml(r.code || "—")}</td><td class="num">${money(r.amount)}</td></tr>`).join("")}
+            ${g.bills.map((r) => `<tr><td>${escapeHtml(invName(r))}</td><td class="muted">${escapeHtml(r.code || "—")}</td><td class="num">${money(r.amount)}</td></tr>`).join("")}
+            ${g.charges.map((c) => `<tr><td>${escapeHtml(c.memo || "Standing charge")} <span class="muted">· standing</span></td><td class="muted">—</td><td class="num">${money(c.amount)}</td></tr>`).join("")}
           </tbody></table>
         </div>`;
       }
-      // Recorded settlements.
-      if ((setts || []).length) {
-        h += `<h2 style="font-size:0.8rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin:1rem 0 0.6rem;">Recorded</h2>`;
-        for (const s of setts) {
-          h += `<div class="section-card" style="padding:0.9rem 1rem;margin-bottom:0.6rem;">
-            <div style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;">
-              <strong>${escapeHtml(icEntityName(s.entity_id))}</strong><span class="muted">owes</span><strong>${escapeHtml(icPayerName(s))}</strong>
-              <span class="muted">· ${s.invoice_count} bill${s.invoice_count === 1 ? "" : "s"} · ${money(s.total)} · recorded ${new Date(s.created_at).toLocaleDateString()}${s.created_by ? " by " + escapeHtml(s.created_by) : ""}</span>
-              ${s.paid_at ? `<span class="mg-chip" style="color:#5da97f;border-color:#5da97f;" title="Click to unmark" role="button" data-icunpaid="${s.id}">Paid ${new Date(s.paid_at).toLocaleDateString()}</span>` : ""}
-              <span style="flex:1;"></span>
-              ${s.paid_at ? "" : `<button class="btn btn--sm" data-icpaid="${s.id}" title="The transfer/journal entry has been made">Mark paid</button>`}
-              <button class="btn btn--ghost btn--sm" data-icstmt="${s.id}">Copy statement</button>
-              <button class="btn btn--ghost btn--sm" data-icfile="${s.id}" title="Save the statement as a staff-only document">File to Documents</button>
-              <button class="iconact del" data-icundo="${s.id}" title="Undo — releases these bills back to the open list">✕</button>
-            </div>
-          </div>`;
-        }
+
+      // Every settlement, any month, with paid status — the history.
+      if (icAllSetts.length) {
+        h += head("All settlements") + `<div class="section-card" style="padding:0.6rem 1rem;">` +
+          icAllSetts.map((s) => `<div style="display:flex;align-items:center;gap:0.55rem;padding:0.35rem 0;border-bottom:1px dashed #242424;flex-wrap:wrap;">
+            <span class="muted" style="min-width:72px;">${monthLabel(s.period)}</span>
+            <span><strong>${escapeHtml(icEntityName(s.entity_id))}</strong> <span class="muted">owes</span> <strong>${escapeHtml(icPayerName(s))}</strong></span>
+            ${s.kind === "net" ? '<span class="mg-chip" title="Net settlement — covers both directions across months">net</span>' : ""}
+            <span style="flex:1;"></span>
+            <strong style="font-variant-numeric:tabular-nums;">${money(s.total)}</strong>
+            ${s.paid_at
+              ? `<span class="mg-chip" style="color:#5da97f;border-color:#5da97f;" role="button" data-icunpaid="${s.id}" title="Paid ${new Date(s.paid_at).toLocaleDateString()} — click to unmark">Paid</span>`
+              : `<button class="btn btn--sm" data-icpaid="${s.id}" title="The transfer has been made">Mark paid</button>`}
+            <button class="btn btn--ghost btn--sm" data-icstmt="${s.id}" title="Copy the statement text (with bookkeeping entries)">Copy</button>
+            <button class="btn btn--ghost btn--sm" data-icfile="${s.id}" title="File the PDF statement to Documents (staff-only)">File PDF</button>
+            <button class="iconact del" data-icundo="${s.id}" title="Undo — releases its bills and charges back to the open list">✕</button>
+          </div>`).join("") + `</div>`;
       }
+
+      // Standing monthly charges between entities (management fees, rent).
+      h += head("Standing charges") + `<div class="section-card" style="padding:0.9rem 1rem;">` +
+        (icRecurs.length ? icRecurs.map((r) => `<div style="display:flex;align-items:center;gap:0.55rem;padding:0.3rem 0;flex-wrap:wrap;${r.active ? "" : "opacity:0.55;"}">
+            <strong>${escapeHtml(icEntityName(r.entity_id))}</strong><span class="muted">pays</span><strong>${escapeHtml(icEntityName(r.provider_entity_id))}</strong>
+            <span class="muted">· ${escapeHtml(r.memo)}</span>
+            <span style="flex:1;"></span><strong>${money(r.amount)}/mo</strong>
+            <label class="tabchip" style="flex:0 0 auto;"><input type="checkbox" data-icract="${r.id}"${r.active ? " checked" : ""}> Active</label>
+            <button class="iconact del" data-icrdel="${r.id}" title="Delete this standing charge">✕</button>
+          </div>`).join("") : `<p class="muted" style="margin:0 0 0.2rem;">None yet — e.g. a monthly management fee one entity bills another. Each month it lands in the settle-up automatically.</p>`) +
+        `<div class="row" style="align-items:flex-end;flex-wrap:wrap;margin-top:0.6rem;">
+          <div style="flex:1.4;min-width:150px;"><label>What for</label><input type="text" id="icr_memo" placeholder="Management fee"></div>
+          <div><label>Charged to</label><select id="icr_debtor" class="inline-select" style="padding:0.5rem;">${entityOpts("", "— pick —")}</select></div>
+          <div><label>Paid to</label><select id="icr_provider" class="inline-select" style="padding:0.5rem;">${entityOpts("", "— pick —")}</select></div>
+          <div><label>$ / month</label><input type="number" step="0.01" id="icr_amount" style="width:110px;" placeholder="1500"></div>
+          <button class="btn btn--sm" id="icrAdd" style="flex:0 0 auto;">Add</button>
+        </div></div>`;
+
       box.innerHTML = h;
+      const findSett = (id) => icAllSetts.find((x) => x.id === id);
 
       box.querySelectorAll("[data-icrecord]").forEach((b) => b.addEventListener("click", async () => {
         const [pid, eid] = b.dataset.icrecord.split("|");
-        const rows = (groups[b.dataset.icrecord] || []);
-        const total = rows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
-        if (!(await ask(`Record: ${icEntityName(eid)} owes ${icEntityName(pid)} ${money(total)} for ${rows.length} bill${rows.length === 1 ? "" : "s"} (${icMonth})?`, "Record"))) return;
-        const { data: ins, error } = await supabase.from("ic_settlements").insert({
-          period: icMonth + "-01", payer_entity_id: pid, entity_id: eid,
-          total, invoice_count: rows.length, created_by: currentEmail,
-        }).select("id").single();
-        if (error) { toast(error.message, "err"); return; }
-        const ids = rows.map((r) => r.id);
-        const { error: e2 } = await supabase.from("invoices").update({ ic_settlement_id: ins.id }).in("id", ids);
-        if (e2) { toast(e2.message, "err"); return; }
-        for (const r of rows) r.ic_settlement_id = ins.id;
-        logAccess("ic_settle", { payer: icEntityName(pid), entity: icEntityName(eid), total, count: rows.length, month: icMonth });
-        icRender(); renderLedger();
+        const g = groups[b.dataset.icrecord]; if (!g) return;
+        const total = g.bills.reduce((s, r) => s + (Number(r.amount) || 0), 0) + g.charges.reduce((s, c) => s + (Number(c.amount) || 0), 0);
+        if (!(await ask(`Record: ${icEntityName(eid)} owes ${icEntityName(pid)} ${money(total)} for ${g.bills.length} bill${g.bills.length === 1 ? "" : "s"}${g.charges.length ? ` + ${g.charges.length} standing charge${g.charges.length === 1 ? "" : "s"}` : ""} (${icMonth})? The PDF statement files to Documents automatically.`, "Record"))) return;
+        const ins = await icRecordSettlement({ payer: pid, entity: eid, total, bills: g.bills, charges: g.charges, kind: "pair" });
+        if (!ins) return;
+        logAccess("ic_settle", { payer: icEntityName(pid), entity: icEntityName(eid), total, count: g.bills.length + g.charges.length, month: icMonth });
+        icRender(); renderLedger(); repIcRefresh();
+      }));
+      box.querySelectorAll("[data-icnet]").forEach((b) => b.addEventListener("click", async () => {
+        const p = pairs.find((x) => x.key === b.dataset.icnet); if (!p) return;
+        const u = unsettled[p.key] || { bills: [], charges: [] };
+        let amt = 0;
+        for (const r of u.bills) amt += (payerOf(r) === p.to ? 1 : -1) * (Number(r.amount) || 0);
+        for (const c of u.charges) amt += (c.provider_entity_id === p.to ? 1 : -1) * (Number(c.amount) || 0);
+        if (Math.abs(amt) < 0.005) { toast("The unsettled items between these two net to exactly zero — record them pair-by-pair if you still want statements."); return; }
+        const cred = amt >= 0 ? p.to : p.from, deb = amt >= 0 ? p.from : p.to;
+        if (!(await ask(`Net settle: ${icEntityName(deb)} pays ${icEntityName(cred)} ${money(Math.abs(amt))} — one settlement covering ${u.bills.length} bill${u.bills.length === 1 ? "" : "s"} and ${u.charges.length} standing charge${u.charges.length === 1 ? "" : "s"}, both directions, every month. The PDF statement files to Documents automatically.`, "Settle net"))) return;
+        const ins = await icRecordSettlement({ payer: cred, entity: deb, total: Math.abs(amt), bills: u.bills, charges: u.charges, kind: "net" });
+        if (!ins) return;
+        logAccess("ic_net_settle", { payer: icEntityName(cred), entity: icEntityName(deb), total: Math.abs(amt), count: u.bills.length + u.charges.length });
+        icRender(); renderLedger(); repIcRefresh();
       }));
       box.querySelectorAll("[data-icundo]").forEach((b) => b.addEventListener("click", async () => {
-        const s = (setts || []).find((x) => x.id === b.dataset.icundo);
-        if (!(await ask(`Undo the ${money(s?.total || 0)} settlement? The bills go back to the open list.`, "Undo"))) return;
+        const s = findSett(b.dataset.icundo);
+        if (!(await ask(`Undo the ${money(s?.total || 0)} settlement (${monthLabel(s?.period)})? Its bills and standing charges go back to the open list. The filed statement stays in Documents — delete it there if it's now wrong.`, "Undo"))) return;
         await supabase.from("invoices").update({ ic_settlement_id: null }).eq("ic_settlement_id", b.dataset.icundo);
+        await supabase.from("ic_charges").update({ ic_settlement_id: null }).eq("ic_settlement_id", b.dataset.icundo);
         await supabase.from("ic_settlements").delete().eq("id", b.dataset.icundo);
         for (const r of invRows) if (r.ic_settlement_id === b.dataset.icundo) r.ic_settlement_id = null;
         logAccess("ic_unsettle", { payer: s ? icPayerName(s) : "?", entity: icEntityName(s?.entity_id), total: s?.total });
-        icRender(); renderLedger();
+        icRender(); renderLedger(); repIcRefresh();
       }));
-      const icStatementText = (s) => {
-        const bills = invRows.filter((r) => r.ic_settlement_id === s.id);
-        const monthName = new Date(icMonth + "-15T12:00:00").toLocaleDateString("en-US", { month: "long", year: "numeric" });
-        return [
-          `INTERCOMPANY SETTLEMENT STATEMENT`,
-          `${monthName}`,
-          ``,
-          `${icEntityName(s.entity_id)} owes ${icPayerName(s)}: ${money(s.total)}`,
-          `${s.invoice_count} bill${s.invoice_count === 1 ? "" : "s"} paid by ${icPayerName(s)} on behalf of ${icEntityName(s.entity_id)}:`,
-          ``,
-          ...bills.map((r) => `  ${r.invoice_date || "—"}  ${(r.vendor || "").padEnd(32)}  ${r.code || "—"}  ${money(r.amount)}`),
-          ``,
-          `Recorded ${new Date(s.created_at).toLocaleString()}${s.created_by ? " by " + s.created_by : ""}${s.paid_at ? ` · PAID ${new Date(s.paid_at).toLocaleDateString()}` : ""} · CallidusCo Owner Portal`,
-          `Documentation of allocation only — record the transfer/journal entry in the books.`,
-        ].join("\n");
-      };
       box.querySelectorAll("[data-icstmt]").forEach((b) => b.addEventListener("click", async () => {
-        const s = (setts || []).find((x) => x.id === b.dataset.icstmt);
-        const text = icStatementText(s);
-        try { await navigator.clipboard.writeText(text); b.textContent = "Copied ✓"; setTimeout(() => (b.textContent = "Copy statement"), 1500); }
+        const s = findSett(b.dataset.icstmt); if (!s) return;
+        const text = await icStatementText(s);
+        try { await navigator.clipboard.writeText(text); b.textContent = "Copied ✓"; setTimeout(() => (b.textContent = "Copy"), 1500); }
         catch (_) { alert(text); }
       }));
       box.querySelectorAll("[data-icpaid]").forEach((b) => b.addEventListener("click", async () => {
-        const s = (setts || []).find((x) => x.id === b.dataset.icpaid);
+        const s = findSett(b.dataset.icpaid);
         if (!(await ask(`Mark the ${money(s?.total || 0)} settlement (${icEntityName(s?.entity_id)} → ${icPayerName(s)}) as paid?`, "Mark paid"))) return;
         const { error } = await supabase.from("ic_settlements").update({ paid_at: new Date().toISOString() }).eq("id", b.dataset.icpaid);
         if (error) { toast(error.message, "err"); return; }
         logAccess("ic_paid", { entity: icEntityName(s?.entity_id), payer: icPayerName(s), total: money(s?.total) });
-        icRender();
+        icRender(); repIcRefresh();
       }));
       box.querySelectorAll("[data-icunpaid]").forEach((c) => c.addEventListener("click", async () => {
-        const s = (setts || []).find((x) => x.id === c.dataset.icunpaid);
         if (!(await ask(`Unmark this settlement as paid?`, "Unmark"))) return;
         const { error } = await supabase.from("ic_settlements").update({ paid_at: null }).eq("id", c.dataset.icunpaid);
         if (error) { toast(error.message, "err"); return; }
-        icRender();
+        icRender(); repIcRefresh();
       }));
       box.querySelectorAll("[data-icfile]").forEach((b) => b.addEventListener("click", async () => {
-        const s = (setts || []).find((x) => x.id === b.dataset.icfile);
-        const monthName = new Date(icMonth + "-15T12:00:00").toLocaleDateString("en-US", { month: "long", year: "numeric" });
-        const title = `Intercompany settlement — ${icEntityName(s.entity_id)} → ${icPayerName(s)} (${monthName})`;
-        if (!(await ask(`File "${title}" to Documents (staff-only)?`, "File it"))) return;
+        const s = findSett(b.dataset.icfile); if (!s) return;
         b.disabled = true; b.textContent = "Filing…";
-        try {
-          const blob = new Blob([icStatementText(s)], { type: "text/plain" });
-          const path = "docs/" + Date.now() + "-ic-settlement-" + icMonth + ".txt";
-          const { error: upErr } = await supabase.storage.from("documents").upload(path, blob, { contentType: "text/plain" });
-          if (upErr) throw upErr;
-          const { error: insErr } = await supabase.from("documents").insert({
-            title, description: `${s.invoice_count} bill${s.invoice_count === 1 ? "" : "s"} · ${money(s.total)}`,
-            category: "Intercompany", doc_date: icMonth + "-01",
-            entity_id: null, recipients: null, // no unit, no people → staff only
-            file_path: path, file_name: `settlement-${icMonth}.txt`, mime: "text/plain", size_bytes: blob.size,
-            uploaded_by: profile.id, uploaded_by_name: profile.full_name || profile.email,
-          });
-          if (insErr) throw insErr;
-          logAccess("ic_statement", { title });
-          b.textContent = "Filed ✓";
-          loadDocuments();
-        } catch (e) { toast("Filing failed: " + (e.message || e), "err"); b.disabled = false; b.textContent = "File to Documents"; }
+        try { await icFileStatement(s); b.textContent = "Filed ✓"; }
+        catch (e) { toast("Filing failed: " + (e.message || e), "err"); b.disabled = false; b.textContent = "File PDF"; }
+      }));
+      $("icrAdd")?.addEventListener("click", async () => {
+        const memo = $("icr_memo").value.trim();
+        const debtor = $("icr_debtor").value, provider = $("icr_provider").value;
+        const amount = Number($("icr_amount").value);
+        if (!memo) { toast("Say what the charge is for.", "err"); flashErr($("icr_memo")); return; }
+        if (!debtor || !provider) { toast("Pick both entities.", "err"); return; }
+        if (debtor === provider) { toast("An entity can't bill itself.", "err"); return; }
+        if (!amount || amount <= 0) { toast("Enter a monthly amount.", "err"); flashErr($("icr_amount")); return; }
+        const { error } = await supabase.from("ic_recurring").insert({
+          provider_entity_id: provider, entity_id: debtor, amount, memo, created_by: currentEmail,
+        });
+        if (error) { toast(error.message, "err"); return; }
+        logAccess("ic_recur_add", { memo, amount: money(amount), entity: icEntityName(debtor), payer: icEntityName(provider) });
+        icRender(); repIcRefresh();
+      });
+      box.querySelectorAll("[data-icract]").forEach((c) => c.addEventListener("change", async () => {
+        await supabase.from("ic_recurring").update({ active: c.checked }).eq("id", c.dataset.icract);
+        const r = icRecurs.find((x) => x.id === c.dataset.icract); if (r) r.active = c.checked;
+      }));
+      box.querySelectorAll("[data-icrdel]").forEach((b) => b.addEventListener("click", async () => {
+        const r = icRecurs.find((x) => x.id === b.dataset.icrdel);
+        if (!(await ask(`Delete the "${r?.memo}" standing charge? Its monthly charge lines are removed too, including ones inside recorded settlements — prefer toggling it off if it ever applied.`, "Delete"))) return;
+        const { error } = await supabase.from("ic_recurring").delete().eq("id", b.dataset.icrdel);
+        if (error) { toast(error.message, "err"); return; }
+        logAccess("ic_recur_del", { memo: r?.memo });
+        icRender(); repIcRefresh();
       }));
     }
+
+    // Reports group view: the net position at a glance.
+    async function repIcRefresh() {
+      const card = $("repIcCard");
+      if (!card || card.classList.contains("hidden")) return;
+      const body = $("repIcBody"); if (!body) return;
+      try {
+        const { pairs } = await icNetData();
+        body.innerHTML = pairs.length
+          ? pairs.map((p) => `<div style="display:flex;align-items:center;gap:0.5rem;padding:0.28rem 0;">
+              <strong>${escapeHtml(icEntityName(p.from))}</strong><span class="muted">owes</span><strong>${escapeHtml(icEntityName(p.to))}</strong>
+              <span style="flex:1;"></span><strong style="font-variant-numeric:tabular-nums;">${money(p.amount)}</strong>
+            </div>`).join("")
+          : '<p class="muted" style="margin:0;">Nothing outstanding between entities.</p>';
+      } catch (_) { /* invoices not loaded yet — loadInvoices refreshes this */ }
+    }
+    $("repIcOpen")?.addEventListener("click", openIc);
+
     $("icBtn")?.addEventListener("click", openIc);
     $("icModal")?.addEventListener("click", (e) => { if (e.target === $("icModal")) show($("icModal"), false); });
 
