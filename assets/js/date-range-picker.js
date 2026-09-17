@@ -231,6 +231,9 @@
     const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     const DOW3 = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
     const fromYMD = (s) => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s || ""); if (!m) return null; const d = new Date(+m[1], +m[2] - 1, +m[3]); d.setHours(0, 0, 0, 0); return (d.getFullYear() === +m[1] && d.getMonth() === +m[2] - 1 && d.getDate() === +m[3]) ? d : null; };
+    // Optional floor: minDate "today" (evaluated at open, so a page left
+    // overnight stays correct) or a fixed "YYYY-MM-DD".
+    const minOf = () => opts.minDate === "today" ? norm(new Date()) : (opts.minDate ? fromYMD(opts.minDate) : null);
     let view = (() => { const d = fromYMD(value) || today; return new Date(d.getFullYear(), d.getMonth(), 1); })();
 
     const root = document.createElement("div"); root.className = "dp2-root";
@@ -254,11 +257,13 @@
       const lead = (new Date(y, m, 1).getDay() + 6) % 7, days = new Date(y, m + 1, 0).getDate();
       for (let i = 0; i < lead; i++) grid.appendChild(document.createElement("span"));
       const sel = fromYMD(value);
+      const min = minOf();
       for (let d = 1; d <= days; d++) {
         const dt = new Date(y, m, d);
         const btn = document.createElement("button"); btn.type = "button"; btn.className = "dp2-day"; btn.textContent = d;
         if (sameDay(dt, sel)) btn.classList.add("is-selected"); else if (sameDay(dt, today)) btn.classList.add("is-today");
-        btn.addEventListener("click", () => { value = iso(dt); label(); onChange(value); close(); });
+        if (min && dt < min) btn.disabled = true;
+        else btn.addEventListener("click", () => { value = iso(dt); label(); onChange(value); close(); });
         grid.appendChild(btn);
       }
       pop.appendChild(grid);
@@ -407,6 +412,7 @@
 .dp2-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;}
 .dp2-day{padding:9px 0;font-size:12px;color:var(--text,#d1d5db);background:none;border:none;border-radius:6px;cursor:pointer;font-family:inherit;}
 .dp2-day:hover{background:var(--panel-2,#2a2a2a);}
+.dp2-day:disabled{color:#4b5563;cursor:not-allowed;background:none;}
 .dp2-day.is-today{color:#a3a9b3;font-weight:600;background:var(--panel-2,#2a2a2a);}
 .dp2-day.is-selected{background:var(--accent,#7c8493);color:#0b0b0b;font-weight:700;}
 .dp2-hidden{display:none !important;}

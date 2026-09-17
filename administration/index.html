@@ -998,7 +998,7 @@
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.48.4 — schema migration 0048">v1.48.4</div>
+  <div class="version-tag" title="Owner Portal v1.48.5 — schema migration 0048">v1.48.5</div>
 
   <!-- Settings modal -->
   <div class="modal-overlay hidden" id="settingsModal">
@@ -3108,7 +3108,7 @@
           ? mgUsers.map((u) => `<option value="${escapeHtml(u.email)}"${(u.email || "").toLowerCase() === me ? " selected" : ""}>${escapeHtml(u.full_name || mgName(u.email))}</option>`).join("")
           : `<option value="${escapeHtml(currentEmail || "")}">${escapeHtml(currentEmail || "me")}</option>`;
         if (window.createDatePicker) {
-          mgDuePick = createDatePicker({ mount: $("mg_k_due"), initial: "" });
+          mgDuePick = createDatePicker({ mount: $("mg_k_due"), initial: "", minDate: "today" });
         }
         $("mg_k_assignee").addEventListener("change", mgRenderUnitSelects);
         if (isAdmin()) {
@@ -3475,6 +3475,7 @@
         }).eq("id", mgTimer.id);
         if (error) { alert(error.message); return; }
         mgTimer = null; $("mg_t_note").value = "";
+        mgWhoReveal(currentEmail);
         mgRefresh();
       }
     });
@@ -3488,6 +3489,7 @@
       });
       if (error) { alert(error.message); return; }
       $("mg_m_hours").value = ""; $("mg_m_note").value = "";
+      mgWhoReveal(currentEmail);
       mgRefresh();
     });
 
@@ -3688,8 +3690,17 @@
       if (ins?.id) mgNotify({ task_id: ins.id });
       logAccess("task_add", { title });
       $("mg_k_title").value = ""; mgDuePick?.setValue("");
+      mgWhoReveal($("mg_k_assignee").value || currentEmail);
       mgRefresh();
     });
+    // If the Viewing filter would hide what was just created, snap it
+    // back to Everyone — otherwise adding looks like it did nothing.
+    function mgWhoReveal(email) {
+      if (!isAdmin() || mgWhoSel === "all") return;
+      const e = (email || "").toLowerCase(), self = (currentEmail || "").toLowerCase();
+      const visible = mgWhoSel === "me" ? e === self : e === mgWhoSel.toLowerCase();
+      if (!visible) { mgWhoSel = "all"; const s = $("mgWho"); if (s) s.value = "all"; }
+    }
     $("mg_k_title")?.addEventListener("keydown", (e) => { if (e.key === "Enter") $("mgAddTask").click(); });
 
     /* ---- Budget maker: per-unit, per-year P&L budget built by a revenue
