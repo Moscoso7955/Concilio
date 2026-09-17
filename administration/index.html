@@ -899,7 +899,7 @@
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.40.1 — schema migration 0040">v1.40.1</div>
+  <div class="version-tag" title="Owner Portal v1.41.0 — schema migration 0041">v1.41.0</div>
 
   <!-- Settings modal -->
   <div class="modal-overlay hidden" id="settingsModal">
@@ -2947,7 +2947,10 @@
     const mgHrs = (min) => (Math.round((min || 0) / 6) / 10).toFixed(1);
     const mgName = (email) => {
       const u = mgUsers.find((x) => (x.email || "").toLowerCase() === String(email || "").toLowerCase());
-      return u?.full_name || String(email || "").split("@")[0];
+      if (u?.full_name) return u.full_name;
+      // No profile name yet — prettify the mailbox: "micah" → "Micah".
+      const local = String(email || "").split("@")[0].replace(/[._-]+/g, " ");
+      return local.replace(/\b\w/g, (c) => c.toUpperCase());
     };
     const mgEntName = (id) => mgEntities.find((e) => e.id === id)?.name || "";
     const mgEntOpts = (sel) => '<option value="">— general</option>' +
@@ -2958,7 +2961,8 @@
         // Companies/venues only — time and tasks land on a business,
         // never on a person (people are the assignee/tracker side).
         supabase.from("ownership_entities").select("id,name").eq("kind", "entity").order("name"),
-        supabase.from("profiles").select("email,full_name").order("full_name"),
+        // Admins + anyone whose role carries the Management tab.
+        supabase.rpc("assignable_users"),
       ]);
       mgEntities = eRes.data || [];
       mgUsers = uRes.data || [];
@@ -2967,7 +2971,7 @@
         for (const id of ["mg_t_entity", "mg_m_entity", "mg_k_entity"]) $(id).innerHTML = mgEntOpts("");
         const me = (currentEmail || "").toLowerCase();
         $("mg_k_assignee").innerHTML = mgUsers.length
-          ? mgUsers.map((u) => `<option value="${escapeHtml(u.email)}"${(u.email || "").toLowerCase() === me ? " selected" : ""}>${escapeHtml(u.full_name || u.email)}</option>`).join("")
+          ? mgUsers.map((u) => `<option value="${escapeHtml(u.email)}"${(u.email || "").toLowerCase() === me ? " selected" : ""}>${escapeHtml(u.full_name || mgName(u.email))}</option>`).join("")
           : `<option value="${escapeHtml(currentEmail || "")}">${escapeHtml(currentEmail || "me")}</option>`;
         if (window.createDatePicker) {
           mgDatePick = createDatePicker({ mount: $("mg_m_date"), initial: mgToday() });
@@ -2976,7 +2980,7 @@
         if (isAdmin()) {
           $("mgWho").innerHTML = `<option value="me">My time</option><option value="all">Everyone</option>` +
             mgUsers.filter((u) => (u.email || "").toLowerCase() !== me)
-              .map((u) => `<option value="${escapeHtml(u.email)}">${escapeHtml(u.full_name || u.email)}</option>`).join("");
+              .map((u) => `<option value="${escapeHtml(u.email)}">${escapeHtml(u.full_name || mgName(u.email))}</option>`).join("");
           $("mgWho").addEventListener("change", () => { mgWhoSel = $("mgWho").value; mgRenderTime(); });
         }
       }
