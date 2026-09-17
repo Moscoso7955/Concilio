@@ -546,6 +546,10 @@
       </div>
 
       <div id="mgPaneManage">
+      <div class="admin-only hidden" style="display:flex;align-items:center;gap:0.55rem;margin-bottom:0.7rem;">
+        <span class="muted" style="font-size:0.85rem;">Viewing</span>
+        <select id="mgWho" class="inline-select" style="padding:0.4rem 0.55rem;"></select>
+      </div>
       <div class="section-card">
         <h2>Time</h2>
         <div class="row" style="align-items:flex-end;flex-wrap:wrap;">
@@ -562,7 +566,6 @@
         </div>
         <div style="display:flex;align-items:center;gap:0.7rem;margin:1.1rem 0 0.5rem;flex-wrap:wrap;">
           <h2 style="margin:0;">This week</h2>
-          <select id="mgWho" class="inline-select admin-only hidden" style="padding:0.35rem 0.5rem;"></select>
           <span class="muted" id="mgWeekTotal"></span>
         </div>
         <div class="table-wrap"><table>
@@ -995,7 +998,7 @@
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.48.3 — schema migration 0048">v1.48.3</div>
+  <div class="version-tag" title="Owner Portal v1.48.4 — schema migration 0048">v1.48.4</div>
 
   <!-- Settings modal -->
   <div class="modal-overlay hidden" id="settingsModal">
@@ -3062,7 +3065,7 @@
        a shared task list. Staff and read_all roles (e.g. "management")
        see everything; everyone else sees their own tasks and time. ---- */
     let mgEntities = [], mgUsers = [], mgTasks = [], mgTime = [], mgTimer = null, mgTick = null;
-    let mgWhoSel = "me", mgDuePick = null, mgInit = false;
+    let mgWhoSel = "all", mgDuePick = null, mgInit = false;
     const mgToday = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
     const mgMonday = () => { const d = new Date(); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
     const mgHrs = (min) => {
@@ -3142,10 +3145,10 @@
           });
         }
         if (isAdmin()) {
-          $("mgWho").innerHTML = `<option value="me">My time</option><option value="all">Everyone</option>` +
+          $("mgWho").innerHTML = `<option value="all">Everyone</option><option value="me">Just me</option>` +
             mgUsers.filter((u) => (u.email || "").toLowerCase() !== me)
               .map((u) => `<option value="${escapeHtml(u.email)}">${escapeHtml(u.full_name || mgName(u.email))}</option>`).join("");
-          $("mgWho").addEventListener("change", () => { mgWhoSel = $("mgWho").value; mgRenderTime(); });
+          $("mgWho").addEventListener("change", () => { mgWhoSel = $("mgWho").value; mgRenderTime(); mgRenderTasks(); });
         }
       }
       await mgRefresh();
@@ -3519,9 +3522,16 @@
 
     function mgRenderTasks() {
       const showDone = $("mgShowDone").checked;
-      const open = mgTasks.filter((t) => t.status !== "done")
+      // Same person filter as the time table (admins only — everyone
+      // else already only sees their own via RLS).
+      let pool = mgTasks;
+      if (isAdmin() && mgWhoSel !== "all") {
+        const who = mgWhoSel === "me" ? (currentEmail || "").toLowerCase() : mgWhoSel.toLowerCase();
+        pool = mgTasks.filter((t) => (t.assignee_email || "").toLowerCase() === who);
+      }
+      const open = pool.filter((t) => t.status !== "done")
         .sort((a, b) => String(a.due_date || "9999").localeCompare(String(b.due_date || "9999")));
-      const done = showDone ? mgTasks.filter((t) => t.status === "done").slice(0, 30) : [];
+      const done = showDone ? pool.filter((t) => t.status === "done").slice(0, 30) : [];
       const list = [...open, ...done];
       const box = $("mgTaskList"); box.innerHTML = "";
       show($("mgTasksEmpty"), list.length === 0);
