@@ -162,9 +162,13 @@
     .su-body { padding: 0.15rem 0.9rem 0.9rem; border-top: 1px solid var(--border); }
 
     /* ---------- Management: tasks + time tracking ---------- */
-    /* The global select rule is width:100%; in these auto-sized flex
-       cells that overflows onto the neighbor — size to content instead. */
-    [data-panel="management"] select { width: auto; }
+    /* The global .row rule gives every cell an equal flex share and the
+       global select rule is width:100% — together the wide selects
+       overflow their share onto the neighbor. In this panel, cells size
+       to content (title/note fields keep their inline flex and still
+       stretch), and selects size to their options. */
+    [data-panel="management"] .row > * { flex: 0 1 auto; min-width: 0; }
+    [data-panel="management"] select { width: auto; max-width: 260px; }
     .mg-task { display: flex; align-items: center; gap: 0.6rem; padding: 0.5rem 0.2rem; border-bottom: 1px solid #222; }
     .mg-task:last-child { border-bottom: 0; }
     .mg-status { width: 17px; height: 17px; border-radius: 50%; border: 2px solid var(--muted); background: none; cursor: pointer; flex: 0 0 auto; padding: 0; }
@@ -915,7 +919,7 @@
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.42.0 — schema migration 0042">v1.42.0</div>
+  <div class="version-tag" title="Owner Portal v1.42.1 — schema migration 0042">v1.42.1</div>
 
   <!-- Settings modal -->
   <div class="modal-overlay hidden" id="settingsModal">
