@@ -188,6 +188,16 @@
     .mg-mgr { border: 1px solid var(--border); border-radius: 10px; padding: 0.7rem 0.9rem; margin-bottom: 0.55rem; background: var(--panel); }
     .mg-mgr-head { display: flex; align-items: baseline; gap: 0.55rem; flex-wrap: wrap; margin-bottom: 0.55rem; }
     .mg-mgr-units { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+    .mg-subtabs { display: flex; gap: 0.45rem; margin-bottom: 1.1rem; flex-wrap: wrap; }
+    .mg-subtabs .pill { padding: 0.35rem 0.9rem; }
+    .mg-subtabs .pill.on { border-color: var(--accent); color: var(--text); background: #23262b; }
+    .mg-opcard { background: var(--panel-2); border: 1px solid var(--border); border-radius: 12px; padding: 0.95rem 1.05rem; }
+    .mg-opcard h3 { font-size: 0.95rem; margin: 0 0 0.2rem; }
+    .mg-opcard .stat-line { font-size: 0.82rem; color: var(--muted); margin-top: 0.15rem; }
+    .mg-node { display: flex; align-items: baseline; gap: 0.5rem; padding: 0.22rem 0; font-size: 0.9rem; }
+    .mg-node .tw { color: var(--muted); font-size: 0.78rem; }
+    .mg-recur { display: flex; align-items: center; gap: 0.6rem; padding: 0.45rem 0.2rem; border-bottom: 1px solid #222; flex-wrap: wrap; }
+    .mg-recur:last-child { border-bottom: 0; }
 
     /* ---------- Budget maker (per-unit, in its own modal) ---------- */
     .bud-panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 12px; margin-bottom: 16px; }
@@ -511,8 +521,15 @@
       <button class="btn btn--sm" id="repViewAsExit" style="margin-left:auto;flex:0 0 auto;">Exit</button>
     </div>
 
-    <!-- Management: time tracking + tasks -->
+    <!-- Management: Ops / Manage / Org Chart -->
     <section class="tab-panel" data-panel="management">
+      <div class="mg-subtabs">
+        <button type="button" class="pill admin-only hidden" data-mgtab="ops">Ops</button>
+        <button type="button" class="pill on" data-mgtab="manage">Manage</button>
+        <button type="button" class="pill" data-mgtab="org">Org Chart</button>
+      </div>
+
+      <div id="mgPaneManage">
       <div class="section-card">
         <h2>Time</h2>
         <div class="row" style="align-items:flex-end;flex-wrap:wrap;">
@@ -540,13 +557,6 @@
         <p class="muted hidden" id="mgTimeEmpty">Nothing logged this week yet.</p>
       </div>
 
-      <div class="section-card admin-only hidden" id="mgMgrCard">
-        <h2>Managers</h2>
-        <p class="muted" style="margin-bottom:0.75rem;">Everyone on the management role, and the units they run — toggle a unit to assign it. Only admins see this section.</p>
-        <div id="mgMgrList"></div>
-        <p class="muted hidden" id="mgMgrEmpty">Nobody has the management role yet — set it on a user in Settings → Users (and make sure the role's tabs include Management).</p>
-      </div>
-
       <div class="section-card">
         <div style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;margin-bottom:0.8rem;">
           <h2 style="margin:0;">Tasks</h2><span style="flex:1;"></span>
@@ -562,6 +572,55 @@
         <div id="mgTaskList"></div>
         <p class="muted hidden" id="mgTasksEmpty">No open tasks — add the first one above.</p>
       </div>
+
+      <div class="section-card hidden" id="mgTeamCard">
+        <h2>Your team</h2>
+        <div id="mgTeamList"></div>
+      </div>
+      </div><!-- /Manage -->
+
+      <div id="mgPaneOps" class="hidden">
+        <div class="section-card">
+          <h2>Managers this week</h2>
+          <div id="opCards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:0.8rem;"></div>
+          <p class="muted hidden" id="opEmpty">No managers yet — give someone the management role in Settings → Users.</p>
+        </div>
+
+        <div class="section-card" id="mgMgrCard">
+          <h2>Unit assignments</h2>
+          <p class="muted" style="margin-bottom:0.75rem;">The units each manager runs — toggle a unit to assign it.</p>
+          <div id="mgMgrList"></div>
+          <p class="muted hidden" id="mgMgrEmpty">Nobody has the management role yet — set it on a user in Settings → Users (and make sure the role's tabs include Management).</p>
+        </div>
+
+        <div class="section-card">
+          <h2>Recurring tasks</h2>
+          <p class="muted" style="margin-bottom:0.75rem;">Standing work — each one spawns a task automatically every day, week, or month.</p>
+          <div class="row" style="align-items:flex-end;flex-wrap:wrap;margin-bottom:0.9rem;">
+            <div style="flex:2;min-width:200px;"><label>Task</label><input type="text" id="op_r_title" placeholder="Walk-in temp log, sales recap…"></div>
+            <div><label>Unit / entity</label><select id="op_r_entity" class="inline-select" style="padding:0.5rem;"></select></div>
+            <div><label>Assign to</label><select id="op_r_assignee" class="inline-select" style="padding:0.5rem;"></select></div>
+            <div><label>Repeats</label><select id="op_r_cad" class="inline-select" style="padding:0.5rem;">
+              <option value="daily">Daily</option><option value="weekly" selected>Weekly</option><option value="monthly">Monthly</option></select></div>
+            <div id="op_r_daywrap"><label>On</label><select id="op_r_day" class="inline-select" style="padding:0.5rem;"></select></div>
+            <button class="btn" id="opRecurAdd" style="flex:0 0 auto;">Add recurring</button>
+          </div>
+          <div id="opRecurList"></div>
+          <p class="muted hidden" id="opRecurEmpty">No recurring tasks yet.</p>
+        </div>
+      </div><!-- /Ops -->
+
+      <div id="mgPaneOrg" class="hidden">
+        <div class="section-card">
+          <h2>Org chart</h2>
+          <p class="muted" id="orgHint" style="margin-bottom:0.75rem;">Who reports to whom. Managers see their own branch; admins set the reporting lines below.</p>
+          <div id="orgTree"></div>
+          <div class="admin-only hidden" id="orgEditWrap" style="margin-top:1rem;">
+            <div class="muted" style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.4rem;">Reporting lines</div>
+            <div id="orgEdit"></div>
+          </div>
+        </div>
+      </div><!-- /Org -->
     </section>
 
     <!-- Reports -->
@@ -919,7 +978,7 @@
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.42.1 — schema migration 0042">v1.42.1</div>
+  <div class="version-tag" title="Owner Portal v1.43.0 — schema migration 0043">v1.43.0</div>
 
   <!-- Settings modal -->
   <div class="modal-overlay hidden" id="settingsModal">
@@ -1329,6 +1388,9 @@
         case "task_done": return `Completed task <strong>${eh(d.title || "")}</strong>`;
         case "task_delete": return `Deleted task <strong>${eh(d.title || "")}</strong>`;
         case "manager_unit": return `${d.on ? "Assigned" : "Unassigned"} <strong>${eh(d.unit || "")}</strong> ${d.on ? "to" : "from"} manager ${eh(d.manager || "")}`;
+        case "recur_add": return `Added ${eh(d.cadence || "")} recurring task <strong>${eh(d.title || "")}</strong>`;
+        case "recur_delete": return `Deleted recurring task <strong>${eh(d.title || "")}</strong>`;
+        case "org_set": return `Org chart: <strong>${eh(d.manager || "")}</strong> now reports to ${eh(d.boss || "")}`;
         case "ic_settle": return `Recorded settlement: <strong>${eh(d.entity || "")}</strong> owes ${eh(d.payer || "")} ${money(Number(d.total) || 0)} (${eh(d.month || "")})`;
         case "ic_unsettle": return `Undid a ${money(Number(d.total) || 0)} settlement (${eh(d.entity || "")} / ${eh(d.payer || "")})`;
         default: return eh(r.event || "activity");
@@ -3002,6 +3064,33 @@
           mgDuePick = createDatePicker({ mount: $("mg_k_due"), initial: "" });
         }
         if (isAdmin()) {
+          $("op_r_entity").innerHTML = mgEntOpts("");
+          $("op_r_assignee").innerHTML = $("mg_k_assignee").innerHTML;
+          const dayOpts = () => {
+            const cad = $("op_r_cad").value;
+            show($("op_r_daywrap"), cad !== "daily");
+            $("op_r_day").innerHTML = cad === "weekly"
+              ? MG_DOW.map((d, i) => `<option value="${i + 1}">${d}</option>`).join("")
+              : Array.from({ length: 28 }, (_, i) => `<option value="${i + 1}">Day ${i + 1}</option>`).join("");
+          };
+          $("op_r_cad").addEventListener("change", dayOpts); dayOpts();
+          $("opRecurAdd").addEventListener("click", async () => {
+            const title = $("op_r_title").value.trim();
+            if (!title) { $("op_r_title").focus(); return; }
+            const cad = $("op_r_cad").value;
+            const { error } = await supabase.from("recurring_tasks").insert({
+              title, entity_id: $("op_r_entity").value || null,
+              assignee_email: $("op_r_assignee").value || currentEmail,
+              cadence: cad, byday: cad === "daily" ? null : +$("op_r_day").value || 1,
+              created_by: currentEmail,
+            });
+            if (error) { alert(error.message); return; }
+            logAccess("recur_add", { title, cadence: cad });
+            $("op_r_title").value = "";
+            mgRefresh();
+          });
+        }
+        if (isAdmin()) {
           $("mgWho").innerHTML = `<option value="me">My time</option><option value="all">Everyone</option>` +
             mgUsers.filter((u) => (u.email || "").toLowerCase() !== me)
               .map((u) => `<option value="${escapeHtml(u.email)}">${escapeHtml(u.full_name || mgName(u.email))}</option>`).join("");
@@ -3012,18 +3101,151 @@
     }
 
     async function mgRefresh() {
-      const [tRes, tmRes, runRes, muRes] = await Promise.all([
+      // Recurring definitions first: spawn any instance this period is
+      // still missing (the partial unique index makes duplicates no-ops).
+      const { data: recurs } = await supabase.from("recurring_tasks").select("*");
+      mgRecurs = recurs || [];
+      await mgMaterialize();
+      const [tRes, tmRes, runRes, muRes, teamRes] = await Promise.all([
         supabase.from("tasks").select("*").order("created_at", { ascending: false }).limit(400),
         supabase.from("time_entries").select("*").gte("work_date", mgMonday()).order("work_date", { ascending: false }).order("created_at", { ascending: false }).limit(500),
         supabase.from("time_entries").select("*").is("stopped_at", null).not("started_at", "is", null)
           .ilike("user_email", currentEmail || "?").limit(1),
         supabase.from("manager_units").select("*"),
+        supabase.rpc("team_overview"),
       ]);
       mgTasks = tRes.data || [];
       mgTime = tmRes.data || [];
       mgTimer = (runRes.data || [])[0] || null;
       mgMgrUnits = muRes.data || [];
+      mgTeam = teamRes.data || [];
       mgRenderTimer(); mgRenderTime(); mgRenderTasks(); mgRenderManagers();
+      mgRenderTeam(); mgRenderOps(); mgRenderRecur(); mgRenderOrg();
+    }
+
+    let mgRecurs = [], mgTeam = [];
+    // Current period key + due date for a recurring definition.
+    function mgRecurDue(r) {
+      const now = new Date();
+      const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      if (r.cadence === "daily") return { key: iso(now), due: iso(now) };
+      if (r.cadence === "weekly") {
+        const mon = new Date(now); mon.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+        const due = new Date(mon); due.setDate(mon.getDate() + ((+r.byday || 1) - 1));
+        return { key: "W" + iso(mon), due: iso(due) };
+      }
+      const dom = Math.min(Math.max(+r.byday || 1, 1), 28);
+      const mk = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+      return { key: mk, due: `${mk}-${String(dom).padStart(2, "0")}` };
+    }
+    async function mgMaterialize() {
+      for (const r of mgRecurs.filter((x) => x.active)) {
+        const { key, due } = mgRecurDue(r);
+        const { error } = await supabase.from("tasks").insert({
+          title: r.title, entity_id: r.entity_id, assignee_email: r.assignee_email,
+          due_date: due, created_by: currentEmail, recurring_id: r.id, recur_key: key,
+        });
+        // 23505 = this period's instance already exists — expected.
+        if (error && error.code !== "23505") console.warn("recurring spawn:", error.message);
+      }
+    }
+
+    // Manage pane: "Your team" — a manager's branch (admins use Ops).
+    function mgRenderTeam() {
+      const showIt = !isAdmin() && mgTeam.length > 0;
+      show($("mgTeamCard"), showIt);
+      if (!showIt) return;
+      $("mgTeamList").innerHTML = mgTeam.map((m) => `
+        <div class="mg-node"><strong>${escapeHtml(m.full_name || mgName(m.email))}</strong>
+          <span class="tw">${mgHrs(m.week_minutes)}h this week · ${m.open_tasks} open${m.doing_tasks ? ` · ${m.doing_tasks} in progress` : ""}</span></div>`).join("");
+    }
+
+    // Ops pane: a report card per manager.
+    function mgRenderOps() {
+      if (!isAdmin()) return;
+      const box = $("opCards"); if (!box) return;
+      show($("opEmpty"), mgTeam.length === 0);
+      box.innerHTML = mgTeam.map((m) => {
+        const units = mgMgrUnits.filter((r) => (r.manager_email || "").toLowerCase() === m.email)
+          .map((r) => mgEntName(r.entity_id)).filter(Boolean);
+        const open = mgTasks.filter((t) => (t.assignee_email || "").toLowerCase() === m.email && t.status !== "done").slice(0, 3);
+        return `<div class="mg-opcard">
+          <h3>${escapeHtml(m.full_name || mgName(m.email))}</h3>
+          <div class="stat-line">${mgHrs(m.week_minutes)}h this week · ${m.open_tasks} open · ${m.doing_tasks} in progress</div>
+          <div class="stat-line">${units.length ? escapeHtml(units.join(" · ")) : "No units assigned"}</div>
+          ${open.length ? `<div class="stat-line" style="margin-top:0.4rem;">${open.map((t) => `• ${escapeHtml(t.title)}`).join("<br>")}</div>` : ""}
+        </div>`;
+      }).join("");
+    }
+
+    // Ops pane: recurring definitions.
+    const MG_DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    function mgRecurLabel(r) {
+      if (r.cadence === "daily") return "Daily";
+      if (r.cadence === "weekly") return "Weekly · " + (MG_DOW[(+r.byday || 1) - 1] || "Mon");
+      return "Monthly · day " + (+r.byday || 1);
+    }
+    function mgRenderRecur() {
+      if (!isAdmin()) return;
+      const box = $("opRecurList"); if (!box) return;
+      show($("opRecurEmpty"), mgRecurs.length === 0);
+      box.innerHTML = mgRecurs.map((r) => `
+        <div class="mg-recur${r.active ? "" : " done"}">
+          <strong style="flex:1;min-width:140px;${r.active ? "" : "color:var(--muted);"}">${escapeHtml(r.title)}</strong>
+          <span class="mg-chip">${mgRecurLabel(r)}</span>
+          ${r.entity_id ? `<span class="mg-chip">${escapeHtml(mgEntName(r.entity_id))}</span>` : ""}
+          ${r.assignee_email ? `<span class="mg-chip">${escapeHtml(mgName(r.assignee_email))}</span>` : ""}
+          <label class="tabchip" style="flex:0 0 auto;"><input type="checkbox" data-recact="${r.id}"${r.active ? " checked" : ""}> Active</label>
+          <button class="mg-act del" data-recdel="${r.id}" aria-label="Delete ${escapeHtml(r.title)}">✕</button>
+        </div>`).join("");
+      box.querySelectorAll("[data-recact]").forEach((c) => c.addEventListener("change", async () => {
+        await supabase.from("recurring_tasks").update({ active: c.checked }).eq("id", c.dataset.recact);
+        const r = mgRecurs.find((x) => x.id === c.dataset.recact); if (r) r.active = c.checked;
+      }));
+      box.querySelectorAll("[data-recdel]").forEach((b) => b.addEventListener("click", async () => {
+        const r = mgRecurs.find((x) => x.id === b.dataset.recdel);
+        if (!confirm(`Delete recurring task “${r?.title}”? Already-spawned tasks stay.`)) return;
+        await supabase.from("recurring_tasks").delete().eq("id", b.dataset.recdel);
+        logAccess("recur_delete", { title: r?.title });
+        mgRefresh();
+      }));
+    }
+
+    // Org chart: admins as roots, managers nested by reports_to.
+    function mgRenderOrg() {
+      const tree = $("orgTree"); if (!tree) return;
+      const admins = mgUsers.filter((u) => u.role === "admin");
+      const byBoss = {};
+      for (const m of mgTeam) (byBoss[(m.reports_to || "").toLowerCase()] ||= []).push(m);
+      const placed = new Set();
+      const node = (label, sub, depth) => `<div class="mg-node" style="padding-left:${depth * 1.3}rem;">${depth ? '<span class="muted">└</span>' : ""}<strong>${escapeHtml(label)}</strong>${sub ? `<span class="tw">${sub}</span>` : ""}</div>`;
+      const branch = (email, depth) => (byBoss[email.toLowerCase()] || []).map((m) => {
+        placed.add(m.email);
+        return node(m.full_name || mgName(m.email), `${mgHrs(m.week_minutes)}h wk · ${m.open_tasks + m.doing_tasks} tasks`, depth) + branch(m.email, depth + 1);
+      }).join("");
+      let h = admins.map((a) => node(a.full_name || mgName(a.email), "admin", 0) + branch(a.email, 1)).join("");
+      const loose = mgTeam.filter((m) => !placed.has(m.email));
+      if (loose.length) h += `<div class="muted" style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.06em;margin:0.7rem 0 0.2rem;">Unassigned</div>` +
+        loose.map((m) => node(m.full_name || mgName(m.email), `${mgHrs(m.week_minutes)}h wk`, 0)).join("");
+      tree.innerHTML = h || '<p class="muted">No managers yet.</p>';
+      // Admin editor: one reports-to select per manager.
+      if (isAdmin()) {
+        show($("orgEditWrap"), mgTeam.length > 0);
+        const bossOpts = (sel) => '<option value="">— top level</option>' +
+          [...admins, ...mgTeam].map((u) => `<option value="${escapeHtml(u.email)}"${(sel || "").toLowerCase() === (u.email || "").toLowerCase() ? " selected" : ""}>${escapeHtml(u.full_name || mgName(u.email))}</option>`).join("");
+        $("orgEdit").innerHTML = mgTeam.map((m) => `
+          <div class="mg-node"><span style="min-width:150px;">${escapeHtml(m.full_name || mgName(m.email))}</span>
+            <span class="muted" style="font-size:0.78rem;">reports to</span>
+            <select class="inline-select" data-orgset="${escapeHtml(m.email)}" style="padding:0.3rem 0.45rem;">${bossOpts(m.reports_to)}</select></div>`).join("");
+        $("orgEdit").querySelectorAll("[data-orgset]").forEach((sel) => sel.addEventListener("change", async () => {
+          const boss = sel.value || null;
+          if (boss && boss.toLowerCase() === sel.dataset.orgset.toLowerCase()) { alert("A manager can't report to themselves."); return; }
+          const { error } = await supabase.from("manager_org").upsert({ manager_email: sel.dataset.orgset, reports_to: boss, updated_at: new Date().toISOString() }, { onConflict: "manager_email" });
+          if (error) { alert(error.message); return; }
+          logAccess("org_set", { manager: mgName(sel.dataset.orgset), boss: boss ? mgName(boss) : "top level" });
+          mgRefresh();
+        }));
+      }
     }
 
     // Managers section (admins only): the management-role roster, each
@@ -3068,12 +3290,23 @@
       clearInterval(mgTick);
       if (mgTimer) {
         b.textContent = "Stop & log";
-        const tick = () => { el.textContent = mgHrs((Date.now() - new Date(mgTimer.started_at)) / 60000) + "h"; };
-        tick(); mgTick = setInterval(tick, 15000);
+        const tick = () => {
+          const s = Math.max(0, Math.floor((Date.now() - new Date(mgTimer.started_at)) / 1000));
+          el.textContent = `${Math.floor(s / 3600)}:${String(Math.floor(s / 60) % 60).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+        };
+        tick(); mgTick = setInterval(tick, 1000);
         $("mg_t_note").value = mgTimer.note || "";
         $("mg_t_entity").value = mgTimer.entity_id || "";
       } else { b.textContent = "Start timer"; el.textContent = ""; }
     }
+
+    // Sub-tabs: Ops (admins) / Manage / Org Chart.
+    document.querySelectorAll("[data-mgtab]").forEach((p) => p.addEventListener("click", () => {
+      document.querySelectorAll("[data-mgtab]").forEach((x) => x.classList.toggle("on", x === p));
+      show($("mgPaneManage"), p.dataset.mgtab === "manage");
+      show($("mgPaneOps"), p.dataset.mgtab === "ops");
+      show($("mgPaneOrg"), p.dataset.mgtab === "org");
+    }));
     $("mgTimerBtn")?.addEventListener("click", async () => {
       if (!mgTimer) {
         const { data, error } = await supabase.from("time_entries").insert({
@@ -3152,7 +3385,7 @@
         const overdue = t.due_date && t.due_date < today && t.status !== "done";
         div.innerHTML = `
           <button class="mg-status ${t.status}" data-mgst="${t.id}" title="${t.status === "open" ? "Open — click when you start" : t.status === "doing" ? "In progress — click when done" : "Done — click to reopen"}" aria-label="Task status: ${t.status}"></button>
-          <span class="mg-title" title="${escapeHtml(t.title)}">${escapeHtml(t.title)}</span>
+          <span class="mg-title" title="${escapeHtml(t.title)}">${t.recurring_id ? '<span class="muted" title="Spawned by a recurring task">↻</span> ' : ""}${escapeHtml(t.title)}</span>
           ${t.entity_id ? `<span class="mg-chip">${escapeHtml(mgEntName(t.entity_id))}</span>` : ""}
           ${t.assignee_email ? `<span class="mg-chip" title="${escapeHtml(t.assignee_email)}">${escapeHtml(mgName(t.assignee_email))}</span>` : ""}
           ${t.due_date ? `<span class="mg-due${overdue ? " overdue" : ""}">${t.due_date}</span>` : ""}
