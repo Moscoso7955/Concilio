@@ -996,7 +996,7 @@
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.48.0 — schema migration 0048">v1.48.0</div>
+  <div class="version-tag" title="Owner Portal v1.48.1 — schema migration 0048">v1.48.1</div>
 
   <!-- Settings modal -->
   <div class="modal-overlay hidden" id="settingsModal">
@@ -3282,7 +3282,7 @@
       return "https://calendar.google.com/calendar/render?" + p.toString();
     }
     const mgGcalBtn = (r) =>
-      `<button type="button" class="mg-gcal" data-gcal="${r.id}" title="Add to Google Calendar" aria-label="Add ${escapeHtml(r.title)} to Google Calendar">📅 Add to Calendar</button>`;
+      `<button type="button" class="mg-gcal" data-gcal="${r.id}" title="Add to Google Calendar" aria-label="Add ${escapeHtml(r.title)} to Google Calendar">Add to Calendar</button>`;
     const mgTimeOpts = (sel) => Array.from({ length: (23 - 5) * 4 + 1 }, (_, i) => {
       const m = 5 * 60 + i * 15, hh = String(Math.floor(m / 60)).padStart(2, "0"), mm = String(m % 60).padStart(2, "0");
       const v = hh + ":" + mm;
@@ -3528,7 +3528,7 @@
           <button class="mg-status ${recurring ? (t.status === "done" ? "done" : "") : t.status}" data-mgst="${t.id}" title="${statusTitle}" aria-label="Task status: ${t.status}"></button>
           <span class="mg-title expandable" data-mgopen="${t.id}" role="button" aria-expanded="${opened}" title="${escapeHtml(t.title)} — click for notes${recurring ? "" : " & progress"}">${recurring ? '<span class="muted" title="Spawned by a recurring task">↻</span> ' : ""}${escapeHtml(t.title)}</span>
           ${!recurring && t.progress ? `<span class="mg-chip" title="Progress">${+t.progress}%</span>` : ""}
-          ${notes.length ? `<span class="mg-chip" title="${notes.length} note${notes.length > 1 ? "s" : ""}">🗒 ${notes.length}</span>` : ""}
+          ${notes.length ? `<span class="mg-chip">${notes.length} note${notes.length > 1 ? "s" : ""}</span>` : ""}
           ${t.entity_id ? `<span class="mg-chip">${escapeHtml(mgEntName(t.entity_id))}</span>` : ""}
           ${t.assignee_email ? `<span class="mg-chip" title="${escapeHtml(t.assignee_email)}">${escapeHtml(mgName(t.assignee_email))}</span>` : ""}
           ${t.due_date ? `<span class="mg-due${overdue ? " overdue" : ""}">${t.due_date}</span>` : ""}
@@ -3556,7 +3556,7 @@
             <div class="mg-noterow">
               <input type="text" data-mgnotein="${t.id}" placeholder="Add a note…" maxlength="1000" aria-label="New note">
               <button class="mg-gcal" data-mgnoteadd="${t.id}">Add note</button>
-              ${canNudge ? `<button class="mg-gcal" data-mgnudge="${t.id}" title="Email ${escapeHtml(mgName(t.assignee_email))} asking for an update">👋 Nudge</button>` : ""}
+              ${canNudge ? `<button class="mg-gcal" data-mgnudge="${t.id}" title="Email ${escapeHtml(mgName(t.assignee_email))} asking for an update">Nudge</button>` : ""}
             </div>`;
           box.appendChild(det);
         }
@@ -3615,7 +3615,7 @@
         const t = mgTasks.find((x) => x.id === b.dataset.mgnudge);
         b.disabled = true; b.textContent = "Nudging…";
         const ok = await mgNotify({ task_id: t.id, nudge: true });
-        b.textContent = ok ? "Nudged ✓" : "👋 Nudge";
+        b.textContent = ok ? "Nudged ✓" : "Nudge";
         b.disabled = !!ok;
         if (ok) logAccess("task_nudge", { title: t.title, who: t.assignee_email });
         else alert("Couldn't send the nudge email — try again in a moment.");
