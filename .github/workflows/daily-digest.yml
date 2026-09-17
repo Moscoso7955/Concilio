@@ -1,0 +1,31 @@
+name: Morning task digest
+
+# Fires the daily-digest edge function every morning. 12:00 UTC is
+# 7:00 AM Central in summer (6:00 AM in winter — cron has no DST).
+# Requires the same random string in two places:
+#   - GitHub repo secret DIGEST_KEY
+#   - Supabase edge function secret DIGEST_KEY
+# Missing either → the function answers 401 and nothing sends.
+
+on:
+  schedule:
+    - cron: "0 12 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call daily-digest
+        env:
+          DIGEST_KEY: ${{ secrets.DIGEST_KEY }}
+        run: |
+          if [ -z "$DIGEST_KEY" ]; then
+            echo "DIGEST_KEY repo secret is not set — skipping (see workflow header)."
+            exit 0
+          fi
+          code=$(curl -s -o /tmp/out -w '%{http_code}' -X POST \
+            -H "x-digest-key: $DIGEST_KEY" \
+            "https://ofliuuulagqlbdjwrnjc.supabase.co/functions/v1/daily-digest")
+          cat /tmp/out; echo
+          [ "$code" = "200" ] || { echo "digest failed with $code"; exit 1; }

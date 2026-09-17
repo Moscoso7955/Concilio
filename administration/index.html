@@ -190,6 +190,10 @@
     .mg-title.expandable { cursor: pointer; }
     .mg-title.expandable:hover { color: #fff; text-decoration: underline; text-decoration-color: #3a3a3a; }
     .mg-detail { margin: -0.15rem 0 0.55rem 2rem; padding: 0.6rem 0.85rem; background: #161616; border: 1px solid #242424; border-radius: 8px; font-size: 0.85rem; }
+    .mg-editrow { display: flex; align-items: center; gap: 0.45rem; flex-wrap: wrap; padding-bottom: 0.6rem; margin-bottom: 0.6rem; border-bottom: 1px dashed #242424; }
+    .mg-editrow input[type="text"] { background: #111; border: 1px solid #2c2c2c; border-radius: 7px; color: var(--text); padding: 0.45rem 0.6rem; font-size: 0.85rem; }
+    .mg-editrow input[type="text"]:focus { outline: none; border-color: var(--accent); }
+    .mg-editrow select { max-width: 180px; }
     .mg-progrow { display: flex; align-items: center; gap: 0.7rem; margin-bottom: 0.55rem; }
     .mg-progrow input[type="range"] { flex: 1; min-width: 120px; accent-color: var(--accent); background: transparent; }
     .mg-progrow .pct { flex: 0 0 auto; min-width: 3ch; font-variant-numeric: tabular-nums; color: var(--text); font-weight: 600; }
@@ -696,6 +700,7 @@
       <div class="section-card">
         <div style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;margin-bottom:0.8rem;">
           <h2 style="margin:0;">Tasks</h2><span style="flex:1;"></span>
+          <button class="btn btn--ghost btn--sm" id="mgIcsBtn" title="Subscribe in Google Calendar — your assignments appear automatically">Calendar feed</button>
           <label class="tabchip"><input type="checkbox" id="mgShowDone"> Show done</label>
         </div>
         <div class="row" style="align-items:flex-end;flex-wrap:wrap;margin-bottom:0.9rem;">
@@ -717,7 +722,10 @@
 
       <div id="mgPaneOps" class="hidden">
         <div class="section-card">
-          <h2>Managers this week</h2>
+          <div style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;margin-bottom:0.8rem;">
+            <h2 style="margin:0;">Managers this week</h2><span style="flex:1;"></span>
+            <button class="btn btn--ghost btn--sm" id="opDigestBtn" title="Email everyone their due-today and overdue tasks right now (the same email goes out automatically each morning)">Send digest now</button>
+          </div>
           <div id="opCards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:0.8rem;"></div>
           <p class="muted hidden" id="opEmpty">No managers yet — give someone the management role in Settings → Users.</p>
         </div>
@@ -1136,7 +1144,7 @@
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.52.0 — schema migration 0052">v1.52.0</div>
+  <div class="version-tag" title="Owner Portal v1.54.0 — schema migration 0054">v1.54.0</div>
 
   <!-- Settings modal -->
   <div class="modal-overlay hidden" id="settingsModal">
@@ -1319,6 +1327,24 @@
       <div class="row" style="margin-top:1.1rem;align-items:center;">
         <button class="btn" id="gcalGo" style="flex:0 0 auto;">Open Google Calendar</button>
         <button class="btn btn--ghost" data-closemodal="gcalModal" style="flex:0 0 auto;">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Calendar-feed (ICS) subscribe modal -->
+  <div class="modal-overlay hidden" id="icsModal">
+    <div class="modal" style="max-width:540px;">
+      <h3 style="margin-bottom:0.35rem;">Your task calendar feed</h3>
+      <p class="muted" style="font-size:0.85rem;margin-bottom:0.9rem;">Subscribe once and your recurring assignments and dated tasks appear in Google Calendar automatically. Google refreshes subscribed feeds every few hours, so changes are not instant.</p>
+      <div class="field"><label>Feed URL — treat it like a password</label><input type="text" id="icsUrl" readonly onclick="this.select()"></div>
+      <ol class="muted" style="font-size:0.85rem;line-height:1.8;margin:0.7rem 0 1rem;padding-left:1.2rem;">
+        <li>Copy the URL above.</li>
+        <li>Google Calendar → <strong>Other calendars +</strong> → <strong>From URL</strong>.</li>
+        <li>Paste it and click <strong>Add calendar</strong>.</li>
+      </ol>
+      <div class="row" style="align-items:center;">
+        <button class="btn" id="icsCopy" style="flex:0 0 auto;">Copy URL</button>
+        <button class="btn btn--ghost" data-closemodal="icsModal" style="flex:0 0 auto;">Close</button>
       </div>
     </div>
   </div>
@@ -1566,6 +1592,11 @@
         case "task_note": return `Added a note on <strong>${eh(d.title || "")}</strong>`;
         case "task_nudge": return `Nudged <strong>${eh(d.who || "")}</strong> for an update on <strong>${eh(d.title || "")}</strong>`;
         case "mg_restore": return `Restored a deleted ${eh(d.kind || "item")} <strong>${eh(d.title || "")}</strong>`;
+        case "mg_purge": return `Permanently erased a deleted ${eh(d.kind || "item")} <strong>${eh(d.title || "")}</strong> from the log`;
+        case "task_edit": return `Edited task <strong>${eh(d.title || "")}</strong>${d.who ? ` (now assigned to ${eh(d.who)})` : ""}`;
+        case "digest_send": return `Sent the task digest manually (${+d.sent || 0} recipient${+d.sent === 1 ? "" : "s"})`;
+        case "ic_paid": return `Marked settlement <strong>${eh(d.entity || "")} → ${eh(d.payer || "")}</strong> (${eh(d.total || "")}) as paid`;
+        case "ic_statement": return `Filed settlement statement <strong>${eh(d.title || "")}</strong> to Documents`;
         case "manager_unit": return `${d.on ? "Assigned" : "Unassigned"} <strong>${eh(d.unit || "")}</strong> ${d.on ? "to" : "from"} manager ${eh(d.manager || "")}`;
         case "recur_add": return `Added ${eh(d.cadence || "")} recurring task <strong>${eh(d.title || "")}</strong>`;
         case "recur_delete": return `Deleted recurring task <strong>${eh(d.title || "")}</strong>`;
@@ -3327,7 +3358,7 @@
       const { data: recurs } = await supabase.from("recurring_tasks").select("*");
       mgRecurs = recurs || [];
       await mgMaterialize();
-      const [tRes, tmRes, runRes, muRes, teamRes, noteRes] = await Promise.all([
+      const [tRes, tmRes, runRes, muRes, teamRes, noteRes, tminRes] = await Promise.all([
         supabase.from("tasks").select("*").order("created_at", { ascending: false }).limit(400),
         supabase.from("time_entries").select("*").gte("work_date", mgMonday()).order("work_date", { ascending: false }).order("created_at", { ascending: false }).limit(500),
         // Every running timer (RLS trims this to your own unless admin) —
@@ -3336,6 +3367,8 @@
         supabase.from("manager_units").select("*"),
         supabase.rpc("team_overview"),
         supabase.from("task_notes").select("*").order("created_at").limit(1000),
+        // all-time logged minutes per task (for the time-vs-estimate chips)
+        supabase.from("time_entries").select("task_id,minutes").not("task_id", "is", null).not("minutes", "is", null).limit(2000),
       ]);
       mgTasks = tRes.data || [];
       mgTime = tmRes.data || [];
@@ -3346,6 +3379,8 @@
       mgMgrUnits = muRes.data || [];
       mgTeam = teamRes.data || [];
       mgNotes = noteRes.data || [];
+      mgTaskMins = new Map();
+      for (const r of tminRes.data || []) mgTaskMins.set(r.task_id, (mgTaskMins.get(r.task_id) || 0) + (r.minutes || 0));
       if (isAdmin()) {
         const [delRes, audRes] = await Promise.all([
           supabase.from("deleted_items").select("*").order("deleted_at", { ascending: false }).limit(50),
@@ -3359,7 +3394,7 @@
       mgRenderActivity();
     }
 
-    let mgRecurs = [], mgTeam = [], mgNotes = [], mgDeleted = [], mgAudit = [];
+    let mgRecurs = [], mgTeam = [], mgNotes = [], mgDeleted = [], mgAudit = [], mgTaskMins = new Map();
     const mgOpenTasks = new Set(); // task ids with the detail panel expanded
     const mgNudged = new Set(); // tasks nudged this session — survives re-renders
     // Current period key + due date for a recurring definition.
@@ -3440,8 +3475,10 @@
           .map((r) => mgEntName(r.entity_id)).filter(Boolean).sort((a, b) => a.localeCompare(b));
         const open = mgTasks.filter((t) => (t.assignee_email || "").toLowerCase() === m.email && t.status !== "done").slice(0, 3);
         const run = mgRunning(m.email);
+        const late = mgTasks.filter((t) => (t.assignee_email || "").toLowerCase() === m.email &&
+          t.status !== "done" && t.due_date && t.due_date < mgToday()).length;
         return `<div class="mg-opcard">
-          <h3>${escapeHtml(m.full_name || mgName(m.email))}</h3>
+          <h3>${escapeHtml(m.full_name || mgName(m.email))}${late ? ` <span style="color:#e08585;font-size:0.72rem;font-weight:700;border:1px solid #e08585;border-radius:999px;padding:0.1rem 0.5rem;vertical-align:2px;">${late} overdue</span>` : ""}</h3>
           ${run ? `<div class="stat-line mg-run">● Timer running — <span data-mglive="${run.started_at}"></span>${run.entity_id ? " · " + escapeHtml(mgEntName(run.entity_id)) : ""}${run.note ? " · " + escapeHtml(run.note) : ""}</div>` : ""}
           <div class="stat-line">${mgHrs(m.week_minutes)}h this week · ${m.open_tasks} open · ${m.doing_tasks} in progress</div>
           <div class="stat-line">${units.length ? escapeHtml(units.join(" · ")) : "No units assigned"}</div>
@@ -3819,11 +3856,16 @@
           ${t.entity_id ? `<span class="mg-chip">${escapeHtml(mgEntName(t.entity_id))}</span>` : ""}
           ${t.assignee_email ? `<span class="mg-chip" title="${escapeHtml(t.assignee_email)}">${escapeHtml(mgName(t.assignee_email))}</span>` : ""}
           ${t.due_date ? `<span class="mg-due${overdue ? " overdue" : ""}">${t.due_date}</span>` : ""}
-          ${(() => { // recurring instances: estimate chip + add-to-calendar for the assignee
+          ${(() => { // time logged vs estimate, and add-to-calendar for recurring
             const r = recurring ? mgRecurs.find((x) => x.id === t.recurring_id) : null;
-            if (!r) return "";
-            return (r.est_minutes ? `<span class="mg-chip">${+r.est_minutes} min</span>` : "") +
-              ((r.assignee_email || "").toLowerCase() === me || isAdmin() ? mgGcalBtn(r) : "");
+            const logged = mgTaskMins.get(t.id) || 0;
+            const est = r ? +r.est_minutes || 0 : 0;
+            const fmtM = (m) => m < 100 ? `${Math.round(m)}m` : `${(m / 60).toFixed(1)}h`;
+            let chip = "";
+            if (est && logged) chip = `<span class="mg-chip" title="Logged vs estimate"${logged > est ? ' style="color:#e08585;border-color:#e08585;"' : ""}>${fmtM(logged)} / ${fmtM(est)}</span>`;
+            else if (est) chip = `<span class="mg-chip" title="Estimated">${+est} min</span>`;
+            else if (logged) chip = `<span class="mg-chip" title="Time logged on this task">${fmtM(logged)} logged</span>`;
+            return chip + (r && ((r.assignee_email || "").toLowerCase() === me || isAdmin()) ? mgGcalBtn(r) : "");
           })()}
           ${t.status !== "done" ? `<button class="mg-act" data-mgtimer="${t.id}" title="Start a timer on this task">▶</button>` : ""}
           <button class="mg-act del" data-mgdel="${t.id}" title="Delete task">✕</button>`;
@@ -3831,9 +3873,17 @@
         if (opened) {
           const canNudge = (isAdmin() || (t.created_by || "").toLowerCase() === me) &&
             t.assignee_email && t.assignee_email.toLowerCase() !== me && t.status !== "done";
+          const canEdit = isAdmin() || (t.created_by || "").toLowerCase() === me;
           const det = document.createElement("div");
           det.className = "mg-detail";
           det.innerHTML = `
+            ${canEdit ? `<div class="mg-editrow">
+              <input type="text" data-mgetitle="${t.id}" value="${escapeHtml(t.title)}" aria-label="Task title" style="flex:2;min-width:150px;">
+              <select data-mgeent="${t.id}" class="inline-select" aria-label="Unit">${mgScopedOpts(t.assignee_email || currentEmail, t.entity_id)}</select>
+              <select data-mgeass="${t.id}" class="inline-select" aria-label="Assignee">${mgUsers.map((u) => `<option value="${escapeHtml(u.email)}"${(u.email || "").toLowerCase() === (t.assignee_email || "").toLowerCase() ? " selected" : ""}>${escapeHtml(u.full_name || mgName(u.email))}</option>`).join("")}</select>
+              <span data-mgeduemount="${t.id}"></span>
+              <button class="mg-gcal" data-mgesave="${t.id}">Save</button>
+            </div>` : ""}
             ${recurring ? "" : `<div class="mg-progrow"><label for="mgprog_${t.id}" class="muted" style="flex:0 0 auto;">Progress</label>
               <input type="range" id="mgprog_${t.id}" min="0" max="100" step="5" value="${+t.progress || 0}" data-mgprog="${t.id}" aria-label="Percent complete">
               <span class="pct" data-mgpct="${t.id}">${+t.progress || 0}%</span></div>`}
@@ -3859,6 +3909,32 @@
         if (error) { alert(error.message); return; }
         t.status = next;
         if (next === "done") logAccess("task_done", { title: t.title });
+        mgRenderTasks();
+      }));
+      // Edit/reassign: due-date picker per open panel, then one Save.
+      const editPicks = {};
+      box.querySelectorAll("[data-mgeduemount]").forEach((m) => {
+        const t = mgTasks.find((x) => x.id === m.dataset.mgeduemount);
+        if (window.createDatePicker) editPicks[t.id] = createDatePicker({ mount: m, initial: t.due_date || "" });
+      });
+      box.querySelectorAll("[data-mgesave]").forEach((b) => b.addEventListener("click", async () => {
+        const t = mgTasks.find((x) => x.id === b.dataset.mgesave);
+        const title = box.querySelector(`[data-mgetitle="${t.id}"]`)?.value.trim();
+        if (!title) return;
+        const patch = {
+          title,
+          entity_id: box.querySelector(`[data-mgeent="${t.id}"]`)?.value || null,
+          assignee_email: box.querySelector(`[data-mgeass="${t.id}"]`)?.value || t.assignee_email,
+          due_date: editPicks[t.id]?.getValue() || null,
+        };
+        const reassigned = (patch.assignee_email || "").toLowerCase() !== (t.assignee_email || "").toLowerCase();
+        b.disabled = true; b.textContent = "Saving…";
+        const { error } = await supabase.from("tasks").update(patch).eq("id", t.id);
+        if (error) { alert(error.message); b.disabled = false; b.textContent = "Save"; return; }
+        Object.assign(t, patch);
+        logAccess("task_edit", { title: t.title, who: reassigned ? mgName(t.assignee_email) : undefined });
+        if (reassigned && (t.assignee_email || "").toLowerCase() !== me) mgNotify({ task_id: t.id });
+        mgWhoReveal(t.assignee_email);
         mgRenderTasks();
       }));
       box.querySelectorAll("[data-mgopen]").forEach((s) => s.addEventListener("click", () => {
@@ -3931,6 +4007,31 @@
       }));
     }
     $("mgShowDone")?.addEventListener("change", mgRenderTasks);
+    // Personal ICS feed: mint (or fetch) the token, hand over the URL.
+    $("mgIcsBtn")?.addEventListener("click", async () => {
+      const { data, error } = await supabase.rpc("my_ical_token");
+      if (error) { alert(error.message); return; }
+      $("icsUrl").value = `${cfg.SUPABASE_URL}/functions/v1/task-feed?t=${data}`;
+      show($("icsModal"), true);
+    });
+    $("icsCopy")?.addEventListener("click", async () => {
+      try { await navigator.clipboard.writeText($("icsUrl").value); $("icsCopy").textContent = "Copied ✓"; setTimeout(() => ($("icsCopy").textContent = "Copy URL"), 1500); }
+      catch (_) { $("icsUrl").select(); }
+    });
+    $("icsModal")?.addEventListener("click", (e) => { if (e.target === $("icsModal")) show($("icsModal"), false); });
+    // Manual digest send (admin) — same email the morning cron sends.
+    $("opDigestBtn")?.addEventListener("click", async () => {
+      const b = $("opDigestBtn"); b.disabled = true; b.textContent = "Sending…";
+      try {
+        const res = await fetch(cfg.SUPABASE_URL + "/functions/v1/daily-digest", { method: "POST", headers: await mailFnHeaders() });
+        const j = await res.json().catch(() => ({}));
+        if (res.ok) {
+          alert(j.sent?.length ? "Digest sent to: " + j.sent.join(", ") : "Nobody has tasks due today or overdue — nothing to send.");
+          logAccess("digest_send", { sent: (j.sent || []).length });
+        } else alert("Digest failed: " + (j.error || res.status));
+      } catch (e) { alert("Digest failed: " + (e.message || e)); }
+      b.disabled = false; b.textContent = "Send digest now";
+    });
     // Assignment emails: fire-and-forget — the task is saved either way.
     async function mgNotify(body) {
       try {
@@ -6262,6 +6363,36 @@
         (groups[payer + "|" + r.entity_id] ||= []).push(r);
       }
       const keys = Object.keys(groups);
+      // Net position: everything outstanding right now — unsettled
+      // allocations plus recorded-but-unpaid settlements — netted per
+      // entity pair, so one transfer squares each relationship.
+      const net = {}; // "a|b" (ids sorted) → +amount means b owes a
+      const addOwed = (payer, ent, amt) => { // ent owes payer amt
+        const [a, b] = [payer, ent].sort();
+        net[a + "|" + b] = (net[a + "|" + b] || 0) + (payer === a ? amt : -amt);
+      };
+      for (const k of keys) {
+        const [pid, eid] = k.split("|");
+        addOwed(pid, eid, groups[k].reduce((s, r) => s + (Number(r.amount) || 0), 0));
+      }
+      const { data: unpaid } = await supabase.from("ic_settlements").select("*").is("paid_at", null);
+      for (const s of unpaid || []) {
+        const pid = s.payer_entity_id || tenantEntityId(s.tenant_id);
+        if (pid && s.entity_id && pid !== s.entity_id) addOwed(pid, s.entity_id, Number(s.total) || 0);
+      }
+      const netPairs = Object.entries(net).filter(([, v]) => Math.abs(v) > 0.004);
+      if (netPairs.length) {
+        h += `<h2 style="font-size:0.8rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin:0.4rem 0 0.6rem;">Net position — all outstanding</h2>
+          <div class="section-card" style="padding:0.8rem 1rem;margin-bottom:1rem;">` +
+          netPairs.map(([k, v]) => {
+            const [a, b] = k.split("|");
+            const from = v > 0 ? b : a, to = v > 0 ? a : b;
+            return `<div style="display:flex;align-items:center;gap:0.5rem;padding:0.25rem 0;">
+              <strong>${escapeHtml(icEntityName(from))}</strong><span class="muted">owes</span><strong>${escapeHtml(icEntityName(to))}</strong>
+              <span style="flex:1;"></span><strong style="font-variant-numeric:tabular-nums;">${money(Math.abs(v))}</strong></div>`;
+          }).join("") +
+          `<div class="muted" style="font-size:0.75rem;margin-top:0.4rem;">Netted across every month's unsettled bills and unpaid settlements — one transfer per pair squares it.</div></div>`;
+      }
       h += `<h2 style="font-size:0.8rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin:0.4rem 0 0.6rem;">To settle</h2>`;
       if (!keys.length) {
         // Point at where the open allocations actually are.
@@ -6298,8 +6429,11 @@
             <div style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;">
               <strong>${escapeHtml(icEntityName(s.entity_id))}</strong><span class="muted">owes</span><strong>${escapeHtml(icPayerName(s))}</strong>
               <span class="muted">· ${s.invoice_count} bill${s.invoice_count === 1 ? "" : "s"} · ${money(s.total)} · recorded ${new Date(s.created_at).toLocaleDateString()}${s.created_by ? " by " + escapeHtml(s.created_by) : ""}</span>
+              ${s.paid_at ? `<span class="mg-chip" style="color:#5da97f;border-color:#5da97f;" title="Click to unmark" role="button" data-icunpaid="${s.id}">Paid ${new Date(s.paid_at).toLocaleDateString()}</span>` : ""}
               <span style="flex:1;"></span>
+              ${s.paid_at ? "" : `<button class="btn btn--sm" data-icpaid="${s.id}" title="The transfer/journal entry has been made">Mark paid</button>`}
               <button class="btn btn--ghost btn--sm" data-icstmt="${s.id}">Copy statement</button>
+              <button class="btn btn--ghost btn--sm" data-icfile="${s.id}" title="Save the statement as a staff-only document">File to Documents</button>
               <button class="iconact del" data-icundo="${s.id}" title="Undo — releases these bills back to the open list">✕</button>
             </div>
           </div>`;
@@ -6333,11 +6467,10 @@
         logAccess("ic_unsettle", { payer: s ? icPayerName(s) : "?", entity: icEntityName(s?.entity_id), total: s?.total });
         icRender(); renderLedger();
       }));
-      box.querySelectorAll("[data-icstmt]").forEach((b) => b.addEventListener("click", async () => {
-        const s = (setts || []).find((x) => x.id === b.dataset.icstmt);
+      const icStatementText = (s) => {
         const bills = invRows.filter((r) => r.ic_settlement_id === s.id);
         const monthName = new Date(icMonth + "-15T12:00:00").toLocaleDateString("en-US", { month: "long", year: "numeric" });
-        const text = [
+        return [
           `INTERCOMPANY SETTLEMENT STATEMENT`,
           `${monthName}`,
           ``,
@@ -6346,11 +6479,54 @@
           ``,
           ...bills.map((r) => `  ${r.invoice_date || "—"}  ${(r.vendor || "").padEnd(32)}  ${r.code || "—"}  ${money(r.amount)}`),
           ``,
-          `Recorded ${new Date(s.created_at).toLocaleString()}${s.created_by ? " by " + s.created_by : ""} · CallidusCo Owner Portal`,
+          `Recorded ${new Date(s.created_at).toLocaleString()}${s.created_by ? " by " + s.created_by : ""}${s.paid_at ? ` · PAID ${new Date(s.paid_at).toLocaleDateString()}` : ""} · CallidusCo Owner Portal`,
           `Documentation of allocation only — record the transfer/journal entry in the books.`,
         ].join("\n");
+      };
+      box.querySelectorAll("[data-icstmt]").forEach((b) => b.addEventListener("click", async () => {
+        const s = (setts || []).find((x) => x.id === b.dataset.icstmt);
+        const text = icStatementText(s);
         try { await navigator.clipboard.writeText(text); b.textContent = "Copied ✓"; setTimeout(() => (b.textContent = "Copy statement"), 1500); }
         catch (_) { alert(text); }
+      }));
+      box.querySelectorAll("[data-icpaid]").forEach((b) => b.addEventListener("click", async () => {
+        const s = (setts || []).find((x) => x.id === b.dataset.icpaid);
+        if (!confirm(`Mark the ${money(s?.total || 0)} settlement (${icEntityName(s?.entity_id)} → ${icPayerName(s)}) as paid?`)) return;
+        const { error } = await supabase.from("ic_settlements").update({ paid_at: new Date().toISOString() }).eq("id", b.dataset.icpaid);
+        if (error) { alert(error.message); return; }
+        logAccess("ic_paid", { entity: icEntityName(s?.entity_id), payer: icPayerName(s), total: money(s?.total) });
+        icRender();
+      }));
+      box.querySelectorAll("[data-icunpaid]").forEach((c) => c.addEventListener("click", async () => {
+        const s = (setts || []).find((x) => x.id === c.dataset.icunpaid);
+        if (!confirm(`Unmark this settlement as paid?`)) return;
+        const { error } = await supabase.from("ic_settlements").update({ paid_at: null }).eq("id", c.dataset.icunpaid);
+        if (error) { alert(error.message); return; }
+        icRender();
+      }));
+      box.querySelectorAll("[data-icfile]").forEach((b) => b.addEventListener("click", async () => {
+        const s = (setts || []).find((x) => x.id === b.dataset.icfile);
+        const monthName = new Date(icMonth + "-15T12:00:00").toLocaleDateString("en-US", { month: "long", year: "numeric" });
+        const title = `Intercompany settlement — ${icEntityName(s.entity_id)} → ${icPayerName(s)} (${monthName})`;
+        if (!confirm(`File "${title}" to Documents (staff-only)?`)) return;
+        b.disabled = true; b.textContent = "Filing…";
+        try {
+          const blob = new Blob([icStatementText(s)], { type: "text/plain" });
+          const path = "docs/" + Date.now() + "-ic-settlement-" + icMonth + ".txt";
+          const { error: upErr } = await supabase.storage.from("documents").upload(path, blob, { contentType: "text/plain" });
+          if (upErr) throw upErr;
+          const { error: insErr } = await supabase.from("documents").insert({
+            title, description: `${s.invoice_count} bill${s.invoice_count === 1 ? "" : "s"} · ${money(s.total)}`,
+            category: "Intercompany", doc_date: icMonth + "-01",
+            entity_id: null, recipients: null, // no unit, no people → staff only
+            file_path: path, file_name: `settlement-${icMonth}.txt`, mime: "text/plain", size_bytes: blob.size,
+            uploaded_by: profile.id, uploaded_by_name: profile.full_name || profile.email,
+          });
+          if (insErr) throw insErr;
+          logAccess("ic_statement", { title });
+          b.textContent = "Filed ✓";
+          loadDocuments();
+        } catch (e) { alert("Filing failed: " + (e.message || e)); b.disabled = false; b.textContent = "File to Documents"; }
       }));
     }
     $("icBtn")?.addEventListener("click", openIc);
