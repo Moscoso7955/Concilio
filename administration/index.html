@@ -582,6 +582,23 @@
       #saList td:nth-child(3) { order: 1; flex: 1 1 100%; }
       #saList td:nth-child(2) { order: 2; color: var(--muted); font-size: 0.76rem; max-width: none; }
       #saList td:nth-child(1) { order: 3; color: var(--muted); font-size: 0.76rem; margin-left: auto; }
+      /* Time week table: unit + duration up top, note beneath, who/date
+         as a meta line — the live "running" clock stays fully visible. */
+      #mgTimeTable, #mgTimeTable tbody { display: block; }
+      #mgTimeTable thead { display: none; }
+      #mgTimeTable tbody tr {
+        display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.7rem;
+        background: var(--panel-2, #1f1f1f); border: 1px solid var(--border);
+        border-radius: 10px; padding: 0.6rem 0.75rem; margin-bottom: 0.55rem;
+      }
+      #mgTimeTable tbody td { border: 0; padding: 0; white-space: normal; text-align: left; }
+      #mgTimeTable tbody td:empty { display: none; }
+      #mgTimeTable td:nth-child(3) { order: 1; flex: 1 1 40%; min-width: 7rem; font-weight: 600; }
+      #mgTimeTable td:nth-child(5) { order: 2; margin-left: auto; font-weight: 700; }
+      #mgTimeTable td:nth-child(4) { order: 3; flex: 1 1 100%; }
+      #mgTimeTable td:nth-child(2) { order: 4; color: var(--muted); font-size: 0.76rem; }
+      #mgTimeTable td:nth-child(1) { order: 5; color: var(--muted); font-size: 0.76rem; }
+      #mgTimeTable td:nth-child(6) { order: 6; margin-left: auto; }
     }
   </style>
 </head>
@@ -690,7 +707,7 @@
           <h2 style="margin:0;">This week</h2>
           <span class="muted" id="mgWeekTotal"></span>
         </div>
-        <div class="table-wrap"><table>
+        <div class="table-wrap"><table id="mgTimeTable">
           <thead><tr><th>Date</th><th class="mg-whocol">Who</th><th>Unit</th><th>Note</th><th class="num" title="h:mm:ss">Time</th><th></th></tr></thead>
           <tbody id="mgTimeBody"></tbody>
         </table></div>
@@ -1144,7 +1161,7 @@
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.54.0 — schema migration 0054">v1.54.0</div>
+  <div class="version-tag" title="Owner Portal v1.54.1 — schema migration 0054">v1.54.1</div>
 
   <!-- Settings modal -->
   <div class="modal-overlay hidden" id="settingsModal">
