@@ -161,6 +161,21 @@
     .su-row.open .su-caret { transform: rotate(90deg); }
     .su-body { padding: 0.15rem 0.9rem 0.9rem; border-top: 1px solid var(--border); }
 
+    /* ---------- Management: tasks + time tracking ---------- */
+    .mg-task { display: flex; align-items: center; gap: 0.6rem; padding: 0.5rem 0.2rem; border-bottom: 1px solid #222; }
+    .mg-task:last-child { border-bottom: 0; }
+    .mg-status { width: 17px; height: 17px; border-radius: 50%; border: 2px solid var(--muted); background: none; cursor: pointer; flex: 0 0 auto; padding: 0; }
+    .mg-status.doing { border-color: #d9a441; background: linear-gradient(to right, #d9a441 50%, transparent 50%); }
+    .mg-status.done { border-color: #5da97f; background: #5da97f; }
+    .mg-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .mg-task.done .mg-title { color: var(--muted); text-decoration: line-through; }
+    .mg-chip { font-size: 0.7rem; color: var(--muted); border: 1px solid var(--border); border-radius: 999px; padding: 0.1rem 0.5rem; background: var(--panel-2); flex: 0 0 auto; }
+    .mg-due { font-size: 0.78rem; color: var(--muted); flex: 0 0 auto; font-variant-numeric: tabular-nums; }
+    .mg-due.overdue { color: #e08585; font-weight: 600; }
+    .mg-act { background: none; border: 0; color: var(--muted); cursor: pointer; padding: 0.1rem 0.25rem; font-size: 0.9rem; flex: 0 0 auto; }
+    .mg-act:hover { color: var(--text); }
+    .mg-act.del:hover { color: #e08585; }
+
     /* ---------- Budget maker (per-unit, in its own modal) ---------- */
     .bud-panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 12px; margin-bottom: 16px; }
     .bud-panel { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
@@ -470,6 +485,7 @@
     <div class="tabs">
       <button class="tab active" data-tab="financials">Reports</button>
       <button class="tab" data-tab="memos">Memo Board</button>
+      <button class="tab" data-tab="management">Management</button>
       <button class="tab" data-tab="documents">Documents</button>
       <button class="tab" data-tab="invoices">Invoices</button>
       <button class="tab" data-tab="marketing">Marketing</button>
@@ -481,6 +497,52 @@
       <span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-2px;"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg> Viewing the portal as <strong id="repViewAsName"></strong> — exactly what they see.</span>
       <button class="btn btn--sm" id="repViewAsExit" style="margin-left:auto;flex:0 0 auto;">Exit</button>
     </div>
+
+    <!-- Management: time tracking + tasks -->
+    <section class="tab-panel" data-panel="management">
+      <div class="section-card">
+        <h2>Time</h2>
+        <div class="row" style="align-items:flex-end;flex-wrap:wrap;">
+          <div><label>Unit / entity</label><select id="mg_t_entity" class="inline-select" style="min-width:170px;padding:0.5rem;"></select></div>
+          <div style="flex:1;min-width:190px;"><label>What are you on?</label><input type="text" id="mg_t_note" placeholder="Optional"></div>
+          <button class="btn" id="mgTimerBtn" style="flex:0 0 auto;">Start timer</button>
+          <span id="mgTimerElapsed" class="muted" style="font-variant-numeric:tabular-nums;min-width:56px;"></span>
+        </div>
+        <div class="row" style="align-items:flex-end;flex-wrap:wrap;margin-top:0.7rem;">
+          <div><label>Date</label><span id="mg_m_date"></span></div>
+          <div><label>Hours</label><input type="number" step="0.25" id="mg_m_hours" style="width:92px;" placeholder="1.5"></div>
+          <div><label>Unit / entity</label><select id="mg_m_entity" class="inline-select" style="min-width:170px;padding:0.5rem;"></select></div>
+          <div style="flex:1;min-width:170px;"><label>Note</label><input type="text" id="mg_m_note" placeholder="Optional"></div>
+          <button class="btn btn--ghost" id="mgAddTime" style="flex:0 0 auto;">Log time</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:0.7rem;margin:1.1rem 0 0.5rem;flex-wrap:wrap;">
+          <h2 style="margin:0;">This week</h2>
+          <select id="mgWho" class="inline-select admin-only hidden" style="padding:0.35rem 0.5rem;"></select>
+          <span class="muted" id="mgWeekTotal"></span>
+        </div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Date</th><th class="mg-whocol">Who</th><th>Unit</th><th>Note</th><th class="num">Hours</th><th></th></tr></thead>
+          <tbody id="mgTimeBody"></tbody>
+        </table></div>
+        <p class="muted hidden" id="mgTimeEmpty">Nothing logged this week yet.</p>
+      </div>
+
+      <div class="section-card">
+        <div style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;margin-bottom:0.8rem;">
+          <h2 style="margin:0;">Tasks</h2><span style="flex:1;"></span>
+          <label class="tabchip"><input type="checkbox" id="mgShowDone"> Show done</label>
+        </div>
+        <div class="row" style="align-items:flex-end;flex-wrap:wrap;margin-bottom:0.9rem;">
+          <div style="flex:2;min-width:210px;"><label>Task</label><input type="text" id="mg_k_title" placeholder="What needs doing?"></div>
+          <div><label>Unit / entity</label><select id="mg_k_entity" class="inline-select" style="min-width:150px;padding:0.5rem;"></select></div>
+          <div><label>Assign to</label><select id="mg_k_assignee" class="inline-select" style="min-width:160px;padding:0.5rem;"></select></div>
+          <div><label>Due</label><span id="mg_k_due"></span></div>
+          <button class="btn" id="mgAddTask" style="flex:0 0 auto;">Add task</button>
+        </div>
+        <div id="mgTaskList"></div>
+        <p class="muted hidden" id="mgTasksEmpty">No open tasks — add the first one above.</p>
+      </div>
+    </section>
 
     <!-- Reports -->
     <section class="tab-panel" data-panel="financials">
@@ -837,7 +899,7 @@
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.39.0 — schema migration 0039">v1.39.0</div>
+  <div class="version-tag" title="Owner Portal v1.40.0 — schema migration 0040">v1.40.0</div>
 
   <!-- Settings modal -->
   <div class="modal-overlay hidden" id="settingsModal">
@@ -1164,7 +1226,7 @@
     $("signOutBtn").addEventListener("click", async () => { await supabase.auth.signOut(); location.reload(); });
 
     /* ---------------- Settings: users & access (admin) ---------------- */
-    const TAB_META = [["financials", "Reports"], ["memos", "Memo Board"], ["documents", "Documents"], ["invoices", "Invoices"], ["marketing", "Marketing"], ["owners", "Ownership"]];
+    const TAB_META = [["financials", "Reports"], ["memos", "Memo Board"], ["management", "Management"], ["documents", "Documents"], ["invoices", "Invoices"], ["marketing", "Marketing"], ["owners", "Ownership"]];
     const ROLE_LABEL = { owner: "Member", accountant: "Accountant", admin: "Admin" };
 
     $("settingsBtn")?.addEventListener("click", () => { show($("settingsModal"), true); loadSettingsUsers(); });
@@ -1243,6 +1305,9 @@
         case "budget_weather": return `Pulled weather history for ${eh(d.place || "the unit's city")}${unit}`;
         case "inv_entity": return `Allocated bill <strong>${eh(d.vendor || "")}</strong> to ${eh(d.entity || "")}`;
         case "inv_paidby": return `Set bill <strong>${eh(d.vendor || "")}</strong> payer to ${eh(d.entity || "")}`;
+        case "task_add": return `Added task <strong>${eh(d.title || "")}</strong>`;
+        case "task_done": return `Completed task <strong>${eh(d.title || "")}</strong>`;
+        case "task_delete": return `Deleted task <strong>${eh(d.title || "")}</strong>`;
         case "ic_settle": return `Recorded settlement: <strong>${eh(d.entity || "")}</strong> owes ${eh(d.payer || "")} ${money(Number(d.total) || 0)} (${eh(d.month || "")})`;
         case "ic_unsettle": return `Undid a ${money(Number(d.total) || 0)} settlement (${eh(d.entity || "")} / ${eh(d.payer || "")})`;
         default: return eh(r.event || "activity");
@@ -1303,7 +1368,26 @@
       if (sel) { const keep = sel.value; sel.innerHTML = roleRows.map((r) => `<option value="${escapeHtml(r.key)}">${escapeHtml(r.name)}</option>`).join(""); if (roleRows.some((r) => r.key === keep)) sel.value = keep; }
       renderSettingsRoles(roleRows, roleCounts);
       if (!rows.length) { box.innerHTML = '<p class="muted">No users yet — add someone below, or grant access from an ownership box.</p>'; return; }
+      // Grouped by role type (admins first, then roles A→Z), people A→Z
+      // within each group.
+      const roleDisp = (key) => roleRows.find((ro) => ro.key === key)?.name || key || "member";
+      const personKey = (r) => {
+        const em = (r.email || "").toLowerCase();
+        return (profByEmail[em]?.full_name || boxByEmail[em]?.name || r.email || "").toLowerCase();
+      };
+      rows.sort((a, b) => {
+        const pa = a.role === "admin" ? 0 : 1, pb = b.role === "admin" ? 0 : 1;
+        if (pa !== pb) return pa - pb;
+        const ra = roleDisp(a.role), rb = roleDisp(b.role);
+        if (ra !== rb) return ra.localeCompare(rb);
+        return personKey(a).localeCompare(personKey(b));
+      });
+      let lastRole = null;
       box.innerHTML = rows.map((r, i) => {
+        const header = r.role !== lastRole
+          ? `<div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);margin:${lastRole === null ? "0" : "1rem"} 0 0.4rem;">${escapeHtml(roleDisp(r.role))}${roleCounts[r.role] > 1 ? ` · ${roleCounts[r.role]}` : ""}</div>`
+          : "";
+        lastRole = r.role;
         const em = (r.email || "").toLowerCase();
         const p = profByEmail[em], b = boxByEmail[em];
         const signedUp = signInMap ? !!signInMap[em] : !!p;
@@ -1314,7 +1398,7 @@
         const checks = TAB_META.map(([k, label]) =>
           `<label class="tabchip"><input type="checkbox" data-sutab="${i}" value="${k}"${!tabs || tabs.includes(k) ? " checked" : ""}> ${label}</label>`).join("");
         const roleName = roleRows.find((ro) => ro.key === r.role)?.name || r.role;
-        return `<div class="su-row" data-surow="${i}" data-suemail="${escapeHtml(r.email)}">
+        return header + `<div class="su-row" data-surow="${i}" data-suemail="${escapeHtml(r.email)}">
           <button type="button" class="su-head" data-sutoggle="${i}">
             <span class="su-dot ${signedUp ? "su-dot--on" : "su-dot--off"}" title="${signedUp ? "Signed up" : "Invited — hasn't signed in yet"}"></span>
             <span class="su-name">${escapeHtml(who || r.email)}</span>
@@ -1578,7 +1662,7 @@
     // Which tabs this user sees. Admins see everything; others get their
     // per-user assignment (Settings) or their role's default set. Site
     // Content is never assignable — it edits the public site.
-    const ALL_TABS = ["financials", "memos", "documents", "invoices", "marketing", "site", "owners"];
+    const ALL_TABS = ["financials", "memos", "management", "documents", "invoices", "marketing", "site", "owners"];
     const ROLE_DEFAULT_TABS = {
       owner: ["financials", "memos", "documents", "owners"],
       accountant: ["financials", "documents", "invoices"],
@@ -1606,6 +1690,7 @@
       document.querySelectorAll(".tab[data-tab]").forEach((b) => show(b, tabs.includes(b.dataset.tab)));
       restoreTab(); // land on the tab the user was on before the reload
       const finReady = loadFinancials(); loadMemos();
+      if (tabs.includes("management")) loadMgmt();
       if (tabs.includes("documents")) loadDocuments();
       if (tabs.includes("invoices")) loadInvoices();
       if (tabs.includes("marketing")) loadMail();
@@ -2851,6 +2936,206 @@
       } catch (e) { s.textContent = "QuickBooks: " + (e.message || e); }
       b.disabled = false;
     });
+
+    /* ---- Management: time tracking (live timer + manual entries) and
+       a shared task list. Staff and read_all roles (e.g. "management")
+       see everything; everyone else sees their own tasks and time. ---- */
+    let mgEntities = [], mgUsers = [], mgTasks = [], mgTime = [], mgTimer = null, mgTick = null;
+    let mgWhoSel = "me", mgDatePick = null, mgDuePick = null, mgInit = false;
+    const mgToday = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+    const mgMonday = () => { const d = new Date(); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+    const mgHrs = (min) => (Math.round((min || 0) / 6) / 10).toFixed(1);
+    const mgName = (email) => {
+      const u = mgUsers.find((x) => (x.email || "").toLowerCase() === String(email || "").toLowerCase());
+      return u?.full_name || String(email || "").split("@")[0];
+    };
+    const mgEntName = (id) => mgEntities.find((e) => e.id === id)?.name || "";
+    const mgEntOpts = (sel) => '<option value="">— general</option>' +
+      mgEntities.map((e) => `<option value="${e.id}"${e.id === sel ? " selected" : ""}>${escapeHtml(e.name)}</option>`).join("");
+
+    async function loadMgmt() {
+      const [eRes, uRes] = await Promise.all([
+        supabase.from("ownership_entities").select("id,name").order("name"),
+        supabase.from("profiles").select("email,full_name").order("full_name"),
+      ]);
+      mgEntities = eRes.data || [];
+      mgUsers = uRes.data || [];
+      if (!mgInit) {
+        mgInit = true;
+        for (const id of ["mg_t_entity", "mg_m_entity", "mg_k_entity"]) $(id).innerHTML = mgEntOpts("");
+        const me = (currentEmail || "").toLowerCase();
+        $("mg_k_assignee").innerHTML = mgUsers.length
+          ? mgUsers.map((u) => `<option value="${escapeHtml(u.email)}"${(u.email || "").toLowerCase() === me ? " selected" : ""}>${escapeHtml(u.full_name || u.email)}</option>`).join("")
+          : `<option value="${escapeHtml(currentEmail || "")}">${escapeHtml(currentEmail || "me")}</option>`;
+        if (window.createDatePicker) {
+          mgDatePick = createDatePicker({ mount: $("mg_m_date"), initial: mgToday() });
+          mgDuePick = createDatePicker({ mount: $("mg_k_due"), initial: "" });
+        }
+        if (isAdmin()) {
+          $("mgWho").innerHTML = `<option value="me">My time</option><option value="all">Everyone</option>` +
+            mgUsers.filter((u) => (u.email || "").toLowerCase() !== me)
+              .map((u) => `<option value="${escapeHtml(u.email)}">${escapeHtml(u.full_name || u.email)}</option>`).join("");
+          $("mgWho").addEventListener("change", () => { mgWhoSel = $("mgWho").value; mgRenderTime(); });
+        }
+      }
+      await mgRefresh();
+    }
+
+    async function mgRefresh() {
+      const [tRes, tmRes, runRes] = await Promise.all([
+        supabase.from("tasks").select("*").order("created_at", { ascending: false }).limit(400),
+        supabase.from("time_entries").select("*").gte("work_date", mgMonday()).order("work_date", { ascending: false }).order("created_at", { ascending: false }).limit(500),
+        supabase.from("time_entries").select("*").is("stopped_at", null).not("started_at", "is", null)
+          .ilike("user_email", currentEmail || "?").limit(1),
+      ]);
+      mgTasks = tRes.data || [];
+      mgTime = tmRes.data || [];
+      mgTimer = (runRes.data || [])[0] || null;
+      mgRenderTimer(); mgRenderTime(); mgRenderTasks();
+    }
+
+    function mgRenderTimer() {
+      const b = $("mgTimerBtn"), el = $("mgTimerElapsed");
+      clearInterval(mgTick);
+      if (mgTimer) {
+        b.textContent = "Stop & log";
+        const tick = () => { el.textContent = mgHrs((Date.now() - new Date(mgTimer.started_at)) / 60000) + "h"; };
+        tick(); mgTick = setInterval(tick, 15000);
+        $("mg_t_note").value = mgTimer.note || "";
+        $("mg_t_entity").value = mgTimer.entity_id || "";
+      } else { b.textContent = "Start timer"; el.textContent = ""; }
+    }
+    $("mgTimerBtn")?.addEventListener("click", async () => {
+      if (!mgTimer) {
+        const { data, error } = await supabase.from("time_entries").insert({
+          user_email: currentEmail, entity_id: $("mg_t_entity").value || null,
+          note: $("mg_t_note").value.trim() || null,
+          started_at: new Date().toISOString(), work_date: mgToday(),
+        }).select("*").single();
+        if (error) { alert(error.message); return; }
+        mgTimer = data; mgRenderTimer();
+      } else {
+        const minutes = Math.max(1, Math.round((Date.now() - new Date(mgTimer.started_at)) / 60000));
+        const { error } = await supabase.from("time_entries").update({
+          stopped_at: new Date().toISOString(), minutes,
+          note: $("mg_t_note").value.trim() || mgTimer.note || null,
+          entity_id: $("mg_t_entity").value || null,
+        }).eq("id", mgTimer.id);
+        if (error) { alert(error.message); return; }
+        mgTimer = null; $("mg_t_note").value = "";
+        mgRefresh();
+      }
+    });
+    $("mgAddTime")?.addEventListener("click", async () => {
+      const hours = parseFloat($("mg_m_hours").value);
+      if (!hours || hours <= 0) { alert("Enter the hours to log (e.g. 1.5)."); return; }
+      const { error } = await supabase.from("time_entries").insert({
+        user_email: currentEmail, entity_id: $("mg_m_entity").value || null,
+        note: $("mg_m_note").value.trim() || null,
+        work_date: mgDatePick?.getValue() || mgToday(), minutes: Math.round(hours * 60),
+      });
+      if (error) { alert(error.message); return; }
+      $("mg_m_hours").value = ""; $("mg_m_note").value = "";
+      mgRefresh();
+    });
+
+    function mgRenderTime() {
+      const me = (currentEmail || "").toLowerCase();
+      const showWho = isAdmin() && mgWhoSel !== "me";
+      document.querySelectorAll(".mg-whocol").forEach((el) => show(el, showWho));
+      let rows = mgTime.filter((r) => r.minutes != null);
+      if (!isAdmin() || mgWhoSel === "me") rows = rows.filter((r) => (r.user_email || "").toLowerCase() === me);
+      else if (mgWhoSel !== "all") rows = rows.filter((r) => (r.user_email || "").toLowerCase() === mgWhoSel.toLowerCase());
+      const body = $("mgTimeBody"); body.innerHTML = "";
+      show($("mgTimeEmpty"), rows.length === 0);
+      for (const r of rows) {
+        const task = r.task_id ? mgTasks.find((t) => t.id === r.task_id) : null;
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td>${r.work_date}</td>
+          <td class="mg-whocol${showWho ? "" : " hidden"}">${escapeHtml(mgName(r.user_email))}</td>
+          <td>${escapeHtml(mgEntName(r.entity_id) || "—")}</td>
+          <td class="muted">${escapeHtml(task?.title || r.note || "")}</td>
+          <td class="num">${mgHrs(r.minutes)}</td>
+          <td class="num">${((r.user_email || "").toLowerCase() === me || isAdmin()) ? `<button class="mg-act del" data-mgtdel="${r.id}" title="Delete entry">✕</button>` : ""}</td>`;
+        body.appendChild(tr);
+      }
+      const total = rows.reduce((s, r) => s + (r.minutes || 0), 0);
+      $("mgWeekTotal").textContent = rows.length ? `${mgHrs(total)}h this week` : "";
+      body.querySelectorAll("[data-mgtdel]").forEach((b) => b.addEventListener("click", async () => {
+        if (!confirm("Delete this time entry?")) return;
+        await supabase.from("time_entries").delete().eq("id", b.dataset.mgtdel);
+        mgRefresh();
+      }));
+    }
+
+    function mgRenderTasks() {
+      const showDone = $("mgShowDone").checked;
+      const open = mgTasks.filter((t) => t.status !== "done")
+        .sort((a, b) => String(a.due_date || "9999").localeCompare(String(b.due_date || "9999")));
+      const done = showDone ? mgTasks.filter((t) => t.status === "done").slice(0, 30) : [];
+      const list = [...open, ...done];
+      const box = $("mgTaskList"); box.innerHTML = "";
+      show($("mgTasksEmpty"), list.length === 0);
+      const today = mgToday();
+      for (const t of list) {
+        const div = document.createElement("div");
+        div.className = "mg-task" + (t.status === "done" ? " done" : "");
+        const overdue = t.due_date && t.due_date < today && t.status !== "done";
+        div.innerHTML = `
+          <button class="mg-status ${t.status}" data-mgst="${t.id}" title="${t.status === "open" ? "Open — click when you start" : t.status === "doing" ? "In progress — click when done" : "Done — click to reopen"}" aria-label="Task status: ${t.status}"></button>
+          <span class="mg-title" title="${escapeHtml(t.title)}">${escapeHtml(t.title)}</span>
+          ${t.entity_id ? `<span class="mg-chip">${escapeHtml(mgEntName(t.entity_id))}</span>` : ""}
+          ${t.assignee_email ? `<span class="mg-chip" title="${escapeHtml(t.assignee_email)}">${escapeHtml(mgName(t.assignee_email))}</span>` : ""}
+          ${t.due_date ? `<span class="mg-due${overdue ? " overdue" : ""}">${t.due_date}</span>` : ""}
+          ${t.status !== "done" ? `<button class="mg-act" data-mgtimer="${t.id}" title="Start a timer on this task">▶</button>` : ""}
+          <button class="mg-act del" data-mgdel="${t.id}" title="Delete task">✕</button>`;
+        box.appendChild(div);
+      }
+      box.querySelectorAll("[data-mgst]").forEach((b) => b.addEventListener("click", async () => {
+        const t = mgTasks.find((x) => x.id === b.dataset.mgst);
+        const next = t.status === "open" ? "doing" : t.status === "doing" ? "done" : "open";
+        const { error } = await supabase.from("tasks").update({ status: next, done_at: next === "done" ? new Date().toISOString() : null }).eq("id", t.id);
+        if (error) { alert(error.message); return; }
+        t.status = next;
+        if (next === "done") logAccess("task_done", { title: t.title });
+        mgRenderTasks();
+      }));
+      box.querySelectorAll("[data-mgdel]").forEach((b) => b.addEventListener("click", async () => {
+        const t = mgTasks.find((x) => x.id === b.dataset.mgdel);
+        if (!confirm(`Delete task “${t?.title}”?`)) return;
+        const { error } = await supabase.from("tasks").delete().eq("id", b.dataset.mgdel);
+        if (error) { alert(error.message); return; }
+        logAccess("task_delete", { title: t?.title });
+        mgRefresh();
+      }));
+      box.querySelectorAll("[data-mgtimer]").forEach((b) => b.addEventListener("click", async () => {
+        if (mgTimer) { alert("A timer is already running — stop it first."); return; }
+        const t = mgTasks.find((x) => x.id === b.dataset.mgtimer);
+        const { data, error } = await supabase.from("time_entries").insert({
+          user_email: currentEmail, entity_id: t.entity_id || null, task_id: t.id,
+          note: t.title, started_at: new Date().toISOString(), work_date: mgToday(),
+        }).select("*").single();
+        if (error) { alert(error.message); return; }
+        mgTimer = data; mgRenderTimer();
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }));
+    }
+    $("mgShowDone")?.addEventListener("change", mgRenderTasks);
+    $("mgAddTask")?.addEventListener("click", async () => {
+      const title = $("mg_k_title").value.trim();
+      if (!title) { $("mg_k_title").focus(); return; }
+      const { error } = await supabase.from("tasks").insert({
+        title, entity_id: $("mg_k_entity").value || null,
+        assignee_email: $("mg_k_assignee").value || currentEmail,
+        due_date: mgDuePick?.getValue() || null,
+        created_by: currentEmail,
+      });
+      if (error) { alert(error.message); return; }
+      logAccess("task_add", { title });
+      $("mg_k_title").value = ""; mgDuePick?.setValue("");
+      mgRefresh();
+    });
+    $("mg_k_title")?.addEventListener("keydown", (e) => { if (e.key === "Enter") $("mgAddTask").click(); });
 
     /* ---- Budget maker: per-unit, per-year P&L budget built by a revenue
        engine — prior-year baseline × aimed growth, reshaped by weather
