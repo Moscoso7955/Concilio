@@ -1201,7 +1201,7 @@
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.56.0 — schema migration 0056">v1.56.0</div>
+  <div class="version-tag" title="Owner Portal v1.56.1 — schema migration 0056">v1.56.1</div>
 
   <!-- Settings modal -->
   <div class="modal-overlay hidden" id="settingsModal">
@@ -2196,7 +2196,11 @@
       document.querySelectorAll(".table-wrap").forEach((w) => w.scrollLeft = 0);
       // The graph measures its boxes; re-render now that it's visible so
       // sizes/edges are computed against real dimensions.
-      if (name === "owners" && typeof gEnt !== "undefined" && gEnt.length) render();
+      if (name === "owners" && typeof gEnt !== "undefined" && gEnt.length) {
+        render();
+        // First look at the chart shows the whole map, not a 100% corner.
+        if (!gFitDone) requestAnimationFrame(fitGraph);
+      }
       return true;
     }
     document.querySelectorAll(".tab").forEach((t) => {
@@ -5493,7 +5497,7 @@
     const gStore = window.createOwnershipStore(supabase);
     const MAX_LINKS = 4, PANE_W = 340;
     const GRID = 20, ZMIN = 0.4, ZMAX = 2, GMARGIN = 40; // min distance from canvas edges
-    let gEnt = [], gEdge = [], gSel = null, gInit = false, gZoom = 1;
+    let gEnt = [], gEdge = [], gSel = null, gInit = false, gZoom = 1, gFitDone = false;
     const posTimer = { t: null }, posPending = new Map();
     const snap = (v) => Math.round(v / GRID) * GRID;
 
@@ -5537,6 +5541,9 @@
       gEnt = g.entities; gEdge = g.edges;
       render();
       if (!gInit) { gInit = true; wireGraphChrome(); }
+      // If the chart is already on screen (user landed on Ownership),
+      // open it fitted; otherwise the tab switch handles it.
+      if (!gFitDone && !document.querySelector('.tab-panel[data-panel="owners"]')?.classList.contains("hidden")) fitGraph();
       // Ownership stakes feed the Reports "Your share" figures, and the
       // graph usually loads after financials — refresh Reports now. The
       // Documents unit names/picker come from the graph too.
@@ -5849,10 +5856,12 @@
       const ys = gEnt.map((e) => Number(e.position_y) || 0);
       const minX = Math.min(...xs), minY = Math.min(...ys);
       const w = Math.max(...xs) - minX + 260, h = Math.max(...ys) - minY + 150;
-      gZoom = Math.min(1, Math.max(ZMIN, Math.min(view.clientWidth / w, view.clientHeight / h)));
+      // Fit may go below the manual-zoom floor — seeing the whole map wins.
+      gZoom = Math.min(1, Math.max(0.2, Math.min(view.clientWidth / w, view.clientHeight / h)));
       applyZoom();
       view.scrollLeft = Math.max(0, (minX - 20) * gZoom);
       view.scrollTop = Math.max(0, (minY - 20) * gZoom);
+      gFitDone = true;
     }
 
     async function flushPositions() {
