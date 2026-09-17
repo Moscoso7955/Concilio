@@ -550,12 +550,11 @@
         <h2>Time</h2>
         <div class="row" style="align-items:flex-end;flex-wrap:wrap;">
           <div><label>Unit / entity</label><select id="mg_t_entity" class="inline-select" style="min-width:170px;padding:0.5rem;"></select></div>
-          <div style="flex:1;min-width:190px;"><label>What are you on?</label><input type="text" id="mg_t_note" placeholder="Optional"></div>
+          <div style="flex:1;min-width:190px;"><label>What are you on?</label><input type="text" id="mg_t_note" placeholder="e.g. payroll, inventory count…"></div>
           <button class="btn" id="mgTimerBtn" style="flex:0 0 auto;">Start timer</button>
           <span id="mgTimerElapsed" class="muted" style="font-variant-numeric:tabular-nums;min-width:56px;"></span>
         </div>
         <div class="row" style="align-items:flex-end;flex-wrap:wrap;margin-top:0.7rem;">
-          <div><label>Date</label><span id="mg_m_date"></span></div>
           <div><label>Hours</label><input type="number" step="0.25" id="mg_m_hours" style="width:92px;" placeholder="1.5"></div>
           <div><label>Unit / entity</label><select id="mg_m_entity" class="inline-select" style="min-width:170px;padding:0.5rem;"></select></div>
           <div style="flex:1;min-width:170px;"><label>Note</label><input type="text" id="mg_m_note" placeholder="Optional"></div>
@@ -996,7 +995,7 @@
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.48.2 — schema migration 0048">v1.48.2</div>
+  <div class="version-tag" title="Owner Portal v1.48.3 — schema migration 0048">v1.48.3</div>
 
   <!-- Settings modal -->
   <div class="modal-overlay hidden" id="settingsModal">
@@ -3063,7 +3062,7 @@
        a shared task list. Staff and read_all roles (e.g. "management")
        see everything; everyone else sees their own tasks and time. ---- */
     let mgEntities = [], mgUsers = [], mgTasks = [], mgTime = [], mgTimer = null, mgTick = null;
-    let mgWhoSel = "me", mgDatePick = null, mgDuePick = null, mgInit = false;
+    let mgWhoSel = "me", mgDuePick = null, mgInit = false;
     const mgToday = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
     const mgMonday = () => { const d = new Date(); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
     const mgHrs = (min) => {
@@ -3100,12 +3099,12 @@
       if (!mgInit) {
         mgInit = true;
         for (const id of ["mg_t_entity", "mg_m_entity", "mg_k_entity"]) $(id).innerHTML = mgEntOpts("");
+        mgTimerSelectPrompt();
         const me = (currentEmail || "").toLowerCase();
         $("mg_k_assignee").innerHTML = mgUsers.length
           ? mgUsers.map((u) => `<option value="${escapeHtml(u.email)}"${(u.email || "").toLowerCase() === me ? " selected" : ""}>${escapeHtml(u.full_name || mgName(u.email))}</option>`).join("")
           : `<option value="${escapeHtml(currentEmail || "")}">${escapeHtml(currentEmail || "me")}</option>`;
         if (window.createDatePicker) {
-          mgDatePick = createDatePicker({ mount: $("mg_m_date"), initial: mgToday() });
           mgDuePick = createDatePicker({ mount: $("mg_k_due"), initial: "" });
         }
         $("mg_k_assignee").addEventListener("change", mgRenderUnitSelects);
@@ -3220,9 +3219,16 @@
       return `<option value="">— general</option>` + theirs.map(opt).join("") +
         (rest.length ? `<optgroup label="Other units">${rest.map(opt).join("")}</optgroup>` : "");
     }
+    // The timer requires a real unit, so its blank option is a prompt,
+    // not "— general".
+    function mgTimerSelectPrompt() {
+      const first = $("mg_t_entity")?.querySelector('option[value=""]');
+      if (first) first.textContent = "Pick a unit…";
+    }
     function mgRenderUnitSelects() {
       const keep = (id) => $(id)?.value || "";
       $("mg_t_entity").innerHTML = mgScopedOpts(currentEmail, keep("mg_t_entity"));
+      mgTimerSelectPrompt();
       $("mg_m_entity").innerHTML = mgScopedOpts(currentEmail, keep("mg_m_entity"));
       $("mg_k_entity").innerHTML = mgScopedOpts($("mg_k_assignee")?.value || currentEmail, keep("mg_k_entity"));
       if ($("op_r_entity") && isAdmin()) $("op_r_entity").innerHTML = mgScopedOpts($("op_r_assignee")?.value || currentEmail, keep("op_r_entity"));
@@ -3448,9 +3454,11 @@
     }));
     $("mgTimerBtn")?.addEventListener("click", async () => {
       if (!mgTimer) {
+        if (!$("mg_t_entity").value) { alert("Pick the unit / entity you're working on first."); $("mg_t_entity").focus(); return; }
+        if (!$("mg_t_note").value.trim()) { alert("Say what you're on before starting the timer."); $("mg_t_note").focus(); return; }
         const { data, error } = await supabase.from("time_entries").insert({
-          user_email: currentEmail, entity_id: $("mg_t_entity").value || null,
-          note: $("mg_t_note").value.trim() || null,
+          user_email: currentEmail, entity_id: $("mg_t_entity").value,
+          note: $("mg_t_note").value.trim(),
           started_at: new Date().toISOString(), work_date: mgToday(),
         }).select("*").single();
         if (error) { alert(error.message); return; }
@@ -3473,7 +3481,7 @@
       const { error } = await supabase.from("time_entries").insert({
         user_email: currentEmail, entity_id: $("mg_m_entity").value || null,
         note: $("mg_m_note").value.trim() || null,
-        work_date: mgDatePick?.getValue() || mgToday(), minutes: Math.round(hours * 60),
+        work_date: mgToday(), minutes: Math.round(hours * 60),
       });
       if (error) { alert(error.message); return; }
       $("mg_m_hours").value = ""; $("mg_m_note").value = "";
