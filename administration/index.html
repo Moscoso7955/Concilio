@@ -567,7 +567,7 @@
           <span class="muted" id="mgWeekTotal"></span>
         </div>
         <div class="table-wrap"><table>
-          <thead><tr><th>Date</th><th class="mg-whocol">Who</th><th>Unit</th><th>Note</th><th class="num">Hours</th><th></th></tr></thead>
+          <thead><tr><th>Date</th><th class="mg-whocol">Who</th><th>Unit</th><th>Note</th><th class="num" title="h:mm:ss">Time</th><th></th></tr></thead>
           <tbody id="mgTimeBody"></tbody>
         </table></div>
         <p class="muted hidden" id="mgTimeEmpty">Nothing logged this week yet.</p>
@@ -996,7 +996,7 @@
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.48.1 — schema migration 0048">v1.48.1</div>
+  <div class="version-tag" title="Owner Portal v1.48.2 — schema migration 0048">v1.48.2</div>
 
   <!-- Settings modal -->
   <div class="modal-overlay hidden" id="settingsModal">
@@ -3070,6 +3070,12 @@
       const h = (min || 0) / 60;
       return (h > 0 && h < 0.1 ? 0.1 : Math.round(h * 10) / 10).toFixed(1);
     };
+    // True elapsed seconds for a time entry: timer entries carry both
+    // timestamps (seconds survive); manual logs only have whole minutes.
+    const mgSecs = (r) => (r.started_at && r.stopped_at)
+      ? Math.max(0, Math.round((new Date(r.stopped_at) - new Date(r.started_at)) / 1000))
+      : (r.minutes || 0) * 60;
+    const mgClock = (s) => `${Math.floor(s / 3600)}:${String(Math.floor(s / 60) % 60).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
     const mgName = (email) => {
       const u = mgUsers.find((x) => (x.email || "").toLowerCase() === String(email || "").toLowerCase());
       if (u?.full_name) return u.full_name;
@@ -3490,12 +3496,12 @@
           <td class="mg-whocol${showWho ? "" : " hidden"}">${escapeHtml(mgName(r.user_email))}</td>
           <td>${escapeHtml(mgEntName(r.entity_id) || "—")}</td>
           <td class="muted">${escapeHtml(task?.title || r.note || "")}</td>
-          <td class="num">${mgHrs(r.minutes)}</td>
+          <td class="num" style="font-variant-numeric:tabular-nums;">${mgClock(mgSecs(r))}</td>
           <td class="num">${((r.user_email || "").toLowerCase() === me || isAdmin()) ? `<button class="mg-act del" data-mgtdel="${r.id}" title="Delete entry">✕</button>` : ""}</td>`;
         body.appendChild(tr);
       }
-      const total = rows.reduce((s, r) => s + (r.minutes || 0), 0);
-      $("mgWeekTotal").textContent = rows.length ? `${mgHrs(total)}h this week` : "";
+      const total = rows.reduce((s, r) => s + mgSecs(r), 0);
+      $("mgWeekTotal").textContent = rows.length ? `${mgClock(total)} this week` : "";
       body.querySelectorAll("[data-mgtdel]").forEach((b) => b.addEventListener("click", async () => {
         if (!confirm("Delete this time entry?")) return;
         await supabase.from("time_entries").delete().eq("id", b.dataset.mgtdel);
