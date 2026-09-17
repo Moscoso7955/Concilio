@@ -978,7 +978,7 @@
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.44.0 — schema migration 0044">v1.44.0</div>
+  <div class="version-tag" title="Owner Portal v1.44.1 — schema migration 0044">v1.44.1</div>
 
   <!-- Settings modal -->
   <div class="modal-overlay hidden" id="settingsModal">
@@ -3081,13 +3081,14 @@
             const title = $("op_r_title").value.trim();
             if (!title) { $("op_r_title").focus(); return; }
             const cad = $("op_r_cad").value;
-            const { error } = await supabase.from("recurring_tasks").insert({
+            const { data: ins, error } = await supabase.from("recurring_tasks").insert({
               title, entity_id: $("op_r_entity").value || null,
               assignee_email: $("op_r_assignee").value || currentEmail,
               cadence: cad, byday: cad === "daily" ? null : +$("op_r_day").value || 1,
               created_by: currentEmail,
-            });
+            }).select("id").single();
             if (error) { alert(error.message); return; }
+            if (ins?.id) mgNotify({ recurring_id: ins.id });
             logAccess("recur_add", { title, cadence: cad });
             $("op_r_title").value = "";
             mgRefresh();
@@ -3426,16 +3427,25 @@
       }));
     }
     $("mgShowDone")?.addEventListener("change", mgRenderTasks);
+    // Assignment emails: fire-and-forget — the task is saved either way.
+    async function mgNotify(body) {
+      try {
+        await fetch(cfg.SUPABASE_URL + "/functions/v1/notify-task", {
+          method: "POST", headers: await mailFnHeaders(), body: JSON.stringify(body),
+        });
+      } catch (_) { /* best effort */ }
+    }
     $("mgAddTask")?.addEventListener("click", async () => {
       const title = $("mg_k_title").value.trim();
       if (!title) { $("mg_k_title").focus(); return; }
-      const { error } = await supabase.from("tasks").insert({
+      const { data: ins, error } = await supabase.from("tasks").insert({
         title, entity_id: $("mg_k_entity").value || null,
         assignee_email: $("mg_k_assignee").value || currentEmail,
         due_date: mgDuePick?.getValue() || null,
         created_by: currentEmail,
-      });
+      }).select("id").single();
       if (error) { alert(error.message); return; }
+      if (ins?.id) mgNotify({ task_id: ins.id });
       logAccess("task_add", { title });
       $("mg_k_title").value = ""; mgDuePick?.setValue("");
       mgRefresh();
