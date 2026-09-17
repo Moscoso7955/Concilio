@@ -4,6 +4,7 @@
 // insert. Any signed-in portal user may notify for a task they
 // created; staff may notify for any. Recurring spawns are NOT mailed
 // (standing work would spam) — only the definition's creation is.
+// With { nudge: true } it instead asks the assignee for an update.
 // Deploy with verify_jwt = FALSE; sends via RESEND_API_KEY.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
@@ -27,7 +28,7 @@ const json = (b: unknown, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { ...cors, "Content-Type": "application/json" } });
 const esc = (s: string) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-function emailHtml(kind: string, title: string, meta: string[], fromWho: string) {
+function emailHtml(kind: string, title: string, meta: string[], fromWho: string, byLabel = "Assigned by") {
   return `
   <div style="background:#111111;padding:40px 16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
     <div style="max-width:440px;margin:0 auto;background:#1a1a1a;border:1px solid #2f2f2f;border-radius:14px;padding:32px;text-align:center;">
@@ -36,7 +37,7 @@ function emailHtml(kind: string, title: string, meta: string[], fromWho: string)
       <h1 style="color:#e5e7eb;font-size:19px;margin:0 0 10px;">${esc(title)}</h1>
       ${meta.length ? `<p style="color:#8a8f98;font-size:13px;line-height:1.7;margin:0 0 20px;">${meta.map(esc).join("<br>")}</p>` : ""}
       <a href="${PORTAL_URL}" style="display:inline-block;background:#7c8493;color:#111111;font-weight:600;font-size:15px;text-decoration:none;padding:12px 28px;border-radius:9px;">Open Management</a>
-      <p style="color:#8a8f98;font-size:12px;line-height:1.6;margin:24px 0 0;">Assigned by ${esc(fromWho)} · Callidus Owner Portal</p>
+      <p style="color:#8a8f98;font-size:12px;line-height:1.6;margin:24px 0 0;">${esc(byLabel)} ${esc(fromWho)} · Callidus Owner Portal</p>
     </div>
   </div>`;
 }
@@ -60,19 +61,24 @@ Deno.serve(async (req) => {
   const { data: prof } = await admin.from("profiles").select("role").eq("id", user.id).single();
   const isStaffish = prof?.role === "admin";
 
-  let taskId = "", recurringId = "";
-  try { const b = await req.json(); taskId = String(b.task_id || ""); recurringId = String(b.recurring_id || ""); } catch (_) { /* below */ }
+  let taskId = "", recurringId = "", nudge = false;
+  try { const b = await req.json(); taskId = String(b.task_id || ""); recurringId = String(b.recurring_id || ""); nudge = !!b.nudge; } catch (_) { /* below */ }
 
   let kind = "", title = "", assignee = "", creator = "", meta: string[] = [];
   if (taskId) {
     const { data: t } = await admin.from("tasks").select("*").eq("id", taskId).maybeSingle();
     if (!t) return json({ error: "Task not found" }, 404);
-    kind = "New task for you"; title = t.title; assignee = t.assignee_email || ""; creator = t.created_by || "";
+    kind = nudge ? "Update requested" : "New task for you";
+    title = t.title; assignee = t.assignee_email || ""; creator = t.created_by || "";
     if (t.entity_id) {
       const { data: e } = await admin.from("ownership_entities").select("name").eq("id", t.entity_id).maybeSingle();
       if (e?.name) meta.push("Unit: " + e.name);
     }
     if (t.due_date) meta.push("Due " + t.due_date);
+    if (nudge) {
+      if (t.progress != null) meta.push(`Last reported progress: ${t.progress}%`);
+      meta.push("Please open the task and drop a note (or move the % along) so we know where it stands.");
+    }
   } else if (recurringId) {
     const { data: r } = await admin.from("recurring_tasks").select("*").eq("id", recurringId).maybeSingle();
     if (!r) return json({ error: "Recurring task not found" }, 404);
@@ -88,16 +94,19 @@ Deno.serve(async (req) => {
   } else return json({ error: "task_id or recurring_id required" }, 400);
 
   if (!isStaffish && creator.toLowerCase() !== caller) return json({ error: "Not your task" }, 403);
-  if (!assignee || assignee.toLowerCase() === creator.toLowerCase()) return json({ ok: true, skipped: "self-assigned or unassigned" });
+  // A nudge is from whoever pressed the button; an assignment is from the
+  // creator. Either way, mailing yourself is pointless.
+  const skipVs = nudge ? caller : creator.toLowerCase();
+  if (!assignee || assignee.toLowerCase() === skipVs) return json({ ok: true, skipped: "self-assigned or unassigned" });
 
-  const fromWho = await nameFor(creator || caller);
+  const fromWho = await nameFor(nudge ? caller : (creator || caller));
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: `Bearer ${RESEND_KEY}`, "Content-Type": "application/json" },
     body: JSON.stringify({
       from: FROM, to: assignee,
-      subject: `${kind === "New recurring task" ? "Recurring task" : "Task"}: ${title}`,
-      html: emailHtml(kind, title, meta, fromWho),
+      subject: nudge ? `Update requested: ${title}` : `${kind === "New recurring task" ? "Recurring task" : "Task"}: ${title}`,
+      html: emailHtml(kind, title, meta, fromWho, nudge ? "Nudged by" : "Assigned by"),
     }),
   });
   if (!res.ok) {

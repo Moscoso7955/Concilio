@@ -184,6 +184,20 @@
     .mg-act.del:hover { color: #e08585; }
     .mg-gcal { display: inline-flex; align-items: center; gap: 0.35rem; background: var(--panel-2, #222); border: 1px solid var(--border, #2f2f2f); border-radius: 999px; color: var(--text); cursor: pointer; padding: 0.28rem 0.75rem; font-size: 0.78rem; font-weight: 600; white-space: nowrap; flex: 0 0 auto; }
     .mg-gcal:hover { border-color: var(--accent); color: #fff; }
+    .mg-title.expandable { cursor: pointer; }
+    .mg-title.expandable:hover { color: #fff; text-decoration: underline; text-decoration-color: #3a3a3a; }
+    .mg-detail { margin: -0.15rem 0 0.55rem 2rem; padding: 0.6rem 0.85rem; background: #161616; border: 1px solid #242424; border-radius: 8px; font-size: 0.85rem; }
+    .mg-progrow { display: flex; align-items: center; gap: 0.7rem; margin-bottom: 0.55rem; }
+    .mg-progrow input[type="range"] { flex: 1; min-width: 120px; accent-color: var(--accent); background: transparent; }
+    .mg-progrow .pct { flex: 0 0 auto; min-width: 3ch; font-variant-numeric: tabular-nums; color: var(--text); font-weight: 600; }
+    .mg-note { display: flex; align-items: baseline; gap: 0.55rem; padding: 0.3rem 0; border-bottom: 1px dashed #242424; }
+    .mg-note:last-of-type { border-bottom: 0; }
+    .mg-note .who { flex: 0 0 auto; font-weight: 600; color: var(--text); }
+    .mg-note .body { flex: 1; min-width: 0; color: var(--text); overflow-wrap: anywhere; }
+    .mg-note .when { flex: 0 0 auto; font-size: 0.72rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .mg-noterow { display: flex; gap: 0.5rem; margin-top: 0.55rem; align-items: center; }
+    .mg-noterow input { flex: 1; min-width: 0; background: #111; border: 1px solid #2c2c2c; border-radius: 7px; color: var(--text); padding: 0.45rem 0.6rem; font-size: 0.85rem; }
+    .mg-noterow input:focus { outline: none; border-color: var(--accent); }
     .mg-uchip { font-size: 0.78rem; border: 1px solid var(--border); border-radius: 999px; padding: 0.22rem 0.65rem;
       background: var(--panel-2); color: var(--muted); cursor: pointer; font-family: inherit; }
     .mg-uchip.on { border-color: var(--accent); color: var(--text); background: #23262b; }
@@ -982,7 +996,7 @@
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.47.1 — schema migration 0047">v1.47.1</div>
+  <div class="version-tag" title="Owner Portal v1.48.0 — schema migration 0048">v1.48.0</div>
 
   <!-- Settings modal -->
   <div class="modal-overlay hidden" id="settingsModal">
@@ -1407,6 +1421,9 @@
         case "task_add": return `Added task <strong>${eh(d.title || "")}</strong>`;
         case "task_done": return `Completed task <strong>${eh(d.title || "")}</strong>`;
         case "task_delete": return `Deleted task <strong>${eh(d.title || "")}</strong>`;
+        case "task_progress": return `Set <strong>${eh(d.title || "")}</strong> to ${+d.pct || 0}%`;
+        case "task_note": return `Added a note on <strong>${eh(d.title || "")}</strong>`;
+        case "task_nudge": return `Nudged <strong>${eh(d.who || "")}</strong> for an update on <strong>${eh(d.title || "")}</strong>`;
         case "manager_unit": return `${d.on ? "Assigned" : "Unassigned"} <strong>${eh(d.unit || "")}</strong> ${d.on ? "to" : "from"} manager ${eh(d.manager || "")}`;
         case "recur_add": return `Added ${eh(d.cadence || "")} recurring task <strong>${eh(d.title || "")}</strong>`;
         case "recur_delete": return `Deleted recurring task <strong>${eh(d.title || "")}</strong>`;
@@ -3135,24 +3152,27 @@
       const { data: recurs } = await supabase.from("recurring_tasks").select("*");
       mgRecurs = recurs || [];
       await mgMaterialize();
-      const [tRes, tmRes, runRes, muRes, teamRes] = await Promise.all([
+      const [tRes, tmRes, runRes, muRes, teamRes, noteRes] = await Promise.all([
         supabase.from("tasks").select("*").order("created_at", { ascending: false }).limit(400),
         supabase.from("time_entries").select("*").gte("work_date", mgMonday()).order("work_date", { ascending: false }).order("created_at", { ascending: false }).limit(500),
         supabase.from("time_entries").select("*").is("stopped_at", null).not("started_at", "is", null)
           .ilike("user_email", currentEmail || "?").limit(1),
         supabase.from("manager_units").select("*"),
         supabase.rpc("team_overview"),
+        supabase.from("task_notes").select("*").order("created_at").limit(1000),
       ]);
       mgTasks = tRes.data || [];
       mgTime = tmRes.data || [];
       mgTimer = (runRes.data || [])[0] || null;
       mgMgrUnits = muRes.data || [];
       mgTeam = teamRes.data || [];
+      mgNotes = noteRes.data || [];
       mgRenderTimer(); mgRenderTime(); mgRenderTasks(); mgRenderManagers();
       mgRenderTeam(); mgRenderOps(); mgRenderRecur(); mgRenderOrg(); mgRenderUnitSelects();
     }
 
-    let mgRecurs = [], mgTeam = [];
+    let mgRecurs = [], mgTeam = [], mgNotes = [];
+    const mgOpenTasks = new Set(); // task ids with the detail panel expanded
     // Current period key + due date for a recurring definition.
     function mgRecurDue(r) {
       const now = new Date();
@@ -3492,34 +3512,113 @@
       const box = $("mgTaskList"); box.innerHTML = "";
       show($("mgTasksEmpty"), list.length === 0);
       const today = mgToday();
+      const me = (currentEmail || "").toLowerCase();
+      const mgWhen = (ts) => new Date(ts).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
       for (const t of list) {
         const div = document.createElement("div");
         div.className = "mg-task" + (t.status === "done" ? " done" : "");
         const overdue = t.due_date && t.due_date < today && t.status !== "done";
+        const recurring = !!t.recurring_id; // recurring spawns are done/not-done only — no in-progress state
+        const notes = mgNotes.filter((n) => n.task_id === t.id);
+        const opened = mgOpenTasks.has(t.id);
+        const statusTitle = recurring
+          ? (t.status === "done" ? "Done — click to reopen" : "Click when done")
+          : (t.status === "open" ? "Open — click when you start" : t.status === "doing" ? "In progress — click when done" : "Done — click to reopen");
         div.innerHTML = `
-          <button class="mg-status ${t.status}" data-mgst="${t.id}" title="${t.status === "open" ? "Open — click when you start" : t.status === "doing" ? "In progress — click when done" : "Done — click to reopen"}" aria-label="Task status: ${t.status}"></button>
-          <span class="mg-title" title="${escapeHtml(t.title)}">${t.recurring_id ? '<span class="muted" title="Spawned by a recurring task">↻</span> ' : ""}${escapeHtml(t.title)}</span>
+          <button class="mg-status ${recurring ? (t.status === "done" ? "done" : "") : t.status}" data-mgst="${t.id}" title="${statusTitle}" aria-label="Task status: ${t.status}"></button>
+          <span class="mg-title expandable" data-mgopen="${t.id}" role="button" aria-expanded="${opened}" title="${escapeHtml(t.title)} — click for notes${recurring ? "" : " & progress"}">${recurring ? '<span class="muted" title="Spawned by a recurring task">↻</span> ' : ""}${escapeHtml(t.title)}</span>
+          ${!recurring && t.progress ? `<span class="mg-chip" title="Progress">${+t.progress}%</span>` : ""}
+          ${notes.length ? `<span class="mg-chip" title="${notes.length} note${notes.length > 1 ? "s" : ""}">🗒 ${notes.length}</span>` : ""}
           ${t.entity_id ? `<span class="mg-chip">${escapeHtml(mgEntName(t.entity_id))}</span>` : ""}
           ${t.assignee_email ? `<span class="mg-chip" title="${escapeHtml(t.assignee_email)}">${escapeHtml(mgName(t.assignee_email))}</span>` : ""}
           ${t.due_date ? `<span class="mg-due${overdue ? " overdue" : ""}">${t.due_date}</span>` : ""}
           ${(() => { // recurring instances: estimate chip + add-to-calendar for the assignee
-            const r = t.recurring_id ? mgRecurs.find((x) => x.id === t.recurring_id) : null;
+            const r = recurring ? mgRecurs.find((x) => x.id === t.recurring_id) : null;
             if (!r) return "";
             return (r.est_minutes ? `<span class="mg-chip">${+r.est_minutes} min</span>` : "") +
-              ((r.assignee_email || "").toLowerCase() === (currentEmail || "").toLowerCase() || isAdmin() ? mgGcalBtn(r) : "");
+              ((r.assignee_email || "").toLowerCase() === me || isAdmin() ? mgGcalBtn(r) : "");
           })()}
           ${t.status !== "done" ? `<button class="mg-act" data-mgtimer="${t.id}" title="Start a timer on this task">▶</button>` : ""}
           <button class="mg-act del" data-mgdel="${t.id}" title="Delete task">✕</button>`;
         box.appendChild(div);
+        if (opened) {
+          const canNudge = (isAdmin() || (t.created_by || "").toLowerCase() === me) &&
+            t.assignee_email && t.assignee_email.toLowerCase() !== me && t.status !== "done";
+          const det = document.createElement("div");
+          det.className = "mg-detail";
+          det.innerHTML = `
+            ${recurring ? "" : `<div class="mg-progrow"><label for="mgprog_${t.id}" class="muted" style="flex:0 0 auto;">Progress</label>
+              <input type="range" id="mgprog_${t.id}" min="0" max="100" step="5" value="${+t.progress || 0}" data-mgprog="${t.id}" aria-label="Percent complete">
+              <span class="pct" data-mgpct="${t.id}">${+t.progress || 0}%</span></div>`}
+            ${notes.map((n) => `<div class="mg-note"><span class="who">${escapeHtml(mgName(n.author_email))}</span>
+              <span class="body">${escapeHtml(n.body)}</span><span class="when">${mgWhen(n.created_at)}</span>
+              ${(n.author_email || "").toLowerCase() === me || isAdmin() ? `<button class="mg-act del" data-mgndel="${n.id}" title="Delete note">✕</button>` : ""}</div>`).join("")}
+            <div class="mg-noterow">
+              <input type="text" data-mgnotein="${t.id}" placeholder="Add a note…" maxlength="1000" aria-label="New note">
+              <button class="mg-gcal" data-mgnoteadd="${t.id}">Add note</button>
+              ${canNudge ? `<button class="mg-gcal" data-mgnudge="${t.id}" title="Email ${escapeHtml(mgName(t.assignee_email))} asking for an update">👋 Nudge</button>` : ""}
+            </div>`;
+          box.appendChild(det);
+        }
       }
       box.querySelectorAll("[data-mgst]").forEach((b) => b.addEventListener("click", async () => {
         const t = mgTasks.find((x) => x.id === b.dataset.mgst);
-        const next = t.status === "open" ? "doing" : t.status === "doing" ? "done" : "open";
+        const next = t.recurring_id
+          ? (t.status === "done" ? "open" : "done")
+          : (t.status === "open" ? "doing" : t.status === "doing" ? "done" : "open");
         const { error } = await supabase.from("tasks").update({ status: next, done_at: next === "done" ? new Date().toISOString() : null }).eq("id", t.id);
         if (error) { alert(error.message); return; }
         t.status = next;
         if (next === "done") logAccess("task_done", { title: t.title });
         mgRenderTasks();
+      }));
+      box.querySelectorAll("[data-mgopen]").forEach((s) => s.addEventListener("click", () => {
+        const id = s.dataset.mgopen;
+        mgOpenTasks.has(id) ? mgOpenTasks.delete(id) : mgOpenTasks.add(id);
+        mgRenderTasks();
+      }));
+      box.querySelectorAll("[data-mgprog]").forEach((sl) => {
+        sl.addEventListener("input", () => {
+          const p = box.querySelector(`[data-mgpct="${sl.dataset.mgprog}"]`);
+          if (p) p.textContent = sl.value + "%";
+        });
+        sl.addEventListener("change", async () => {
+          const t = mgTasks.find((x) => x.id === sl.dataset.mgprog);
+          const { error } = await supabase.from("tasks").update({ progress: +sl.value }).eq("id", t.id);
+          if (error) { alert(error.message); return; }
+          t.progress = +sl.value;
+          logAccess("task_progress", { title: t.title, pct: t.progress });
+          mgRenderTasks();
+        });
+      });
+      const addNote = async (id) => {
+        const inp = box.querySelector(`[data-mgnotein="${id}"]`);
+        const body = (inp?.value || "").trim();
+        if (!body) { inp?.focus(); return; }
+        const { data, error } = await supabase.from("task_notes").insert({ task_id: id, author_email: currentEmail, body }).select("*").single();
+        if (error) { alert(error.message); return; }
+        mgNotes.push(data);
+        logAccess("task_note", { title: mgTasks.find((x) => x.id === id)?.title });
+        mgRenderTasks();
+      };
+      box.querySelectorAll("[data-mgnoteadd]").forEach((b) => b.addEventListener("click", () => addNote(b.dataset.mgnoteadd)));
+      box.querySelectorAll("[data-mgnotein]").forEach((i) => i.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") { e.preventDefault(); addNote(i.dataset.mgnotein); }
+      }));
+      box.querySelectorAll("[data-mgndel]").forEach((b) => b.addEventListener("click", async () => {
+        const { error } = await supabase.from("task_notes").delete().eq("id", b.dataset.mgndel);
+        if (error) { alert(error.message); return; }
+        mgNotes = mgNotes.filter((n) => n.id !== b.dataset.mgndel);
+        mgRenderTasks();
+      }));
+      box.querySelectorAll("[data-mgnudge]").forEach((b) => b.addEventListener("click", async () => {
+        const t = mgTasks.find((x) => x.id === b.dataset.mgnudge);
+        b.disabled = true; b.textContent = "Nudging…";
+        const ok = await mgNotify({ task_id: t.id, nudge: true });
+        b.textContent = ok ? "Nudged ✓" : "👋 Nudge";
+        b.disabled = !!ok;
+        if (ok) logAccess("task_nudge", { title: t.title, who: t.assignee_email });
+        else alert("Couldn't send the nudge email — try again in a moment.");
       }));
       box.querySelectorAll("[data-mgdel]").forEach((b) => b.addEventListener("click", async () => {
         const t = mgTasks.find((x) => x.id === b.dataset.mgdel);
@@ -3546,10 +3645,11 @@
     // Assignment emails: fire-and-forget — the task is saved either way.
     async function mgNotify(body) {
       try {
-        await fetch(cfg.SUPABASE_URL + "/functions/v1/notify-task", {
+        const res = await fetch(cfg.SUPABASE_URL + "/functions/v1/notify-task", {
           method: "POST", headers: await mailFnHeaders(), body: JSON.stringify(body),
         });
-      } catch (_) { /* best effort */ }
+        return res.ok;
+      } catch (_) { return false; }
     }
     $("mgAddTask")?.addEventListener("click", async () => {
       const title = $("mg_k_title").value.trim();
