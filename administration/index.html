@@ -16,7 +16,7 @@
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
     :root {
       --bg: #111111; --panel: #1a1a1a; --panel-2: #262626; --border: #2f2f2f;
-      --text: #e5e7eb; --muted: #8a8f98; --accent: #7c8493; --accent-hover: #616773;
+      --text: #e5e7eb; --muted: #9aa1ab; --accent: #7c8493; --accent-hover: #616773;
       --danger: #ef4444; --ok: #7c8493; --amber: #f59e0b;
     }
     body {
@@ -48,9 +48,12 @@
     .btn {
       border: none; border-radius: 9px; padding: 0.6rem 1.1rem; font-size: 0.9rem; font-weight: 600;
       cursor: pointer; font-family: inherit; background: var(--accent); color: #0b0b0b; transition: background 0.15s; font-weight: 700;
+      /* Primary must read as enabled: lift it well above the panels
+         (the bare accent slate read as a disabled fill). */
+      background: color-mix(in srgb, var(--accent) 70%, #fff 30%);
     }
-    .btn:hover { background: var(--accent-hover); }
-    .btn:disabled { opacity: 0.55; cursor: not-allowed; }
+    .btn:hover { background: var(--accent-hover); background: color-mix(in srgb, var(--accent) 52%, #fff 48%); }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
     .btn--ghost { background: transparent; border: 1px solid var(--border); color: var(--text); }
     .btn--ghost:hover { background: var(--panel-2); }
     .btn--sm { padding: 0.35rem 0.6rem; font-size: 0.8rem; }
@@ -200,7 +203,8 @@
     .mg-noterow input:focus { outline: none; border-color: var(--accent); }
     .mg-uchip { font-size: 0.78rem; border: 1px solid var(--border); border-radius: 999px; padding: 0.22rem 0.65rem;
       background: var(--panel-2); color: var(--muted); cursor: pointer; font-family: inherit; }
-    .mg-uchip.on { border-color: var(--accent); color: var(--text); background: #23262b; }
+    .mg-uchip.on { border-color: var(--accent); color: #0d0f12; background: var(--accent); font-weight: 700; }
+    .mg-uchip.on::before { content: "✓ "; }
     .mg-mgr { border: 1px solid var(--border); border-radius: 10px; padding: 0.7rem 0.9rem; margin-bottom: 0.55rem; background: var(--panel); }
     .mg-mgr-head { display: flex; align-items: baseline; gap: 0.55rem; flex-wrap: wrap; margin-bottom: 0.55rem; }
     .mg-mgr-units { display: flex; gap: 0.4rem; flex-wrap: wrap; }
@@ -383,6 +387,10 @@
     .graph-wrap { position: relative; display: flex; flex-direction: column; height: calc(100vh - 210px); min-height: 460px; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: #141414; }
     .graph-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 0.6rem; padding: 0.55rem 0.7rem; border-bottom: 1px solid var(--border); background: var(--panel); position: relative; z-index: 2; }
     .graph-viewport { position: relative; flex: 1 1 auto; min-height: 0; overflow: auto; }
+    .own-guard { display: none; } /* phones only — see the mobile block */
+    .unit-empty-row { grid-column: 1 / -1; background: none; border: 1px dashed var(--border); border-radius: 10px;
+      color: var(--muted); padding: 0.65rem 0.8rem; cursor: pointer; font: inherit; font-size: 0.85rem; text-align: left; }
+    .unit-empty-row:hover { color: var(--text); border-color: var(--accent); }
     .graph-canvas {
       position: relative; width: 3200px; height: 2200px;
       /* 20px snap grid (matches GRID in JS); scales with the canvas zoom */
@@ -459,9 +467,116 @@
       .modal-overlay { padding: 0.5rem; align-items: flex-start; }
       th, td { padding: 0.45rem 0.5rem; font-size: 0.84rem; }
       .topbar { gap: 0.5rem; }
+      /* Email is identity chrome, not content — hide it rather than let
+         it stretch the header past the viewport. */
+      .whoami #userEmail { display: none; }
+      /* Edge fades tell the thumb there are more tabs off-screen. */
+      .tabs {
+        -webkit-mask-image: linear-gradient(to right, transparent, #000 18px, #000 calc(100% - 26px), transparent);
+        mask-image: linear-gradient(to right, transparent, #000 18px, #000 calc(100% - 26px), transparent);
+      }
+      /* In flow at the end of the page instead of floating over content. */
+      .version-tag { position: static; display: block; padding: 1rem 0.85rem 0.5rem; opacity: 0.55; }
       .gpane { width: 100%; max-width: 100%; }
       #ownHint { display: none; }
       .row > * { flex-basis: 100%; }
+
+      /* Users list: the name is the identity — the email dupes it and
+         was stealing the width, so it goes. */
+      .su-mail { display: none; }
+      .su-name { min-width: 0; }
+
+      /* Ownership chart: cover it until deliberately engaged so touch
+         scrolling pans the page, not the grid. */
+      .graph-wrap { position: relative; }
+      .own-guard {
+        display: flex; position: absolute; inset: 0; z-index: 6;
+        align-items: center; justify-content: center;
+        background: rgba(17,17,17,0.4); border-radius: 12px;
+        touch-action: pan-y; cursor: pointer;
+      }
+      .own-guard.off { display: none; }
+      .own-guard span {
+        background: var(--panel); border: 1px solid var(--border);
+        border-radius: 999px; padding: 0.6rem 1.1rem; font-size: 0.85rem; color: var(--text);
+      }
+
+      /* ---- Touch targets: fingers, not cursors. ---- */
+      .mg-subtabs .pill { padding: 0.6rem 1.1rem; }
+      .mg-uchip { padding: 0.5rem 0.85rem; }
+      .iconact, .iconbtn { font-size: 1.15rem; padding: 0.45rem 0.55rem; }
+      .mg-act { font-size: 1.1rem; padding: 0.4rem 0.5rem; }
+      .mg-gcal { padding: 0.5rem 0.95rem; }
+      .mg-status { width: 22px; height: 22px; }
+      input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent); }
+      .pill { padding: 0.45rem 0.7rem; }
+      /* Touch has no drag-corner anyway — the exposed handle is noise. */
+      textarea { resize: none; }
+
+      /* ---- Data tables become stacked cards on phones. The columns
+         that matter (amounts, codes, actions) were living two screens
+         to the right; each row is now a card with everything visible.
+         Pure CSS — the same markup renders as a table on desktop. ---- */
+      #invTable, #reviewTable, #docTable, #coaTable, #saList table,
+      #invTable tbody, #reviewTable tbody, #docTable tbody, #coaTable tbody, #saList tbody { display: block; }
+      #invTable thead, #reviewTable thead, #docTable thead, #coaTable thead, #saList thead { display: none; }
+      #invTable tbody tr, #reviewTable tbody tr, #docTable tbody tr, #coaTable tbody tr, #saList tbody tr {
+        display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.7rem;
+        background: var(--panel-2, #1f1f1f); border: 1px solid var(--border);
+        border-radius: 10px; padding: 0.65rem 0.75rem; margin-bottom: 0.6rem;
+      }
+      #invTable tbody td, #reviewTable tbody td, #docTable tbody td, #coaTable tbody td, #saList tbody td {
+        border: 0; padding: 0; white-space: normal; text-align: left;
+      }
+      #invTable tbody td:empty, #reviewTable tbody td:empty, #docTable tbody td:empty, #coaTable tbody td:empty { display: none; }
+      /* Small uppercase lead-ins where a bare select would be ambiguous. */
+      #invTable td:nth-child(2)::before, #invTable td:nth-child(3)::before,
+      #reviewTable td:nth-child(4)::before, #reviewTable td:nth-child(5)::before {
+        display: block; font-size: 0.64rem; text-transform: uppercase; letter-spacing: 0.05em;
+        color: var(--muted); margin-bottom: 0.15rem;
+      }
+      #invTable td:nth-child(2)::before { content: "Code"; }
+      #invTable td:nth-child(3)::before { content: "For / paid by"; }
+      #reviewTable td:nth-child(4)::before { content: "Code"; }
+      #reviewTable td:nth-child(5)::before { content: "For"; }
+      /* Bills: name + amount on top; code and For full-width; pills and
+         actions wrap along the bottom. */
+      #invTable td:nth-child(1) { order: 1; flex: 1 1 55%; min-width: 9rem; }
+      #invTable td:nth-child(4) { order: 2; margin-left: auto; font-weight: 700; font-size: 1rem; }
+      #invTable td:nth-child(2) { order: 3; flex: 1 1 100%; }
+      #invTable td:nth-child(3) { order: 4; flex: 1 1 100%; }
+      #invTable td:nth-child(5) { order: 5; }
+      #invTable td:nth-child(6) { order: 6; }
+      #invTable td:nth-child(7) { order: 7; }
+      #invTable td:nth-child(8) { order: 8; margin-left: auto; display: flex; gap: 0.9rem; }
+      #invFoot { display: block; }
+      #invFoot tr { display: flex; justify-content: space-between; padding: 0.3rem 0.4rem; }
+      #invFoot th { border: 0; padding: 0; }
+      #invFoot th:empty { display: none; }
+      /* Needs review: vendor + amount up top, Approve is always visible. */
+      #reviewTable td:nth-child(1) { order: 1; flex: 1 1 55%; min-width: 9rem; font-weight: 600; }
+      #reviewTable td:nth-child(3) { order: 2; margin-left: auto; font-weight: 700; font-size: 1rem; }
+      #reviewTable td:nth-child(2) { order: 3; flex: 1 1 100%; color: var(--muted); font-size: 0.8rem; }
+      #reviewTable td:nth-child(4) { order: 4; flex: 1 1 100%; }
+      #reviewTable td:nth-child(5) { order: 5; flex: 1 1 100%; }
+      #reviewTable td:nth-child(6) { order: 6; }
+      #reviewTable td:nth-child(7) { order: 7; margin-left: auto; display: flex; gap: 1rem; align-items: center; }
+      /* Documents: title line, meta line, full-width action row. */
+      #docTable td:nth-child(1) { order: 1; flex: 1 1 100%; max-width: none; }
+      #docTable td:nth-child(2), #docTable td:nth-child(3), #docTable td:nth-child(4), #docTable td:nth-child(5) {
+        order: 2; color: var(--muted); font-size: 0.78rem;
+      }
+      #docTable td:nth-child(6) { order: 3; flex: 1 1 100%; display: flex; gap: 0.6rem; margin-top: 0.2rem; }
+      #docTable td:nth-child(6) .btn { flex: 1 1 auto; }
+      /* Chart of Accounts: the code — the point of the page — sits top right. */
+      #coaTable td:nth-child(1) { order: 1; flex: 1 1 60%; min-width: 9rem; }
+      #coaTable td:nth-child(3) { order: 2; margin-left: auto; }
+      #coaTable td:nth-child(2) { order: 3; flex: 1 1 auto; font-size: 0.8rem; }
+      #coaTable td:nth-child(4) { order: 4; margin-left: auto; }
+      /* Activity: what happened reads first and wraps fully. */
+      #saList td:nth-child(3) { order: 1; flex: 1 1 100%; }
+      #saList td:nth-child(2) { order: 2; color: var(--muted); font-size: 0.76rem; max-width: none; }
+      #saList td:nth-child(1) { order: 3; color: var(--muted); font-size: 0.76rem; margin-left: auto; }
     }
   </style>
 </head>
@@ -552,13 +667,15 @@
       </div>
       <div class="section-card">
         <h2>Time</h2>
+        <div class="muted" style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.25rem;">Live timer</div>
         <div class="row" style="align-items:flex-end;flex-wrap:wrap;">
           <div><label>Unit / entity</label><select id="mg_t_entity" class="inline-select" style="min-width:170px;padding:0.5rem;"></select></div>
           <div style="flex:1;min-width:190px;"><label>What are you on?</label><input type="text" id="mg_t_note" placeholder="e.g. payroll, inventory count…"></div>
           <button class="btn" id="mgTimerBtn" style="flex:0 0 auto;">Start timer</button>
           <span id="mgTimerElapsed" class="muted" style="font-variant-numeric:tabular-nums;min-width:56px;"></span>
         </div>
-        <div class="row" style="align-items:flex-end;flex-wrap:wrap;margin-top:0.7rem;">
+        <div class="muted" style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.06em;margin:0.9rem 0 0.25rem;padding-top:0.7rem;border-top:1px solid var(--border);">Log time — today</div>
+        <div class="row" style="align-items:flex-end;flex-wrap:wrap;">
           <div><label>Hours</label><input type="number" step="0.25" id="mg_m_hours" style="width:92px;" placeholder="1.5"></div>
           <div><label>Unit / entity</label><select id="mg_m_entity" class="inline-select" style="min-width:170px;padding:0.5rem;"></select></div>
           <div style="flex:1;min-width:170px;"><label>Note</label><input type="text" id="mg_m_note" placeholder="Optional"></div>
@@ -792,7 +909,7 @@
       <div class="section-card">
         <h2>Documents</h2>
         <div class="table-wrap">
-          <table>
+          <table id="docTable">
             <thead><tr><th>Title</th><th>Category</th><th>Shared with</th><th>Date</th><th class="num">Size</th><th></th></tr></thead>
             <tbody id="docBody"></tbody>
           </table>
@@ -834,7 +951,7 @@
         <h2>New — needs review</h2>
         <p class="muted" style="margin-bottom:0.75rem;">Emailed bills, auto-filed. Assign a GL code and confirm the vendor/amount to approve.</p>
         <div class="table-wrap">
-          <table>
+          <table id="reviewTable">
             <thead><tr><th>Vendor</th><th>Date</th><th class="num">Amount</th><th>Code</th><th>For</th><th>File</th><th></th></tr></thead>
             <tbody id="reviewBody"></tbody>
           </table>
@@ -914,7 +1031,12 @@
         </div>
         <div class="row" style="margin-top:0.5rem;">
           <div style="flex:1.5;"><label>Sync source — venue endpoint or its Supabase REST URL</label><input type="url" id="ms_sync_url" placeholder="https://xxxx.supabase.co/rest/v1/mailing_list?select=email,name,created_at"></div>
-          <div><label>Sync key (Bearer / venue anon key)</label><input type="text" id="ms_sync_key" placeholder="shared secret"></div>
+          <div><label>Sync key (Bearer / venue anon key)</label>
+            <div style="display:flex;gap:0.4rem;align-items:center;">
+              <input type="password" id="ms_sync_key" placeholder="shared secret" autocomplete="off" style="flex:1;min-width:0;">
+              <button type="button" class="btn btn--ghost btn--sm" id="msKeyReveal" style="flex:0 0 auto;">Show</button>
+            </div>
+          </div>
         </div>
         <div class="field" style="margin-top:0.6rem;">
           <label style="display:inline-flex;align-items:center;gap:0.45rem;margin:0;cursor:pointer;">
@@ -990,6 +1112,7 @@
             <span class="muted" id="ownZoomLabel" style="min-width:3.5ch;text-align:center;">100%</span>
             <button class="btn btn--ghost btn--sm" id="ownZoomIn" title="Zoom in" style="flex:0 0 auto;">+</button>
           </div>
+          <button class="btn btn--ghost btn--sm" id="ownFit" title="Fit the whole chart in view" style="flex:0 0 auto;">Fit</button>
           <button class="btn btn--ghost btn--sm admin-only hidden" id="ownTidy" title="Rearrange into a layered layout" style="flex:0 0 auto;">Tidy layout</button>
           <span class="muted" id="ownHint">Click a box to edit. Drag a box's bottom handle onto another box's top to connect; click an edge to change its %. Ctrl/⌘+scroll to zoom.</span>
         </div>
@@ -998,6 +1121,7 @@
             <svg class="graph-svg" id="ownSvg"></svg>
           </div>
         </div>
+        <div class="own-guard" id="ownGuard"><span>Tap to use the chart</span></div>
         <aside class="gpane hidden" id="ownPane"></aside>
       </div>
     </section>
@@ -1005,7 +1129,7 @@
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.50.0 — schema migration 0050">v1.50.0</div>
+  <div class="version-tag" title="Owner Portal v1.50.1 — schema migration 0050">v1.50.1</div>
 
   <!-- Settings modal -->
   <div class="modal-overlay hidden" id="settingsModal">
@@ -1354,6 +1478,7 @@
     $("settingsBtn")?.addEventListener("click", () => { show($("settingsModal"), true); loadSettingsUsers(); });
     document.querySelectorAll("[data-stab]").forEach((b) => b.addEventListener("click", () => {
       document.querySelectorAll("[data-stab]").forEach((x) => x.classList.toggle("active", x === b));
+      try { b.scrollIntoView({ inline: "nearest", block: "nearest" }); } catch (_) {}
       show($("settingsUsersPane"), b.dataset.stab === "users");
       show($("settingsRolesPane"), b.dataset.stab === "roles");
       show($("settingsCoaPane"), b.dataset.stab === "coa");
@@ -1874,6 +1999,8 @@
       const btn = document.querySelector(`.tab[data-tab="${name}"]`);
       if (!btn || btn.classList.contains("hidden")) return false;
       document.querySelectorAll(".tab").forEach((x) => x.classList.toggle("active", x === btn));
+      // On phones the strip scrolls — keep the active tab in view.
+      try { btn.scrollIntoView({ inline: "nearest", block: "nearest" }); } catch (_) {}
       document.querySelectorAll(".tab-panel").forEach((p) => show(p, p.dataset.panel === name));
       // On narrow screens the tab strip scrolls — keep the active tab visible.
       try { btn.scrollIntoView({ block: "nearest", inline: "nearest" }); } catch (_) {}
@@ -2137,7 +2264,7 @@
       fitStats($("repGroupStats"));
       const grid = $("repUnits"); grid.innerHTML = "";
       show($("repUnitsEmpty"), units.length === 0);
-      for (const u of units) {
+      const addCard = (u) => {
         const { aggs, rev, net } = unitNet.get(u.id);
         const stake = myStakeIn(u.id);
         const meta = !aggs.length ? "No figures in range"
@@ -2155,8 +2282,22 @@
            <div class="unit-card__meta muted">${meta}</div>`;
         card.addEventListener("click", () => { repUnit = u.id; renderUnitView(); });
         grid.appendChild(card);
+      };
+      // Units with figures first; empties collapse into one line instead
+      // of screens of "No figures in range" cards.
+      const withFigs = units.filter((u) => unitNet.get(u.id).aggs.length);
+      const noFigs = units.filter((u) => !unitNet.get(u.id).aggs.length);
+      (withFigs.length ? withFigs : units).forEach(addCard);
+      if (withFigs.length && noFigs.length) {
+        const row = document.createElement("button");
+        row.type = "button"; row.className = "unit-empty-row";
+        row.textContent = `${noFigs.length} unit${noFigs.length === 1 ? "" : "s"} with no figures in this range — ${repShowEmpty ? "hide" : "show"}`;
+        row.addEventListener("click", () => { repShowEmpty = !repShowEmpty; renderGroupView(); });
+        grid.appendChild(row);
+        if (repShowEmpty) noFigs.forEach(addCard);
       }
     }
+    let repShowEmpty = false;
 
     function renderUnitView() {
       const u = repUnits.find((x) => x.id === repUnit);
@@ -3234,8 +3375,10 @@
       const opt = (e) => `<option value="${e.id}"${e.id === sel ? " selected" : ""}>${escapeHtml(e.name)}</option>`;
       const theirs = mgEntities.filter((e) => mine.has(e.id));
       const rest = mgEntities.filter((e) => !mine.has(e.id));
+      // Managers see only the units they're assigned; the whole-group
+      // "Other units" spillover is an admin affordance.
       return `<option value="">— general</option>` + theirs.map(opt).join("") +
-        (rest.length ? `<optgroup label="Other units">${rest.map(opt).join("")}</optgroup>` : "");
+        (isAdmin() && rest.length ? `<optgroup label="Other units">${rest.map(opt).join("")}</optgroup>` : "");
     }
     // The timer requires a real unit, so its blank option is a prompt,
     // not "— general".
@@ -3437,6 +3580,9 @@
       box.querySelectorAll("[data-mgmu]").forEach((b) => b.addEventListener("click", async () => {
         const [email, eid] = b.dataset.mgmu.split("|");
         const on = b.classList.contains("on");
+        // A chip tap is a live write — one stray scroll-brush on a phone
+        // shouldn't silently reassign a unit.
+        if (!confirm(`${on ? "Remove" : "Assign"} ${mgEntName(eid)} ${on ? "from" : "to"} ${mgName(email)}?`)) return;
         const { error } = on
           ? await supabase.from("manager_units").delete().eq("manager_email", email).eq("entity_id", eid)
           : await supabase.from("manager_units").insert({ manager_email: email, entity_id: eid });
@@ -4758,6 +4904,11 @@
         $("mailAudience").innerHTML += ` · <span style="color:var(--text);">imported ✓ (${data.added} new, ${data.existing} already on the list)</span>`;
       } catch (e) { $("mailAudience").textContent = "Import failed: " + (e.message || e); }
     });
+    $("msKeyReveal")?.addEventListener("click", () => {
+      const i = $("ms_sync_key");
+      i.type = i.type === "password" ? "text" : "password";
+      $("msKeyReveal").textContent = i.type === "password" ? "Show" : "Hide";
+    });
     $("msSaveBtn")?.addEventListener("click", async () => {
       const st = $("msStatus");
       const row = {
@@ -5291,7 +5442,25 @@
       render();
       gStore.updateEntityPositions(updates);
     }
-    $("ownTidy")?.addEventListener("click", tidyLayout);
+    $("ownTidy")?.addEventListener("click", () => {
+      if (!confirm("Rearrange every box into the automatic layered layout? Current positions are overwritten.")) return;
+      tidyLayout();
+    });
+
+    // Zoom-and-scroll so the whole chart is visible. Used by the Fit
+    // button, and on phones when the chart is first engaged.
+    function fitGraph() {
+      const view = $("ownViewport");
+      if (!view || !view.clientWidth || !gEnt.length) return;
+      const xs = gEnt.map((e) => Number(e.position_x) || 0);
+      const ys = gEnt.map((e) => Number(e.position_y) || 0);
+      const minX = Math.min(...xs), minY = Math.min(...ys);
+      const w = Math.max(...xs) - minX + 260, h = Math.max(...ys) - minY + 150;
+      gZoom = Math.min(1, Math.max(ZMIN, Math.min(view.clientWidth / w, view.clientHeight / h)));
+      applyZoom();
+      view.scrollLeft = Math.max(0, (minX - 20) * gZoom);
+      view.scrollTop = Math.max(0, (minY - 20) * gZoom);
+    }
 
     async function flushPositions() {
       if (!posPending.size) return;
@@ -5322,6 +5491,13 @@
       // Zoom controls
       $("ownZoomIn").addEventListener("click", () => zoomBy(1.2));
       $("ownZoomOut").addEventListener("click", () => zoomBy(1 / 1.2));
+      $("ownFit")?.addEventListener("click", fitGraph);
+      // Phones: the canvas eats scroll gestures, so it stays behind a
+      // tap-to-engage cover (and opens fitted instead of at 100%).
+      $("ownGuard")?.addEventListener("click", () => {
+        $("ownGuard").classList.add("off");
+        fitGraph();
+      });
       $("ownViewport").addEventListener("wheel", (ev) => {
         if (!ev.ctrlKey && !ev.metaKey) return; // let normal scrolling through
         ev.preventDefault();
