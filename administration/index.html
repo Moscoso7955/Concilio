@@ -628,6 +628,13 @@
           <div id="opRecurList"></div>
           <p class="muted hidden" id="opRecurEmpty">No recurring tasks yet.</p>
         </div>
+
+        <div class="section-card">
+          <h2>Activity — deleted items</h2>
+          <p class="muted" style="margin-bottom:0.75rem;">Everything deleted from Management lands here and can be brought back. Restoring a task also restores its notes.</p>
+          <div id="opDeletedList"></div>
+          <p class="muted hidden" id="opDeletedEmpty">Nothing has been deleted.</p>
+        </div>
       </div><!-- /Ops -->
 
       <div id="mgPaneOrg" class="hidden">
@@ -998,7 +1005,7 @@
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.48.5 — schema migration 0048">v1.48.5</div>
+  <div class="version-tag" title="Owner Portal v1.50.0 — schema migration 0050">v1.50.0</div>
 
   <!-- Settings modal -->
   <div class="modal-overlay hidden" id="settingsModal">
@@ -1426,6 +1433,7 @@
         case "task_progress": return `Set <strong>${eh(d.title || "")}</strong> to ${+d.pct || 0}%`;
         case "task_note": return `Added a note on <strong>${eh(d.title || "")}</strong>`;
         case "task_nudge": return `Nudged <strong>${eh(d.who || "")}</strong> for an update on <strong>${eh(d.title || "")}</strong>`;
+        case "mg_restore": return `Restored a deleted ${eh(d.kind || "item")} <strong>${eh(d.title || "")}</strong>`;
         case "manager_unit": return `${d.on ? "Assigned" : "Unassigned"} <strong>${eh(d.unit || "")}</strong> ${d.on ? "to" : "from"} manager ${eh(d.manager || "")}`;
         case "recur_add": return `Added ${eh(d.cadence || "")} recurring task <strong>${eh(d.title || "")}</strong>`;
         case "recur_delete": return `Deleted recurring task <strong>${eh(d.title || "")}</strong>`;
@@ -3092,8 +3100,9 @@
     async function loadMgmt() {
       const [eRes, uRes] = await Promise.all([
         // Companies/venues only — time and tasks land on a business,
-        // never on a person (people are the assignee/tracker side).
-        supabase.from("ownership_entities").select("id,name").eq("kind", "entity").order("name"),
+        // never on a person. Via RPC, not ownership_entities: managers
+        // work on units they don't own, which RLS would hide from them.
+        supabase.rpc("mg_entities"),
         // Admins + anyone whose role carries the Management tab.
         supabase.rpc("assignable_users"),
       ]);
@@ -3175,11 +3184,17 @@
       mgMgrUnits = muRes.data || [];
       mgTeam = teamRes.data || [];
       mgNotes = noteRes.data || [];
+      if (isAdmin()) {
+        const { data: delRes } = await supabase.from("deleted_items").select("*")
+          .order("deleted_at", { ascending: false }).limit(50);
+        mgDeleted = delRes || [];
+      }
       mgRenderTimer(); mgRenderTime(); mgRenderTasks(); mgRenderManagers();
       mgRenderTeam(); mgRenderOps(); mgRenderRecur(); mgRenderOrg(); mgRenderUnitSelects();
+      mgRenderActivity();
     }
 
-    let mgRecurs = [], mgTeam = [], mgNotes = [];
+    let mgRecurs = [], mgTeam = [], mgNotes = [], mgDeleted = [];
     const mgOpenTasks = new Set(); // task ids with the detail panel expanded
     // Current period key + due date for a recurring definition.
     function mgRecurDue(r) {
@@ -3430,6 +3445,37 @@
         if (on) mgMgrUnits = mgMgrUnits.filter((r) => !((r.manager_email || "").toLowerCase() === email.toLowerCase() && r.entity_id === eid));
         else mgMgrUnits.push({ manager_email: email, entity_id: eid });
         mgRenderManagers();
+      }));
+    }
+
+    // Ops: the deletion log — every removed task / time entry /
+    // recurring definition / note, restorable in place.
+    function mgRenderActivity() {
+      if (!isAdmin()) return;
+      const box = $("opDeletedList"); if (!box) return;
+      show($("opDeletedEmpty"), mgDeleted.length === 0);
+      const KIND = { task: "Task", time_entry: "Time entry", recurring_task: "Recurring task", task_note: "Note" };
+      const when = (ts) => new Date(ts).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+      const label = (d) => {
+        const p = d.payload || {};
+        if (d.kind === "time_entry") return `${mgHrs(p.minutes)}h · ${escapeHtml(mgEntName(p.entity_id) || "general")}${p.note ? " · " + escapeHtml(p.note) : ""} (${escapeHtml(mgName(p.user_email))})`;
+        if (d.kind === "task_note") return `“${escapeHtml(String(p.body || "").slice(0, 60))}”`;
+        return escapeHtml(p.title || "");
+      };
+      box.innerHTML = mgDeleted.map((d) => `
+        <div class="mg-recur${d.restored_at ? " done" : ""}">
+          <span class="mg-chip">${KIND[d.kind] || d.kind}</span>
+          <strong style="flex:1;min-width:140px;${d.restored_at ? "color:var(--muted);" : ""}">${label(d)}</strong>
+          <span class="muted" style="font-size:0.78rem;flex:0 0 auto;">deleted by ${escapeHtml(mgName(d.deleted_by))} · ${when(d.deleted_at)}</span>
+          ${d.restored_at ? `<span class="mg-chip">Restored</span>` : `<button class="mg-gcal" data-mgrestore="${d.id}">Restore</button>`}
+        </div>`).join("");
+      box.querySelectorAll("[data-mgrestore]").forEach((b) => b.addEventListener("click", async () => {
+        b.disabled = true; b.textContent = "Restoring…";
+        const { error } = await supabase.rpc("restore_deleted", { p_id: b.dataset.mgrestore });
+        if (error) { alert(error.message); b.disabled = false; b.textContent = "Restore"; return; }
+        const d = mgDeleted.find((x) => x.id === b.dataset.mgrestore);
+        logAccess("mg_restore", { kind: d?.kind, title: d?.payload?.title || d?.payload?.note || "" });
+        mgRefresh();
       }));
     }
 
