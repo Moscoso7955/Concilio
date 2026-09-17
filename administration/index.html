@@ -201,6 +201,7 @@
     .mg-noterow { display: flex; gap: 0.5rem; margin-top: 0.55rem; align-items: center; }
     .mg-noterow input { flex: 1; min-width: 0; background: #111; border: 1px solid #2c2c2c; border-radius: 7px; color: var(--text); padding: 0.45rem 0.6rem; font-size: 0.85rem; }
     .mg-noterow input:focus { outline: none; border-color: var(--accent); }
+    .mg-run { color: #5da97f; font-weight: 600; font-size: 0.8rem; white-space: nowrap; }
     .mg-uchip { font-size: 0.78rem; border: 1px solid var(--border); border-radius: 999px; padding: 0.22rem 0.65rem;
       background: var(--panel-2); color: var(--muted); cursor: pointer; font-family: inherit; }
     .mg-uchip.on { border-color: var(--accent); color: #0d0f12; background: var(--accent); font-weight: 700; }
@@ -748,14 +749,14 @@
 
         <div class="section-card">
           <button type="button" id="opDelHead" aria-expanded="false" style="display:flex;align-items:center;gap:0.6rem;width:100%;background:none;border:0;padding:0;cursor:pointer;font:inherit;color:inherit;text-align:left;">
-            <h2 style="margin:0;">Activity — deleted items</h2>
+            <h2 style="margin:0;">Activity</h2>
             <span class="muted" id="opDelCount" style="font-size:0.82rem;"></span>
             <span class="muted" id="opDelCaret" style="margin-left:auto;">▸</span>
           </button>
           <div id="opDelBody" class="hidden">
-            <p class="muted" style="margin:0.6rem 0 0.75rem;">Everything deleted from Management lands here and can be brought back. Restoring a task also restores its notes.</p>
+            <p class="muted" style="margin:0.6rem 0 0.75rem;">Everything that happens in the portal, newest first. Deleted items can be brought back with Restore (a task returns with its notes); ✕ erases one from the log forever — admins only.</p>
             <div id="opDeletedList"></div>
-            <p class="muted hidden" id="opDeletedEmpty">Nothing has been deleted.</p>
+            <p class="muted hidden" id="opDeletedEmpty">No activity yet.</p>
           </div>
         </div>
       </div><!-- /Ops -->
@@ -1135,7 +1136,7 @@
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.51.1 — schema migration 0051">v1.51.1</div>
+  <div class="version-tag" title="Owner Portal v1.52.0 — schema migration 0052">v1.52.0</div>
 
   <!-- Settings modal -->
   <div class="modal-overlay hidden" id="settingsModal">
@@ -3233,6 +3234,16 @@
       ? Math.max(0, Math.round((new Date(r.stopped_at) - new Date(r.started_at)) / 1000))
       : (r.minutes || 0) * 60;
     const mgClock = (s) => `${Math.floor(s / 3600)}:${String(Math.floor(s / 60) % 60).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+    // Live clocks for OTHER people's running timers (the week table and
+    // Ops cards render [data-mglive] spans; one shared ticker feeds them).
+    setInterval(() => {
+      document.querySelectorAll("[data-mglive]").forEach((el) => {
+        const s = Math.max(0, Math.floor((Date.now() - new Date(el.dataset.mglive)) / 1000));
+        el.textContent = mgClock(s);
+      });
+    }, 1000);
+    const mgRunning = (email) => mgTime.find((r) => !r.stopped_at && r.started_at &&
+      (r.user_email || "").toLowerCase() === (email || "").toLowerCase());
     const mgName = (email) => {
       const u = mgUsers.find((x) => (x.email || "").toLowerCase() === String(email || "").toLowerCase());
       if (u?.full_name) return u.full_name;
@@ -3319,29 +3330,36 @@
       const [tRes, tmRes, runRes, muRes, teamRes, noteRes] = await Promise.all([
         supabase.from("tasks").select("*").order("created_at", { ascending: false }).limit(400),
         supabase.from("time_entries").select("*").gte("work_date", mgMonday()).order("work_date", { ascending: false }).order("created_at", { ascending: false }).limit(500),
-        supabase.from("time_entries").select("*").is("stopped_at", null).not("started_at", "is", null)
-          .ilike("user_email", currentEmail || "?").limit(1),
+        // Every running timer (RLS trims this to your own unless admin) —
+        // unbounded by week so a forgotten timer can't hide.
+        supabase.from("time_entries").select("*").is("stopped_at", null).not("started_at", "is", null).limit(50),
         supabase.from("manager_units").select("*"),
         supabase.rpc("team_overview"),
         supabase.from("task_notes").select("*").order("created_at").limit(1000),
       ]);
       mgTasks = tRes.data || [];
       mgTime = tmRes.data || [];
-      mgTimer = (runRes.data || [])[0] || null;
+      const running = runRes.data || [];
+      mgTimer = running.find((r) => (r.user_email || "").toLowerCase() === (currentEmail || "").toLowerCase()) || null;
+      // Make sure every running entry is present even if it predates Monday.
+      for (const r of running) if (!mgTime.some((x) => x.id === r.id)) mgTime.push(r);
       mgMgrUnits = muRes.data || [];
       mgTeam = teamRes.data || [];
       mgNotes = noteRes.data || [];
       if (isAdmin()) {
-        const { data: delRes } = await supabase.from("deleted_items").select("*")
-          .order("deleted_at", { ascending: false }).limit(50);
-        mgDeleted = delRes || [];
+        const [delRes, audRes] = await Promise.all([
+          supabase.from("deleted_items").select("*").order("deleted_at", { ascending: false }).limit(50),
+          supabase.from("access_log").select("email,event,detail,created_at").order("created_at", { ascending: false }).limit(120),
+        ]);
+        mgDeleted = delRes.data || [];
+        mgAudit = audRes.data || [];
       }
       mgRenderTimer(); mgRenderTime(); mgRenderTasks(); mgRenderManagers();
       mgRenderTeam(); mgRenderOps(); mgRenderRecur(); mgRenderOrg(); mgRenderUnitSelects();
       mgRenderActivity();
     }
 
-    let mgRecurs = [], mgTeam = [], mgNotes = [], mgDeleted = [];
+    let mgRecurs = [], mgTeam = [], mgNotes = [], mgDeleted = [], mgAudit = [];
     const mgOpenTasks = new Set(); // task ids with the detail panel expanded
     const mgNudged = new Set(); // tasks nudged this session — survives re-renders
     // Current period key + due date for a recurring definition.
@@ -3421,8 +3439,10 @@
         const units = mgMgrUnits.filter((r) => (r.manager_email || "").toLowerCase() === m.email)
           .map((r) => mgEntName(r.entity_id)).filter(Boolean).sort((a, b) => a.localeCompare(b));
         const open = mgTasks.filter((t) => (t.assignee_email || "").toLowerCase() === m.email && t.status !== "done").slice(0, 3);
+        const run = mgRunning(m.email);
         return `<div class="mg-opcard">
           <h3>${escapeHtml(m.full_name || mgName(m.email))}</h3>
+          ${run ? `<div class="stat-line mg-run">● Timer running — <span data-mglive="${run.started_at}"></span>${run.entity_id ? " · " + escapeHtml(mgEntName(run.entity_id)) : ""}${run.note ? " · " + escapeHtml(run.note) : ""}</div>` : ""}
           <div class="stat-line">${mgHrs(m.week_minutes)}h this week · ${m.open_tasks} open · ${m.doing_tasks} in progress</div>
           <div class="stat-line">${units.length ? escapeHtml(units.join(" · ")) : "No units assigned"}</div>
           ${open.length ? `<div class="stat-line" style="margin-top:0.4rem;">${open.map((t) => `• ${escapeHtml(t.title)}`).join("<br>")}</div>` : ""}
@@ -3613,11 +3633,6 @@
     function mgRenderActivity() {
       if (!isAdmin()) return;
       const box = $("opDeletedList"); if (!box) return;
-      const c = $("opDelCount");
-      if (c) c.textContent = mgDeleted.length
-        ? `${mgDeleted.length} item${mgDeleted.length === 1 ? "" : "s"}${mgDeleted.some((d) => !d.restored_at) ? "" : " · all restored"}`
-        : "empty";
-      show($("opDeletedEmpty"), mgDeleted.length === 0);
       const KIND = { task: "Task", time_entry: "Time entry", recurring_task: "Recurring task", task_note: "Note" };
       const when = (ts) => new Date(ts).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
       const label = (d) => {
@@ -3626,13 +3641,35 @@
         if (d.kind === "task_note") return `“${escapeHtml(String(p.body || "").slice(0, 60))}”`;
         return escapeHtml(p.title || "");
       };
-      box.innerHTML = mgDeleted.map((d) => `
-        <div class="mg-recur${d.restored_at ? " done" : ""}">
-          <span class="mg-chip">${KIND[d.kind] || d.kind}</span>
-          <strong style="flex:1;min-width:140px;${d.restored_at ? "color:var(--muted);" : ""}">${label(d)}</strong>
-          <span class="muted" style="font-size:0.78rem;flex:0 0 auto;">deleted by ${escapeHtml(mgName(d.deleted_by))} · ${when(d.deleted_at)}</span>
-          ${d.restored_at ? `<span class="mg-chip">Restored</span>` : `<button class="mg-gcal" data-mgrestore="${d.id}">Restore</button>`}
-        </div>`).join("");
+      // One chronological stream: everything from the audit log, with the
+      // deletion entries carrying their Restore / permanent-delete controls.
+      // access_log's own delete events are dropped — deleted_items is the
+      // richer record of the same moments.
+      const feed = [
+        ...mgDeleted.map((d) => ({ when: d.deleted_at, del: d })),
+        ...mgAudit.filter((a) => !["task_delete", "recur_delete"].includes(a.event))
+          .map((a) => ({ when: a.created_at, aud: a })),
+      ].sort((a, b) => String(b.when).localeCompare(String(a.when))).slice(0, 100);
+      const open = mgDeleted.filter((d) => !d.restored_at).length;
+      const c = $("opDelCount");
+      if (c) c.textContent = `${feed.length ? "latest " + feed.length : "empty"}${open ? ` · ${open} restorable` : ""}`;
+      show($("opDeletedEmpty"), feed.length === 0);
+      box.innerHTML = feed.map((f) => {
+        if (f.aud) return `
+          <div class="mg-recur" style="border-style:none none dashed;border-radius:0;">
+            <span style="flex:1;min-width:140px;">${activityLabel(f.aud)}</span>
+            <span class="muted" style="font-size:0.78rem;flex:0 0 auto;">${escapeHtml(mgName(f.aud.email))} · ${when(f.aud.created_at)}</span>
+          </div>`;
+        const d = f.del;
+        return `
+          <div class="mg-recur${d.restored_at ? " done" : ""}">
+            <span class="mg-chip">Deleted ${KIND[d.kind] || d.kind}</span>
+            <strong style="flex:1;min-width:140px;${d.restored_at ? "color:var(--muted);" : ""}">${label(d)}</strong>
+            <span class="muted" style="font-size:0.78rem;flex:0 0 auto;">by ${escapeHtml(mgName(d.deleted_by))} · ${when(d.deleted_at)}</span>
+            ${d.restored_at ? `<span class="mg-chip">Restored</span>` : `<button class="mg-gcal" data-mgrestore="${d.id}">Restore</button>`}
+            <button class="mg-act del" data-mgpurge="${d.id}" title="Remove from the log permanently — cannot be restored after this">✕</button>
+          </div>`;
+      }).join("");
       box.querySelectorAll("[data-mgrestore]").forEach((b) => b.addEventListener("click", async () => {
         b.disabled = true; b.textContent = "Restoring…";
         const { error } = await supabase.rpc("restore_deleted", { p_id: b.dataset.mgrestore });
@@ -3640,6 +3677,15 @@
         const d = mgDeleted.find((x) => x.id === b.dataset.mgrestore);
         logAccess("mg_restore", { kind: d?.kind, title: d?.payload?.title || d?.payload?.note || "" });
         mgRefresh();
+      }));
+      box.querySelectorAll("[data-mgpurge]").forEach((b) => b.addEventListener("click", async () => {
+        const d = mgDeleted.find((x) => x.id === b.dataset.mgpurge);
+        if (!confirm(`Permanently erase this ${KIND[d?.kind] || "item"} from the log? It can never be restored afterwards.`)) return;
+        const { error } = await supabase.from("deleted_items").delete().eq("id", b.dataset.mgpurge);
+        if (error) { alert(error.message); return; }
+        logAccess("mg_purge", { kind: d?.kind, title: d?.payload?.title || d?.payload?.note || "" });
+        mgDeleted = mgDeleted.filter((x) => x.id !== b.dataset.mgpurge);
+        mgRenderActivity();
       }));
     }
 
@@ -3707,20 +3753,25 @@
       const me = (currentEmail || "").toLowerCase();
       const showWho = isAdmin() && mgWhoSel !== "me";
       document.querySelectorAll(".mg-whocol").forEach((el) => show(el, showWho));
-      let rows = mgTime.filter((r) => r.minutes != null);
+      // Finished entries, plus anyone's still-running timer (live clock).
+      let rows = mgTime.filter((r) => r.minutes != null || (!r.stopped_at && r.started_at));
       if (!isAdmin() || mgWhoSel === "me") rows = rows.filter((r) => (r.user_email || "").toLowerCase() === me);
       else if (mgWhoSel !== "all") rows = rows.filter((r) => (r.user_email || "").toLowerCase() === mgWhoSel.toLowerCase());
+      rows = [...rows.filter((r) => !r.stopped_at && r.started_at), ...rows.filter((r) => r.minutes != null)];
       const body = $("mgTimeBody"); body.innerHTML = "";
       show($("mgTimeEmpty"), rows.length === 0);
       for (const r of rows) {
         const task = r.task_id ? mgTasks.find((t) => t.id === r.task_id) : null;
+        const live = !r.stopped_at && r.started_at;
         const tr = document.createElement("tr");
         tr.innerHTML = `<td>${r.work_date}</td>
           <td class="mg-whocol${showWho ? "" : " hidden"}">${escapeHtml(mgName(r.user_email))}</td>
           <td>${escapeHtml(mgEntName(r.entity_id) || "—")}</td>
           <td class="muted">${escapeHtml(task?.title || r.note || "")}</td>
-          <td class="num" style="font-variant-numeric:tabular-nums;">${mgClock(mgSecs(r))}</td>
-          <td class="num">${((r.user_email || "").toLowerCase() === me || isAdmin()) ? `<button class="mg-act del" data-mgtdel="${r.id}" title="Delete entry">✕</button>` : ""}</td>`;
+          <td class="num" style="font-variant-numeric:tabular-nums;">${live
+            ? `<span class="mg-run" title="Timer running since ${new Date(r.started_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}">● running</span> <span data-mglive="${r.started_at}">${mgClock(Math.floor((Date.now() - new Date(r.started_at)) / 1000))}</span>`
+            : mgClock(mgSecs(r))}</td>
+          <td class="num">${!live && ((r.user_email || "").toLowerCase() === me || isAdmin()) ? `<button class="mg-act del" data-mgtdel="${r.id}" title="Delete entry">✕</button>` : ""}</td>`;
         body.appendChild(tr);
       }
       const total = rows.reduce((s, r) => s + mgSecs(r), 0);
