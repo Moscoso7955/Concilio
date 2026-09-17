@@ -978,7 +978,7 @@
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.43.0 — schema migration 0043">v1.43.0</div>
+  <div class="version-tag" title="Owner Portal v1.44.0 — schema migration 0044">v1.44.0</div>
 
   <!-- Settings modal -->
   <div class="modal-overlay hidden" id="settingsModal">
@@ -1000,6 +1000,7 @@
         <div class="section-card" style="margin:1rem 0 0;padding:1rem;">
           <h2 style="font-size:0.95rem;">Add someone</h2>
           <div class="row" style="align-items:flex-end;">
+            <div style="flex:1.2;"><label>Name</label><input type="text" id="suNewName" placeholder="Micah Kinard"></div>
             <div style="flex:2;"><label>Email</label><input type="email" id="suNewEmail" placeholder="name@company.com"></div>
             <div style="flex:1;"><label>Role</label><select id="suNewRole" class="inline-select" style="width:100%;padding:0.6rem 0.7rem;">
               <option value="owner">Member</option><option value="accountant">Accountant</option><option value="admin">Admin</option></select></div>
@@ -1456,7 +1457,7 @@
       const roleDisp = (key) => roleRows.find((ro) => ro.key === key)?.name || key || "member";
       const personKey = (r) => {
         const em = (r.email || "").toLowerCase();
-        return (profByEmail[em]?.full_name || boxByEmail[em]?.name || r.email || "").toLowerCase();
+        return (profByEmail[em]?.full_name || r.full_name || boxByEmail[em]?.name || r.email || "").toLowerCase();
       };
       rows.sort((a, b) => {
         const pa = a.role === "admin" ? 0 : 1, pb = b.role === "admin" ? 0 : 1;
@@ -1474,7 +1475,7 @@
         const em = (r.email || "").toLowerCase();
         const p = profByEmail[em], b = boxByEmail[em];
         const signedUp = signInMap ? !!signInMap[em] : !!p;
-        const who = p?.full_name || b?.name || "";
+        const who = p?.full_name || r.full_name || b?.name || "";
         const roleTabs = roleInfo(r.role)?.tabs;
         const tabs = Array.isArray(r.tabs) && r.tabs.length ? r.tabs
           : (Array.isArray(roleTabs) && roleTabs.length ? roleTabs : (ROLE_DEFAULT_TABS[r.role] || null));
@@ -1656,9 +1657,11 @@
 
     $("suAddBtn")?.addEventListener("click", async () => {
       const email = ($("suNewEmail").value || "").trim().toLowerCase();
+      const name = ($("suNewName").value || "").trim();
       const st = $("suAddStatus");
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { st.textContent = "Enter a valid email."; return; }
-      const { error } = await supabase.from("allowed_owners").upsert({ email, role: $("suNewRole").value }, { onConflict: "email" });
+      const { error } = await supabase.from("allowed_owners").upsert(
+        { email, role: $("suNewRole").value, full_name: name || null }, { onConflict: "email" });
       if (error) { st.textContent = error.message; return; }
       logAccess("user_add", { email, role: $("suNewRole").value });
       // Principals get an org record too — name/brand/domain editable on
@@ -1675,7 +1678,7 @@
         const inv = await sendInvite(email);
         st.textContent = inv.already ? `Added — they already have an account; sent a fresh sign-in link.` : `Added — invite email sent to ${email}.`;
       } catch (e) { st.textContent = `Added, but the invite email failed: ${e.message}`; }
-      $("suNewEmail").value = ""; loadSettingsUsers();
+      $("suNewEmail").value = ""; $("suNewName").value = ""; loadSettingsUsers();
     });
 
     /* ---- Principals: multi-operator skins + managed units ---- */
