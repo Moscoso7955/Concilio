@@ -980,7 +980,7 @@
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.46.0 — schema migration 0046">v1.46.0</div>
+  <div class="version-tag" title="Owner Portal v1.46.1 — schema migration 0046">v1.46.1</div>
 
   <!-- Settings modal -->
   <div class="modal-overlay hidden" id="settingsModal">
@@ -1148,6 +1148,21 @@
       <div class="table-wrap" id="ytdModalBody"></div>
       <div class="row" style="align-items:center;margin-top:1rem;">
         <button class="btn btn--ghost" id="ytdCloseBtn" style="flex:0 0 auto;">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay hidden" id="gcalModal">
+    <div class="modal" style="max-width:400px;">
+      <h3 style="margin-bottom:0.35rem;">Add to Google Calendar</h3>
+      <p class="muted" id="gcalSub" style="font-size:0.85rem;margin-bottom:1rem;"></p>
+      <div class="row" style="align-items:flex-end;">
+        <div><label>Starts at</label><select id="gcalTime" class="inline-select" style="width:100%;padding:0.5rem;"></select></div>
+        <div><label>Minutes</label><input type="number" id="gcalMins" step="5" min="5"></div>
+      </div>
+      <div class="row" style="margin-top:1.1rem;align-items:center;">
+        <button class="btn" id="gcalGo" style="flex:0 0 auto;">Open Google Calendar</button>
+        <button class="btn btn--ghost" data-closemodal="gcalModal" style="flex:0 0 auto;">Cancel</button>
       </div>
     </div>
   </div>
@@ -3080,10 +3095,7 @@
           };
           $("op_r_cad").addEventListener("change", dayOpts); dayOpts();
           // 15-minute steps, 5:00–23:00, defaulting to 9:00 AM.
-          $("op_r_time").innerHTML = Array.from({ length: (23 - 5) * 4 + 1 }, (_, i) => {
-            const m = 5 * 60 + i * 15, hh = String(Math.floor(m / 60)).padStart(2, "0"), mm = String(m % 60).padStart(2, "0");
-            return `<option value="${hh}:${mm}"${hh === "09" && mm === "00" ? " selected" : ""}>${mgFmt12(hh + ":" + mm)}</option>`;
-          }).join("");
+          $("op_r_time").innerHTML = mgTimeOpts("09:00");
           $("opRecurAdd").addEventListener("click", async () => {
             const title = $("op_r_title").value.trim();
             if (!title) { $("op_r_title").focus(); return; }
@@ -3198,15 +3210,15 @@
       const [h, m] = String(hhmm || "09:00").split(":").map(Number);
       return `${((h + 11) % 12) + 1}:${String(m).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
     };
-    function mgGcalUrl(r) {
+    function mgGcalUrl(r, timeHHMM, minsOverride) {
       const { due } = mgRecurDue(r);
-      const start = new Date(due + "T" + (String(r.start_time || "09:00").slice(0, 5)) + ":00");
+      const start = new Date(due + "T" + (timeHHMM || String(r.start_time || "09:00").slice(0, 5)) + ":00");
       if (start < new Date(mgToday() + "T00:00:00")) {
         if (r.cadence === "daily") start.setDate(start.getDate() + 1);
         else if (r.cadence === "weekly") start.setDate(start.getDate() + 7);
         else start.setMonth(start.getMonth() + 1);
       }
-      const mins = +r.est_minutes || 30;
+      const mins = +minsOverride || +r.est_minutes || 30;
       const end = new Date(start.getTime() + mins * 60000);
       const f = (d) => `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}T${String(d.getHours()).padStart(2, "0")}${String(d.getMinutes()).padStart(2, "0")}00`;
       const BY = ["MO", "TU", "WE", "TH", "FR", "SA", "SU"];
@@ -3223,7 +3235,30 @@
       return "https://calendar.google.com/calendar/render?" + p.toString();
     }
     const mgGcalBtn = (r) =>
-      `<a class="mg-act" href="${mgGcalUrl(r)}" target="_blank" rel="noopener" title="Add to Google Calendar (${+r.est_minutes || 30} min block)" aria-label="Add ${escapeHtml(r.title)} to Google Calendar">📅</a>`;
+      `<button type="button" class="mg-act" data-gcal="${r.id}" title="Add to Google Calendar" aria-label="Add ${escapeHtml(r.title)} to Google Calendar">📅</button>`;
+    const mgTimeOpts = (sel) => Array.from({ length: (23 - 5) * 4 + 1 }, (_, i) => {
+      const m = 5 * 60 + i * 15, hh = String(Math.floor(m / 60)).padStart(2, "0"), mm = String(m % 60).padStart(2, "0");
+      const v = hh + ":" + mm;
+      return `<option value="${v}"${v === sel ? " selected" : ""}>${mgFmt12(v)}</option>`;
+    }).join("");
+    let gcalRec = null;
+    function mgOpenGcal(id) {
+      const r = mgRecurs.find((x) => x.id === id); if (!r) return;
+      gcalRec = r;
+      $("gcalSub").textContent = r.title + (r.entity_id ? ` — ${mgEntName(r.entity_id)}` : "") + " · " + mgRecurLabel(r);
+      $("gcalTime").innerHTML = mgTimeOpts(String(r.start_time || "09:00").slice(0, 5));
+      $("gcalMins").value = +r.est_minutes || 30;
+      show($("gcalModal"), true);
+    }
+    function mgWireGcal(scope) {
+      scope.querySelectorAll("[data-gcal]").forEach((b) => b.addEventListener("click", () => mgOpenGcal(b.dataset.gcal)));
+    }
+    $("gcalGo")?.addEventListener("click", () => {
+      if (!gcalRec) return;
+      window.open(mgGcalUrl(gcalRec, $("gcalTime").value, +$("gcalMins").value || 30), "_blank", "noopener");
+      show($("gcalModal"), false);
+    });
+    $("gcalModal")?.addEventListener("click", (e) => { if (e.target === $("gcalModal")) show($("gcalModal"), false); });
 
     // Ops pane: recurring definitions.
     const MG_DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -3259,6 +3294,7 @@
         logAccess("recur_delete", { title: r?.title });
         mgRefresh();
       }));
+      mgWireGcal(box);
     }
 
     // Org chart: admins as roots, managers nested by reports_to.
@@ -3466,6 +3502,7 @@
         logAccess("task_delete", { title: t?.title });
         mgRefresh();
       }));
+      mgWireGcal(box);
       box.querySelectorAll("[data-mgtimer]").forEach((b) => b.addEventListener("click", async () => {
         if (mgTimer) { alert("A timer is already running — stop it first."); return; }
         const t = mgTasks.find((x) => x.id === b.dataset.mgtimer);
