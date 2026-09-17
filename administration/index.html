@@ -900,6 +900,20 @@
             <button class="btn btn--ghost hidden" id="ytdBtn" style="flex:0 0 auto;">View YTD</button>
           </div>
         </div>
+
+        <!-- Balance sheets: admin-only (shown by renderUnitView, not the
+             admin-only class — principals must not see these). -->
+        <div class="section-card hidden" id="balCard">
+          <h2>Balance sheets</h2>
+          <p class="muted" style="margin-bottom:0.75rem;">Month-end snapshots from QuickBooks, captured with each sync. The current month reads as of the last sync.</p>
+          <div class="table-wrap">
+            <table id="balTable">
+              <thead><tr><th>Month</th><th>As of</th><th class="num">Assets</th><th class="num">Liabilities</th><th class="num">Equity</th><th></th></tr></thead>
+              <tbody id="balBody"></tbody>
+            </table>
+          </div>
+          <p class="muted hidden" id="balEmpty">No snapshots yet — run “Sync from QBO” and they'll appear here.</p>
+        </div>
       </div>
     </section>
 
@@ -1177,7 +1191,7 @@
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.54.5 — schema migration 0054">v1.54.5</div>
+  <div class="version-tag" title="Owner Portal v1.55.0 — schema migration 0055">v1.55.0</div>
 
   <!-- Settings modal -->
   <div class="modal-overlay hidden" id="settingsModal">
@@ -1345,6 +1359,20 @@
       <div class="table-wrap" id="ytdModalBody"></div>
       <div class="row" style="align-items:center;margin-top:1rem;">
         <button class="btn btn--ghost" id="ytdCloseBtn" style="flex:0 0 auto;">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Balance sheet viewer (admin) -->
+  <div class="modal-overlay hidden" id="balModal">
+    <div class="modal" style="max-width:640px;">
+      <div class="modal-sticky-head"><div>
+        <h3 id="balModalTitle" style="margin-bottom:0.1rem;">Balance Sheet</h3>
+        <div class="muted" id="balModalSub" style="font-size:0.85rem;"></div>
+      </div><button class="iconbtn" data-closemodal="balModal" style="font-size:1.5rem;" aria-label="Close">×</button></div>
+      <div class="table-wrap" id="balModalBody"></div>
+      <div class="row" style="align-items:center;margin-top:1rem;">
+        <button class="btn btn--ghost" data-closemodal="balModal" style="flex:0 0 auto;">Close</button>
       </div>
     </div>
   </div>
@@ -1671,6 +1699,7 @@
         case "ic_paid": return `Marked settlement <strong>${eh(d.entity || "")} → ${eh(d.payer || "")}</strong> (${eh(d.total || "")}) as paid`;
         case "ic_statement": return `Filed settlement statement <strong>${eh(d.title || "")}</strong> to Documents`;
         case "own_box_user": return `Created ownership box for <strong>${eh(d.name || d.email || "")}</strong> from their user card`;
+        case "bal_view": return `Viewed the balance sheet for <strong>${eh(d.unit || "")}</strong> (${eh(String(d.period || "").slice(0, 7))})`;
         case "manager_unit": return `${d.on ? "Assigned" : "Unassigned"} <strong>${eh(d.unit || "")}</strong> ${d.on ? "to" : "from"} manager ${eh(d.manager || "")}`;
         case "recur_add": return `Added ${eh(d.cadence || "")} recurring task <strong>${eh(d.title || "")}</strong>`;
         case "recur_delete": return `Deleted recurring task <strong>${eh(d.title || "")}</strong>`;
@@ -2454,6 +2483,10 @@
       // get the same editing controls on the units they manage.
       let canEdit = (isAdmin() && !repViewAs) || managesUnit(repUnit);
       document.querySelectorAll('[data-panel="financials"] .admin-only').forEach((el) => show(el, canEdit));
+      // Balance sheets are strictly admin (not principals, not view-as) —
+      // shown here on purpose instead of via the admin-only class.
+      show($("balCard"), isAdmin() && !repViewAs);
+      if (isAdmin() && !repViewAs) loadBalances(repUnit);
       $("repUnitName").textContent = u.name;
       renderQboBtn();
       document.querySelectorAll('[data-panel="financials"] .table-wrap').forEach((w) => w.scrollLeft = 0);
@@ -3206,6 +3239,48 @@
     $("ytdBtn")?.addEventListener("click", openYtdModal);
     $("ytdCloseBtn")?.addEventListener("click", () => show($("ytdModal"), false));
     $("ytdModal")?.addEventListener("click", (e) => { if (e.target === $("ytdModal")) show($("ytdModal"), false); });
+
+    /* ---- Balance sheets (admin): month-end snapshots written by
+       qbo-sync. Each row is one month; View opens the full statement. ---- */
+    let balRows = [];
+    async function loadBalances(entityId) {
+      const body = $("balBody"); if (!body) return;
+      const { data } = await supabase.from("qbo_balance").select("*")
+        .eq("entity_id", entityId).order("period", { ascending: false });
+      balRows = data || [];
+      show($("balEmpty"), balRows.length === 0);
+      body.innerHTML = balRows.map((b) => {
+        const off = b.assets != null && b.liabilities != null && b.equity != null &&
+          Math.abs(Number(b.assets) - Number(b.liabilities) - Number(b.equity)) > 0.02;
+        return `<tr>
+          <td>${monthLabel(b.period)}</td>
+          <td class="muted">${new Date(b.as_of + "T12:00:00").toLocaleDateString()}</td>
+          <td class="num">${money(b.assets)}</td>
+          <td class="num">${money(b.liabilities)}</td>
+          <td class="num">${money(b.equity)}${off ? ` <span title="Assets − liabilities − equity isn't zero — the books may be out of balance" style="color:#e08585;font-weight:700;">!</span>` : ""}</td>
+          <td class="num"><button class="btn btn--ghost btn--sm" data-balview="${b.period}">View</button></td>
+        </tr>`;
+      }).join("");
+      body.querySelectorAll("[data-balview]").forEach((btn) => btn.addEventListener("click", () => openBal(btn.dataset.balview)));
+    }
+    function openBal(period) {
+      const b = balRows.find((x) => String(x.period) === period); if (!b) return;
+      const u = repUnits.find((x) => x.id === repUnit);
+      $("balModalTitle").textContent = "Balance Sheet — " + (u?.name || "");
+      $("balModalSub").textContent = `As of ${new Date(b.as_of + "T12:00:00").toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })} · synced ${new Date(b.synced_at).toLocaleDateString()}`;
+      const lines = (b.detail && b.detail.lines) || [];
+      $("balModalBody").innerHTML = `<table class="pnl-table" style="width:100%;"><tbody>` +
+        lines.map((l) => {
+          const pad = `padding-left:${0.4 + (l.d || 0) * 1.1}rem;`;
+          if (l.t === "h") return `<tr><td style="${pad}font-weight:700;padding-top:0.6rem;">${escapeHtml(l.label)}</td><td></td></tr>`;
+          if (l.t === "s") return `<tr style="border-top:1px solid var(--border);"><td style="${pad}font-weight:600;">${escapeHtml(l.label)}</td><td class="num" style="font-weight:600;">${money(l.amount)}</td></tr>`;
+          return `<tr><td style="${pad}">${escapeHtml(l.label)}</td><td class="num">${money(l.amount)}</td></tr>`;
+        }).join("") + `</tbody></table>` +
+        (lines.length ? "" : '<p class="muted">No detail stored for this snapshot.</p>');
+      show($("balModal"), true);
+      logAccess("bal_view", { unit: u?.name, period });
+    }
+    $("balModal")?.addEventListener("click", (e) => { if (e.target === $("balModal")) show($("balModal"), false); });
 
     // Range picker (defaults to this year) + custom month picker for the form.
     let finMonthPicker = null, finPendingPnl = null;
