@@ -840,7 +840,7 @@
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.39.1 — schema migration 0039">v1.39.1</div>
+  <div class="version-tag" title="Owner Portal v1.40.0 — schema migration 0040">v1.40.0</div>
 
   <!-- Settings modal -->
   <!-- Onboarding: first admin sign-in of a new workspace -->
@@ -5004,10 +5004,13 @@
         bar.innerHTML = '<span class="muted">Email-in (forward bills to auto-file) isn’t set up yet.</span>';
         return;
       }
-      let token = "concilio";
       const { data } = await supabase.from("tenants").select("inbound_token,name").order("created_at");
       const ts = data || [];
-      if (ts[0]?.inbound_token) token = ts[0].inbound_token;
+      const token = ts[0]?.inbound_token;
+      if (!token) {
+        bar.innerHTML = '<span class="muted">This workspace has no inbound address yet — contact support.</span>';
+        return;
+      }
       const el = $("invEmailAddr"); if (el) el.textContent = `bills-${token}@${domain}`;
       const extra = $("invEmailExtra");
       if (extra && ts[1]?.inbound_token) extra.textContent = ` · or bills-${ts[1].inbound_token}@${domain} to file straight to ${tenantShort(ts[1])}`;

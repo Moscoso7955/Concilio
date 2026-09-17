@@ -211,15 +211,15 @@ Deno.serve(async (req) => {
     const rec = recipients.map(String).join(",").toLowerCase();
     const token = (rec.match(/bills-([a-z0-9-]+)@/i) || [])[1];
     let tenant: Tenant | null = null;
-    if (token) tenant = (await admin.from("tenants").select("id, workspace_id").eq("inbound_token", token).single()).data;
-    // Forgiving routing: ANY address on our inbound subdomain (receipts@,
-    // bills@, a typo'd token…) files to the primary tenant. Mail for other
-    // domains on the shared Resend account (e.g. Tipsy) is still ignored.
-    if (!tenant && rec.includes("@bills.conciliowealth.com")) {
-      tenant = (await admin.from("tenants").select("id, workspace_id").order("created_at").limit(1).single()).data;
-      if (tenant) console.log("no/unknown token on our domain — defaulting to primary tenant");
+    if (token) tenant = (await admin.from("tenants").select("id, workspace_id").eq("inbound_token", token).maybeSingle()).data;
+    // Multi-tenant: the token IS the routing key. An unknown or missing
+    // token never falls back to another workspace's company — the mail
+    // is logged and dropped.
+    if (!tenant) {
+      if (rec.includes("@bills.conciliowealth.com")) await dblog("unknown inbound token — ignored", { to: rec.slice(0, 120), token: token || null });
+      else console.log("not for us — ignoring:", rec.slice(0, 120));
+      return new Response("ignored", { status: 200 });
     }
-    if (!tenant) { console.log("not for us — ignoring:", rec.slice(0, 120)); return new Response("ignored", { status: 200 }); }
     console.log("tenant resolved", token ? `(token: ${token})` : "(domain default)");
 
     const attachments: Array<Record<string, string>> = email.attachments || [];
