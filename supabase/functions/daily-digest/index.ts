@@ -7,7 +7,7 @@
 // for the cron path).
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { sendPush } from "../_shared/push.ts";
+import { flushHeld, sendPush } from "../_shared/push.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -77,6 +77,14 @@ Deno.serve(async (req) => {
   }
   if (!authed) return json({ error: "Unauthorized" }, 401);
 
+  // Quiet-hours hold queue: flush whatever windows have ended. The
+  // hourly cron calls with {flush_only:true}; the morning run (and the
+  // portal's Send-digest-now button) does both.
+  const flushed = await flushHeld(admin);
+  let flushOnly = false;
+  try { flushOnly = !!(await req.clone().json()).flush_only; } catch (_) { /* empty body = full run */ }
+  if (flushOnly) return json({ ok: true, flushed });
+
   const today = todayCT();
   const [taskRes, entRes, ownRes, profRes] = await Promise.all([
     admin.from("tasks").select("title,entity_id,due_date,assignee_email,status").neq("status", "done")
@@ -123,12 +131,12 @@ Deno.serve(async (req) => {
         title: `Today: ${dueToday.length} task${dueToday.length === 1 ? "" : "s"}${overdue.length ? ` · ${overdue.length} overdue` : ""}`,
         body: [...dueToday, ...overdue].slice(0, 3).map((r) => r.title).join(" · ") || "Open Management for the list.",
         tag: "digest-" + today,
-      });
+      }, { category: "digest" });
     }
     else {
       const detail = (await res.text()).slice(0, 300);
       try { await admin.from("function_logs").insert({ fn: "daily-digest", msg: "send failed", detail: { email, detail } }); } catch (_) { /* best effort */ }
     }
   }
-  return json({ ok: true, date: today, sent });
+  return json({ ok: true, date: today, sent, flushed });
 });

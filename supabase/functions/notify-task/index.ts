@@ -106,7 +106,7 @@ Deno.serve(async (req) => {
     title: nudge ? "Update requested" : "New task for you",
     body: `${title}${meta.length ? " · " + meta[0] : ""} — ${fromWho}`,
     tag: "task-" + (taskId || recurringId),
-  });
+  }, { category: "tasks" });
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: `Bearer ${RESEND_KEY}`, "Content-Type": "application/json" },

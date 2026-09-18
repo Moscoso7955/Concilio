@@ -1202,7 +1202,7 @@
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.57.1 — schema migration 0057">v1.57.1</div>
+  <div class="version-tag" title="Owner Portal v1.58.0 — schema migration 0058">v1.58.0</div>
 
   <!-- Settings modal -->
   <div class="modal-overlay hidden" id="settingsModal">
@@ -1415,6 +1415,20 @@
         <button class="btn btn--ghost" data-closemodal="pushModal" style="flex:0 0 auto;">Close</button>
       </div>
       <div class="muted" id="pushHelp" style="font-size:0.82rem;line-height:1.8;margin-top:0.9rem;"></div>
+      <div id="pushPrefs" class="hidden" style="margin-top:1rem;border-top:1px solid var(--border);padding-top:0.9rem;">
+        <label style="margin-bottom:0.4rem;">What to send (all your devices)</label>
+        <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+          <label class="tabchip"><input type="checkbox" id="pp_tasks"> Task assignments &amp; nudges</label>
+          <label class="tabchip"><input type="checkbox" id="pp_digest"> Morning digest</label>
+        </div>
+        <div class="row" style="align-items:flex-end;flex-wrap:wrap;margin-top:0.8rem;">
+          <div><label>Quiet hours — from</label><select id="pp_qs" class="inline-select" style="padding:0.45rem 0.55rem;"></select></div>
+          <div><label>Until</label><select id="pp_qe" class="inline-select" style="padding:0.45rem 0.55rem;"></select></div>
+          <button class="btn btn--sm" id="ppSave" style="flex:0 0 auto;">Save settings</button>
+          <span class="muted" id="ppStatus" style="font-size:0.8rem;"></span>
+        </div>
+        <p class="muted" style="font-size:0.75rem;line-height:1.6;margin-top:0.5rem;">Quiet hours are Central time and can cross midnight (10:00 PM – 8:00 AM). Alerts during quiet hours are held, not dropped — they arrive when the window ends, newest first. Enforced on the server for every device you have.</p>
+      </div>
     </div>
   </div>
 
@@ -1731,6 +1745,7 @@
         case "ic_recur_del": return `Deleted standing charge <strong>${eh(d.memo || "")}</strong>`;
         case "push_enable": return `Turned on phone notifications for a device`;
         case "push_disable": return `Turned off phone notifications on a device`;
+        case "push_prefs": return `Updated notification settings (tasks ${d.tasks ? "on" : "off"} · digest ${d.digest ? "on" : "off"} · quiet ${eh(d.quiet || "off")})`;
         case "manager_unit": return `${d.on ? "Assigned" : "Unassigned"} <strong>${eh(d.unit || "")}</strong> ${d.on ? "to" : "from"} manager ${eh(d.manager || "")}`;
         case "recur_add": return `Added ${eh(d.cadence || "")} recurring task <strong>${eh(d.title || "")}</strong>`;
         case "recur_delete": return `Deleted recurring task <strong>${eh(d.title || "")}</strong>`;
@@ -1771,11 +1786,14 @@
 
     async function loadSettingsUsers() {
       const box = $("suList"); box.innerHTML = '<p class="muted">Loading…</p>';
-      const [aoRes, profRes] = await Promise.all([
+      const [aoRes, profRes, pushRes] = await Promise.all([
         supabase.from("allowed_owners").select("*").order("created_at"),
         supabase.from("profiles").select("id,email,full_name,role,tabs"),
+        supabase.from("push_subscriptions").select("email"), // admins see who's enrolled
         loadPrincipals(), // principal cards show org + skin fields
       ]);
+      const pushCount = {};
+      for (const r of pushRes.data || []) pushCount[(r.email || "").toLowerCase()] = (pushCount[(r.email || "").toLowerCase()] || 0) + 1;
       // "Signed up" means an actual first sign-in, not just the auth record
       // the invite creates. Admin-only RPC; falls back to profile presence
       // until migration 0020 has run.
@@ -1835,7 +1853,7 @@
             <span class="su-caret">▶</span>
           </button>
           <div class="su-body hidden" data-subody="${i}">
-          <div class="muted" style="font-size:0.78rem;margin-top:0.5rem;">${signedUp ? "Signed up" : "Invited — hasn't signed in yet"}${b ? " · linked to an ownership box" : ""}</div>
+          <div class="muted" style="font-size:0.78rem;margin-top:0.5rem;">${signedUp ? "Signed up" : "Invited — hasn't signed in yet"}${b ? " · linked to an ownership box" : ""}${pushCount[em] ? ` · notifications on ${pushCount[em]} device${pushCount[em] === 1 ? "" : "s"}` : " · no notification devices"}</div>
           <div class="su-actions" style="margin-top:0.6rem;">
             <select data-surole="${i}" class="inline-select" style="padding:0.4rem 0.5rem;">
               ${roleRows.map((ro) => `<option value="${escapeHtml(ro.key)}"${r.role === ro.key ? " selected" : ""}>${escapeHtml(ro.name)}</option>`).join("")}
@@ -5405,7 +5423,43 @@
         showBtns(true, false, false);
       }
     }
-    $("pushBtn")?.addEventListener("click", () => { show($("pushModal"), true); pushRefreshUI(); });
+    // Settings block: categories + quiet hours, saved per person and
+    // enforced server-side inside the send helper.
+    const ppTimeOpts = (sel) => {
+      let h = `<option value="">Off</option>`;
+      for (let m = 0; m < 24 * 60; m += 30) {
+        const hh = Math.floor(m / 60), mm = m % 60;
+        const v = `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+        const label = `${((hh + 11) % 12) + 1}:${String(mm).padStart(2, "0")} ${hh < 12 ? "AM" : "PM"}`;
+        h += `<option value="${v}"${v === sel ? " selected" : ""}>${label}</option>`;
+      }
+      return h;
+    };
+    async function pushLoadPrefs() {
+      show($("pushPrefs"), true);
+      const { data: p } = await supabase.from("push_prefs").select("*")
+        .eq("email", (currentEmail || "").toLowerCase()).maybeSingle();
+      $("pp_tasks").checked = p ? p.tasks !== false : true;
+      $("pp_digest").checked = p ? p.digest !== false : true;
+      $("pp_qs").innerHTML = ppTimeOpts(p?.quiet_start ? String(p.quiet_start).slice(0, 5) : "");
+      $("pp_qe").innerHTML = ppTimeOpts(p?.quiet_end ? String(p.quiet_end).slice(0, 5) : "");
+    }
+    $("ppSave")?.addEventListener("click", async () => {
+      const qs = $("pp_qs").value, qe = $("pp_qe").value;
+      if ((qs && !qe) || (!qs && qe)) { toast("Set both quiet-hours times, or both to Off.", "err"); return; }
+      const st = $("ppStatus"); st.textContent = "Saving…";
+      const { error } = await supabase.from("push_prefs").upsert({
+        email: (currentEmail || "").toLowerCase(),
+        tasks: $("pp_tasks").checked, digest: $("pp_digest").checked,
+        quiet_start: qs || null, quiet_end: qe || null,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "email" });
+      st.textContent = "";
+      if (error) { toast(error.message, "err"); return; }
+      toast("Notification settings saved ✓");
+      logAccess("push_prefs", { tasks: $("pp_tasks").checked, digest: $("pp_digest").checked, quiet: qs ? `${qs}–${qe}` : "off" });
+    });
+    $("pushBtn")?.addEventListener("click", () => { show($("pushModal"), true); pushRefreshUI(); pushLoadPrefs(); });
     $("pushModal")?.addEventListener("click", (e) => { if (e.target === $("pushModal")) show($("pushModal"), false); });
     $("pushEnableBtn")?.addEventListener("click", async () => {
       try {

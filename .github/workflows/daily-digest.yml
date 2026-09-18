@@ -1,7 +1,9 @@
 name: Morning task digest
 
-# Fires the daily-digest edge function every morning. 12:00 UTC is
-# 7:00 AM Central in summer (6:00 AM in winter — cron has no DST).
+# Hourly: flushes the quiet-hours hold queue (push notifications held
+# while someone slept go out once their window ends). The 12:00 UTC run
+# also sends the morning digest — 7:00 AM Central in summer (6:00 AM in
+# winter; cron has no DST).
 # Requires the same random string in two places:
 #   - GitHub repo secret DIGEST_KEY
 #   - Supabase edge function secret DIGEST_KEY
@@ -9,14 +11,14 @@ name: Morning task digest
 
 on:
   schedule:
-    - cron: "0 12 * * *"
+    - cron: "0 * * * *"
   workflow_dispatch: {}
 
 jobs:
   send:
     runs-on: ubuntu-latest
     steps:
-      - name: Call daily-digest
+      - name: Call daily-digest (digest at 12 UTC, flush-only otherwise)
         env:
           DIGEST_KEY: ${{ secrets.DIGEST_KEY }}
         run: |
@@ -24,8 +26,11 @@ jobs:
             echo "DIGEST_KEY repo secret is not set — skipping (see workflow header)."
             exit 0
           fi
+          BODY='{"flush_only": true}'
+          [ "$(date -u +%H)" = "12" ] && BODY='{}'
           code=$(curl -s -o /tmp/out -w '%{http_code}' -X POST \
-            -H "x-digest-key: $DIGEST_KEY" \
+            -H "x-digest-key: $DIGEST_KEY" -H "Content-Type: application/json" \
+            -d "$BODY" \
             "https://ofliuuulagqlbdjwrnjc.supabase.co/functions/v1/daily-digest")
           cat /tmp/out; echo
           [ "$code" = "200" ] || { echo "digest failed with $code"; exit 1; }
