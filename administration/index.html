@@ -1255,7 +1255,7 @@
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.59.0 — schema migration 0059">v1.59.0</div>
+  <div class="version-tag" title="Owner Portal v1.59.1 — schema migration 0059">v1.59.1</div>
 
   <!-- Settings modal -->
   <div class="modal-overlay hidden" id="settingsModal">
@@ -6684,7 +6684,8 @@
       const [{ data, error }, tRes, eRes] = await Promise.all([
         supabase.from("invoices_list").select("*").order("created_at", { ascending: false }),
         supabase.from("tenants").select("id,name,inbound_token").order("created_at"),
-        supabase.from("ownership_entities").select("id,name").order("name"),
+        // Companies only — a bill is never "for" a person.
+        supabase.from("ownership_entities").select("id,name").eq("kind", "entity").order("name"),
       ]);
       invRows = (!error && data) || [];
       invTenants = (!tRes.error && tRes.data) || [];
