@@ -593,6 +593,16 @@
       #saList td:nth-child(3) { order: 1; flex: 1 1 100%; }
       #saList td:nth-child(2) { order: 2; color: var(--muted); font-size: 0.76rem; max-width: none; }
       #saList td:nth-child(1) { order: 3; color: var(--muted); font-size: 0.76rem; margin-left: auto; }
+      /* Task rows wrap on phones: title on its own tappable line (tap
+         for the notes/progress/edit panel), chips and actions beneath —
+         no more sideways page overflow. */
+      body { overflow-x: hidden; }
+      .mg-task { flex-wrap: wrap; row-gap: 0.35rem; }
+      .mg-task .mg-title { flex: 1 1 100%; order: -1; white-space: normal; }
+      .mg-title.expandable { text-decoration: underline; text-decoration-style: dotted; text-decoration-color: #4a4a4a; text-underline-offset: 3px; }
+      .mg-detail { margin-left: 0.35rem; }
+      .mg-editrow select { max-width: 100%; }
+
       /* Time week table: unit + duration up top, note beneath, who/date
          as a meta line — the live "running" clock stays fully visible. */
       #mgTimeTable, #mgTimeTable tbody { display: block; }
@@ -1202,7 +1212,7 @@
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.58.0 — schema migration 0058">v1.58.0</div>
+  <div class="version-tag" title="Owner Portal v1.58.1 — schema migration 0058">v1.58.1</div>
 
   <!-- Settings modal -->
   <div class="modal-overlay hidden" id="settingsModal">
