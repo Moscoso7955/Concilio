@@ -477,8 +477,6 @@
       <button class="tab" data-tab="memos">Memo Board</button>
       <button class="tab" data-tab="documents">Documents</button>
       <button class="tab" data-tab="invoices">Invoices</button>
-      <button class="tab" data-tab="marketing">Marketing</button>
-      <button class="tab" data-tab="site">Site Content</button>
       <button class="tab" data-tab="owners">Ownership</button>
     </div>
 
@@ -706,116 +704,6 @@
     </section>
 
     <!-- Site Content (admin) -->
-    <section class="tab-panel hidden" data-panel="site">
-      <div class="section-card">
-        <h2>Public site content</h2>
-        <div class="field"><label>Brand</label><input type="text" id="s_brand"></div>
-        <div class="field"><label>Tagline</label><textarea id="s_tagline"></textarea></div>
-        <div class="field"><label>Footer</label><input type="text" id="s_footer"></div>
-        <div class="row">
-          <div><label>Background color</label><div class="color-row"><input type="color" id="s_bgColor_p"><input type="text" id="s_bgColor"></div></div>
-          <div><label>Text color</label><div class="color-row"><input type="color" id="s_textColor_p"><input type="text" id="s_textColor"></div></div>
-        </div>
-        <div class="field" style="margin-top:1rem;"><label>SEO title</label><input type="text" id="s_seoTitle"></div>
-        <div class="field"><label>SEO description</label><textarea id="s_seoDescription"></textarea></div>
-        <div class="row" style="align-items:center;">
-          <button class="btn" id="siteSaveBtn" style="flex:0 0 auto;">Save site content</button>
-          <span class="muted" id="siteStatus"></span>
-        </div>
-      </div>
-    </section>
-
-    <!-- Marketing: per-venue mail campaigns (more marketing tools nest here later) -->
-    <section class="tab-panel hidden" data-panel="marketing">
-      <div class="row" id="mailUnitRow" style="align-items:flex-end;margin-bottom:1rem;">
-        <div style="flex:0 1 20rem;"><label>Venue</label><select id="mailUnitSel" class="inline-select" style="width:100%;padding:0.6rem 0.7rem;"></select></div>
-      </div>
-
-      <div class="section-card hidden" id="mailEmpty">
-        <h2>No venues yet</h2>
-        <p class="muted" style="margin:0;">Add a venue from <strong>Ownership</strong>: open its box and check <strong>Marketing</strong> — it appears here with its own mailing list, branding, and campaigns.</p>
-      </div>
-
-      <div id="mailBody">
-      <div class="section-card">
-        <h2>Sender profile</h2>
-        <p class="muted" style="margin-bottom:0.75rem;">Each venue sends from its own verified domain. Every email's footer automatically carries the unsubscribe link and the venue's physical address — the address comes from the unit's <strong>Address</strong> field in Ownership (legally required).</p>
-        <div class="row">
-          <div><label>From name</label><input type="text" id="ms_from_name" placeholder="Bar Phoebe"></div>
-          <div><label>From email (verified domain)</label><input type="email" id="ms_from_email" placeholder="hello@news.barphoebe.com"></div>
-        </div>
-        <div class="row" style="margin-top:0.5rem;">
-          <div><label>Logo URL</label><input type="url" id="ms_logo" placeholder="https://…/logo.png"></div>
-        </div>
-        <div class="row" style="margin-top:0.5rem;">
-          <div style="flex:1.5;"><label>Sync source — venue endpoint or its Supabase REST URL</label><input type="url" id="ms_sync_url" placeholder="https://xxxx.supabase.co/rest/v1/mailing_list?select=email,name,created_at"></div>
-          <div><label>Sync key (Bearer / venue anon key)</label><input type="text" id="ms_sync_key" placeholder="shared secret"></div>
-        </div>
-        <div class="field" style="margin-top:0.6rem;">
-          <label style="display:inline-flex;align-items:center;gap:0.45rem;margin:0;cursor:pointer;">
-            <input type="checkbox" id="ms_warmup" checked style="width:auto;"> Warm-up — ramp daily send volume while this domain builds reputation (150 → 400 → 1,000 → 3,000/day, then unlimited)
-          </label>
-        </div>
-        <div class="row" style="align-items:center;margin-top:0.75rem;">
-          <button class="btn" id="msSaveBtn" style="flex:0 0 auto;">Save sender</button>
-          <span class="muted" id="msStatus"></span>
-        </div>
-      </div>
-
-      <div class="section-card">
-        <h2>Branding</h2>
-        <p class="muted" style="margin-bottom:0.75rem;">How this venue's campaign emails look. The header image runs full-width across the top of every email — about 1200 × 300 JPG/PNG works well (keep it under ~700&nbsp;KB). It's stored with the venue's data, so it can't break if files get reorganized.</p>
-        <div class="field">
-          <label>Email header image</label>
-          <img id="mbHeaderPreview" class="hidden" alt="Header image preview" style="display:block;max-width:100%;max-height:180px;border-radius:8px;border:1px solid var(--border);margin-bottom:0.5rem;">
-          <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;">
-            <button class="btn btn--ghost btn--sm" id="mbHeaderPick">Replace image…</button>
-            <button class="btn btn--ghost btn--sm hidden" id="mbHeaderClear">Remove</button>
-            <input type="file" id="mbHeaderFile" accept="image/png,image/jpeg,image/webp" class="hidden">
-            <span class="muted" id="mbHeaderStatus"></span>
-          </div>
-        </div>
-        <div class="row" style="margin-top:0.5rem;">
-          <div><label>Accent color</label><div class="color-row"><input type="color" id="mb_accent_p" value="#111827"><input type="text" id="mb_accent" placeholder="#111827"></div></div>
-          <div><label>Card background</label><div class="color-row"><input type="color" id="mb_card_p" value="#ffffff"><input type="text" id="mb_card" placeholder="#ffffff"></div></div>
-          <div><label>Page background</label><div class="color-row"><input type="color" id="mb_page_p" value="#f4f4f5"><input type="text" id="mb_page" placeholder="#f4f4f5"></div></div>
-        </div>
-        <div class="row" style="align-items:center;margin-top:0.75rem;">
-          <button class="btn" id="mbSaveBtn" style="flex:0 0 auto;">Save branding</button>
-          <span class="muted" id="mbStatus"></span>
-        </div>
-      </div>
-
-      <div class="section-card">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:0.6rem;flex-wrap:wrap;margin-bottom:0.5rem;">
-          <h2 style="margin:0;">Audience</h2>
-          <div style="display:flex;gap:0.4rem;flex-wrap:wrap;">
-            <button class="btn btn--ghost btn--sm" id="mailCsvBtn">Import CSV…</button>
-            <button class="btn btn--sm" id="mailSyncBtn">Sync mailing list</button>
-            <input type="file" id="mailCsvFile" accept=".csv,text/csv,text/plain" class="hidden">
-          </div>
-        </div>
-        <div class="muted" id="mailAudience">—</div>
-      </div>
-
-      <div class="section-card">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:0.6rem;flex-wrap:wrap;margin-bottom:1rem;">
-          <h2 style="margin:0;">Campaigns</h2>
-          <span class="muted" id="mailCampStatus" style="flex:1;text-align:right;"></span>
-          <button class="btn btn--sm" id="mailNewBtn" style="flex:0 0 auto;">New campaign…</button>
-        </div>
-        <div class="table-wrap">
-          <table id="mailCampTable" class="hidden">
-            <thead><tr><th>Subject</th><th>Status</th><th>Sent</th><th></th></tr></thead>
-            <tbody id="mailCampBody"></tbody>
-          </table>
-        </div>
-        <p class="muted" id="mailCampEmpty">No campaigns yet for this venue.</p>
-      </div>
-      </div><!-- /mailBody -->
-    </section>
-
-    <!-- Owners: admins edit; members see their downstream slice read-only -->
     <section class="tab-panel hidden" data-panel="owners">
       <div class="graph-wrap">
         <div class="graph-toolbar">
@@ -840,7 +728,7 @@
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.40.4 — schema migration 0040">v1.40.4</div>
+  <div class="version-tag" title="Owner Portal v1.40.5 — schema migration 0040">v1.40.5</div>
 
   <!-- Settings modal -->
   <!-- Onboarding: first admin sign-in of a new workspace -->
@@ -1263,7 +1151,7 @@
     $("signOutBtn").addEventListener("click", async () => { await supabase.auth.signOut(); location.reload(); });
 
     /* ---------------- Settings: users & access (admin) ---------------- */
-    const TAB_META = [["financials", "Reports"], ["memos", "Memo Board"], ["documents", "Documents"], ["invoices", "Invoices"], ["marketing", "Marketing"], ["owners", "Ownership"]];
+    const TAB_META = [["financials", "Reports"], ["memos", "Memo Board"], ["documents", "Documents"], ["invoices", "Invoices"], ["owners", "Ownership"]];
     const ROLE_LABEL = { owner: "Member", accountant: "Accountant", admin: "Admin" };
 
     $("settingsBtn")?.addEventListener("click", () => { show($("settingsModal"), true); loadSettingsUsers(); });
@@ -1725,17 +1613,17 @@
     // Which tabs this user sees. Admins see everything; others get their
     // per-user assignment (Settings) or their role's default set. Site
     // Content is never assignable — it edits the public site.
-    const ALL_TABS = ["financials", "memos", "documents", "invoices", "marketing", "site", "owners"];
+    const ALL_TABS = ["financials", "memos", "documents", "invoices", "owners"];
     const ROLE_DEFAULT_TABS = {
       owner: ["financials", "memos", "documents", "owners"],
       accountant: ["financials", "documents", "invoices"],
     };
     function allowedTabs() {
-      if (isAdmin()) return profile?.platform_admin ? ALL_TABS : ALL_TABS.filter((t) => t !== "site");
+      if (isAdmin()) return ALL_TABS;
       const assigned = profile && Array.isArray(profile.tabs) && profile.tabs.length ? profile.tabs : null;
       const role = roleInfo(profile?.role);
       const roleTabs = role && Array.isArray(role.tabs) && role.tabs.length ? role.tabs : null;
-      return (assigned || roleTabs || ROLE_DEFAULT_TABS[profile?.role] || ROLE_DEFAULT_TABS.owner).filter((t) => t !== "site");
+      return (assigned || roleTabs || ROLE_DEFAULT_TABS[profile?.role] || ROLE_DEFAULT_TABS.owner);
     }
 
     function enterApp(session) {
@@ -1761,8 +1649,7 @@
       const finReady = loadFinancials(); loadMemos();
       if (tabs.includes("documents")) loadDocuments();
       if (tabs.includes("invoices")) loadInvoices();
-      if (tabs.includes("marketing")) loadMail();
-      if (isAdmin()) { if (profile?.platform_admin) loadSite(); loadQboStatus(); }
+      if (isAdmin()) loadQboStatus();
       // One sign-in event per browser session, not per reload.
       try {
         if (!sessionStorage.getItem("arca_logged_in")) {
@@ -1980,7 +1867,7 @@
       const assigned = r && Array.isArray(r.tabs) && r.tabs.length ? r.tabs : null;
       const ri = roleInfo(r?.role || "owner");
       const roleTabs = ri && Array.isArray(ri.tabs) && ri.tabs.length ? ri.tabs : null;
-      return (assigned || roleTabs || ROLE_DEFAULT_TABS[r?.role] || ROLE_DEFAULT_TABS.owner).filter((t) => t !== "site");
+      return (assigned || roleTabs || ROLE_DEFAULT_TABS[r?.role] || ROLE_DEFAULT_TABS.owner);
     }
     async function enterViewAs(id) {
       const e = gEnt.find((x) => x.id === id); if (!e) return;
@@ -3858,362 +3745,6 @@
       loadDocuments();
     }
 
-    /* ---------------- Mail (per-venue campaigns) ---------------- */
-    let mailUnits = [], mailUnit = null, mailSender = null, mailCamps = [], mailStats = { active: 0, total: 0 }, mailEditId = null;
-    const mailFnHeaders = async () => {
-      let session = null;
-      try { session = (await supabase.auth.getSession()).data.session; } catch (_) {}
-      return {
-        "Content-Type": "application/json",
-        apikey: cfg.SUPABASE_ANON_KEY,
-        Authorization: "Bearer " + (session?.access_token || cfg.SUPABASE_ANON_KEY),
-      };
-    };
-    async function loadMail() {
-      // Venues opted in via the Ownership pane's Marketing toggle. The RPC
-      // also works for marketing-role users who can't read the ownership
-      // table; before migration 0032 it doesn't exist → every entity box.
-      let units = null;
-      try {
-        const { data, error } = await supabase.rpc("marketing_units");
-        if (!error && Array.isArray(data)) units = data;
-      } catch (_) {}
-      if (!units) {
-        const { data: ents } = await supabase.from("ownership_entities").select("id,name,kind").order("name");
-        units = ((ents || [])).filter((e) => e.kind === "entity");
-      }
-      mailUnits = units;
-      const sel = $("mailUnitSel"); if (!sel) return;
-      show($("mailUnitRow"), mailUnits.length > 0);
-      show($("mailBody"), mailUnits.length > 0);
-      show($("mailEmpty"), mailUnits.length === 0);
-      if (!mailUnits.length) return;
-      sel.innerHTML = mailUnits.map((u) => `<option value="${u.id}">${escapeHtml(u.name)}</option>`).join("");
-      if (!mailUnit || !mailUnits.some((u) => u.id === mailUnit)) mailUnit = mailUnits[0]?.id || null;
-      if (mailUnit) sel.value = mailUnit;
-      await refreshMailUnit();
-    }
-    $("mailUnitSel")?.addEventListener("change", () => { mailUnit = $("mailUnitSel").value; refreshMailUnit(); });
-    async function refreshMailUnit() {
-      if (!mailUnit) return;
-      const [sRes, cRes, act, tot] = await Promise.all([
-        supabase.from("mail_senders").select("*").eq("entity_id", mailUnit).maybeSingle(),
-        supabase.from("mail_campaigns").select("*").eq("entity_id", mailUnit).order("created_at", { ascending: false }),
-        supabase.from("mail_subscribers").select("id", { count: "exact", head: true }).eq("entity_id", mailUnit)
-          .is("unsubscribed_at", null).is("bounced_at", null).is("complaint_at", null),
-        supabase.from("mail_subscribers").select("id", { count: "exact", head: true }).eq("entity_id", mailUnit),
-      ]);
-      mailSender = sRes?.data || null;
-      mailCamps = (!cRes?.error && cRes?.data) || [];
-      mailStats = { active: act?.count ?? 0, total: tot?.count ?? 0 };
-      $("ms_from_name").value = mailSender?.from_name || "";
-      $("ms_from_email").value = mailSender?.from_email || "";
-      $("ms_logo").value = mailSender?.logo_url || "";
-      $("ms_sync_url").value = mailSender?.sync_url || "";
-      $("ms_sync_key").value = mailSender?.sync_key || "";
-      $("ms_warmup").checked = mailSender ? mailSender.warmup !== false : true;
-      $("msStatus").textContent = ""; $("mailCampStatus").textContent = "";
-      // Branding card (columns exist from migration 0032 on).
-      mbHeaderUrl = mailSender?.header_image_url || null;
-      mbPreviewSrc = null; mbHeaderData = null; mbHeaderMime = null; mbHeaderDirty = false;
-      renderMbHeader();
-      const setColor = (t, p, v, fb) => { $(t).value = v || ""; $(p).value = /^#[0-9a-fA-F]{6}$/.test(v || "") ? v : fb; };
-      setColor("mb_accent", "mb_accent_p", mailSender?.accent, "#111827");
-      setColor("mb_card", "mb_card_p", mailSender?.card_bg, "#ffffff");
-      setColor("mb_page", "mb_page_p", mailSender?.page_bg, "#f4f4f5");
-      $("mbStatus").textContent = ""; $("mbHeaderStatus").textContent = "";
-      renderMailAudience(); renderMailCamps();
-    }
-
-    /* ---- Branding: header image + email colors. The image's bytes are
-       stored ON the sender row (base64) and served by the mail-asset
-       function at a stable URL — a moved or deleted storage file can
-       never break the branding. ---- */
-    let mbHeaderUrl = null, mbPreviewSrc = null, mbHeaderDirty = false, mbHeaderData = null, mbHeaderMime = null;
-    function renderMbHeader() {
-      const img = $("mbHeaderPreview"); if (!img) return;
-      const src = mbPreviewSrc || mbHeaderUrl;
-      if (src) img.src = src;
-      show(img, !!src);
-      show($("mbHeaderClear"), !!src);
-      $("mbHeaderPick").textContent = src ? "Replace image…" : "Upload image…";
-    }
-    $("mbHeaderPick")?.addEventListener("click", () => $("mbHeaderFile").click());
-    $("mbHeaderClear")?.addEventListener("click", () => {
-      mbHeaderUrl = null; mbPreviewSrc = null; mbHeaderData = null; mbHeaderMime = null; mbHeaderDirty = true;
-      renderMbHeader();
-      $("mbHeaderStatus").textContent = "Removed — click Save branding to apply.";
-    });
-    $("mbHeaderFile")?.addEventListener("change", async () => {
-      const f = $("mbHeaderFile").files[0]; $("mbHeaderFile").value = "";
-      if (!f || !mailUnit) return;
-      const st = $("mbHeaderStatus");
-      if (f.size > 1.5 * 1024 * 1024) { st.textContent = "That file is over 1.5 MB — resize it first (emails load faster small)."; return; }
-      const dataUri = await new Promise((res, rej) => {
-        const r = new FileReader(); r.onload = () => res(String(r.result)); r.onerror = rej; r.readAsDataURL(f);
-      });
-      mbHeaderData = String(dataUri).split(",")[1] || null;
-      mbHeaderMime = f.type || "image/png";
-      mbPreviewSrc = String(dataUri);
-      // Stable serving URL; ?v busts email-client caches on replacement.
-      mbHeaderUrl = `${cfg.SUPABASE_URL}/functions/v1/mail-asset?e=${mailUnit}&v=${Date.now()}`;
-      mbHeaderDirty = true;
-      renderMbHeader();
-      st.textContent = "Ready — click Save branding to apply.";
-    });
-    $("mbSaveBtn")?.addEventListener("click", async () => {
-      const st = $("mbStatus"); if (!mailUnit) return;
-      const hex = (id) => { const v = $(id).value.trim().toLowerCase(); return /^#[0-9a-f]{6}$/.test(v) ? v : null; };
-      st.textContent = "Saving…";
-      const row = {
-        entity_id: mailUnit,
-        header_image_url: mbHeaderUrl,
-        accent: hex("mb_accent"), card_bg: hex("mb_card"), page_bg: hex("mb_page"),
-      };
-      if (mbHeaderDirty) { row.header_image_data = mbHeaderData; row.header_image_mime = mbHeaderMime; }
-      const { error } = await supabase.from("mail_senders").upsert(row, { onConflict: "entity_id" });
-      if (!error) { logAccess("mail_brand", { unit: mailUnits.find((u) => u.id === mailUnit)?.name }); await refreshMailUnit(); }
-      st.textContent = error ? error.message : "Saved ✓ — used on the next send.";
-    });
-    function renderMailAudience() {
-      const supp = mailStats.total - mailStats.active;
-      $("mailAudience").innerHTML =
-        `<strong style="color:var(--text);">${mailStats.active}</strong> active subscriber${mailStats.active === 1 ? "" : "s"}` +
-        (supp > 0 ? ` · ${supp} suppressed (unsubscribed/bounced)` : "") +
-        (mailSender?.last_synced_at ? ` · last synced ${new Date(mailSender.last_synced_at).toLocaleString()}` : " · never synced");
-    }
-    $("mailSyncBtn")?.addEventListener("click", async () => {
-      const b = $("mailSyncBtn");
-      if (!mailSender?.sync_url) { $("mailAudience").textContent = "Save a sender profile with a Sync URL first."; return; }
-      b.disabled = true; b.textContent = "Syncing…";
-      try {
-        const res = await fetch(cfg.SUPABASE_URL + "/functions/v1/mail-sync", {
-          method: "POST", headers: await mailFnHeaders(), body: JSON.stringify({ entity_id: mailUnit }),
-        });
-        const data = await res.json();
-        if (!res.ok || data.ok === false) throw new Error(data.error || ("HTTP " + res.status));
-        logAccess("mail_sync", { unit: mailUnits.find((u) => u.id === mailUnit)?.name, fetched: data.fetched, added: data.added });
-        await refreshMailUnit();
-        $("mailAudience").innerHTML += ` · <span style="color:var(--text);">synced ✓ (${data.fetched} fetched, ${data.added} new)</span>`;
-      } catch (e) { $("mailAudience").textContent = "Sync failed: " + (e.message || e); }
-      b.disabled = false; b.textContent = "Sync mailing list";
-    });
-    // CSV fallback: any export with an email column works — we find the
-    // address on each line and treat the rest of the line as the name.
-    $("mailCsvBtn")?.addEventListener("click", () => $("mailCsvFile").click());
-    $("mailCsvFile")?.addEventListener("change", async () => {
-      const f = $("mailCsvFile").files[0]; $("mailCsvFile").value = "";
-      if (!f || !mailUnit) return;
-      const text = await f.text();
-      const subs = [];
-      for (const line of text.split(/\r?\n/)) {
-        const m = line.match(/[^@\s,;"']+@[^@\s,;"']+\.[^@\s,;"'.]{2,}/);
-        if (!m) continue;
-        const name = line.replace(m[0], "").split(/[,;\t]/)
-          .map((s) => s.replace(/^["\s]+|["\s]+$/g, "")).filter(Boolean).join(" ").slice(0, 200);
-        subs.push({ email: m[0].toLowerCase(), name: name || null });
-      }
-      if (!subs.length) { $("mailAudience").textContent = "No email addresses found in that file."; return; }
-      if (!confirm(`Import ${subs.length} address${subs.length === 1 ? "" : "es"} into ${mailUnits.find((u) => u.id === mailUnit)?.name || "this venue"}'s list?`)) return;
-      $("mailAudience").textContent = `Importing ${subs.length}…`;
-      try {
-        const res = await fetch(cfg.SUPABASE_URL + "/functions/v1/mail-sync", {
-          method: "POST", headers: await mailFnHeaders(), body: JSON.stringify({ entity_id: mailUnit, subscribers: subs }),
-        });
-        const data = await res.json();
-        if (!res.ok || data.ok === false) throw new Error(data.error || ("HTTP " + res.status));
-        logAccess("mail_sync", { unit: mailUnits.find((u) => u.id === mailUnit)?.name, fetched: data.fetched, added: data.added });
-        await refreshMailUnit();
-        $("mailAudience").innerHTML += ` · <span style="color:var(--text);">imported ✓ (${data.added} new, ${data.existing} already on the list)</span>`;
-      } catch (e) { $("mailAudience").textContent = "Import failed: " + (e.message || e); }
-    });
-    $("msSaveBtn")?.addEventListener("click", async () => {
-      const st = $("msStatus");
-      const row = {
-        entity_id: mailUnit,
-        from_name: $("ms_from_name").value.trim(),
-        from_email: $("ms_from_email").value.trim().toLowerCase(),
-        logo_url: $("ms_logo").value.trim() || null,
-        sync_url: $("ms_sync_url").value.trim() || null,
-        sync_key: $("ms_sync_key").value.trim() || null,
-        warmup: $("ms_warmup").checked,
-      };
-      if (!row.from_name || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(row.from_email)) { st.textContent = "From name and a valid from email are required."; return; }
-      st.textContent = "Saving…";
-      const { error } = await supabase.from("mail_senders").upsert(row, { onConflict: "entity_id" });
-      st.textContent = error ? error.message : "Saved ✓";
-      if (!error) await refreshMailUnit();
-    });
-    function renderMailCamps() {
-      const body = $("mailCampBody"); if (!body) return;
-      body.innerHTML = "";
-      show($("mailCampTable"), mailCamps.length > 0);
-      show($("mailCampEmpty"), mailCamps.length === 0);
-      for (const c of mailCamps) {
-        const badge = c.status === "sent" ? '<span class="badge badge--admin">SENT</span>'
-          : (c.status === "sending" ? '<span class="badge">SENDING</span>' : '<span class="badge">DRAFT</span>');
-        const sentCell = c.status === "sent"
-          ? `${c.sent_count ?? 0} on ${new Date(c.sent_at).toLocaleDateString()}${c.failed_count ? ` · ${c.failed_count} failed` : ""}`
-          : (c.status === "sending" ? `${c.sent_count ?? 0} so far — warm-up chunks` : (c.test_sent_at ? "test sent" : "—"));
-        const actions = c.status === "draft"
-          ? `<button class="btn btn--ghost btn--sm" data-mcedit="${c.id}">Edit</button> <button class="btn btn--danger btn--sm" data-mcdel="${c.id}">Delete</button>`
-          : (c.status === "sending"
-            ? `<button class="btn btn--sm" data-mccont="${c.id}">Continue send</button> <button class="btn btn--ghost btn--sm" data-mcedit="${c.id}">View</button>`
-            : `<button class="btn btn--ghost btn--sm" data-mcedit="${c.id}">View</button>`);
-        const tr = document.createElement("tr");
-        tr.innerHTML =
-          `<td style="white-space:normal;max-width:20rem;"><strong>${escapeHtml(c.subject)}</strong>${c.preview_text ? `<div class="muted" style="font-size:0.78rem;">${escapeHtml(c.preview_text)}</div>` : ""}</td>
-           <td>${badge}</td>
-           <td>${sentCell}</td>
-           <td class="num" style="white-space:nowrap;">${actions}</td>`;
-        body.appendChild(tr);
-      }
-      body.querySelectorAll("[data-mcedit]").forEach((b) => b.addEventListener("click", () => openMailComposer(b.dataset.mcedit)));
-      body.querySelectorAll("[data-mcdel]").forEach((b) => b.addEventListener("click", async () => {
-        if (!confirm("Delete this draft?")) return;
-        await supabase.from("mail_campaigns").delete().eq("id", b.dataset.mcdel);
-        refreshMailUnit();
-      }));
-      body.querySelectorAll("[data-mccont]").forEach((b) => b.addEventListener("click", async () => {
-        const c = mailCamps.find((x) => x.id === b.dataset.mccont); if (!c) return;
-        if (!confirm(`Continue "${c.subject}" — send the next warm-up chunk to subscribers who haven't received it yet?`)) return;
-        b.disabled = true; b.textContent = "Sending…";
-        const st = $("mailCampStatus");
-        try {
-          const res = await fetch(cfg.SUPABASE_URL + "/functions/v1/mail-send", {
-            method: "POST", headers: await mailFnHeaders(), body: JSON.stringify({ campaign_id: c.id, mode: "real" }),
-          });
-          const data = await res.json();
-          if (!res.ok || data.ok === false) throw new Error(data.error || ("HTTP " + res.status));
-          logAccess("mail_send", { unit: mailUnits.find((u) => u.id === mailUnit)?.name, subject: c.subject, sent: data.sent });
-          await refreshMailUnit();
-          st.textContent = data.complete
-            ? `"${c.subject}" complete — ${data.delivered} delivered ✓`
-            : `Sent ${data.sent} more — ${data.remaining} still queued (warm-up ${data.warmupCap}/day).`;
-        } catch (e) { await refreshMailUnit(); $("mailCampStatus").textContent = "Continue failed: " + (e.message || e); }
-      }));
-    }
-    function openMailComposer(id) {
-      mailEditId = id || null;
-      const c = id ? mailCamps.find((x) => x.id === id) : null;
-      const sent = c?.status === "sent" || c?.status === "sending";
-      $("mailModalTitle").textContent = c?.status === "sending" ? "Campaign (sending)" : (sent ? "Campaign (sent)" : (id ? "Edit campaign" : "New campaign"));
-      $("mailModalSub").textContent = mailUnits.find((u) => u.id === mailUnit)?.name || "";
-      $("mc_subject").value = c?.subject || "";
-      $("mc_preview").value = c?.preview_text || "";
-      $("mailEditor").innerHTML = c?.body_html || "";
-      $("mailEditor").contentEditable = sent ? "false" : "true";
-      show($("mcSaveBtn"), !sent); show($("mcTestBtn"), !sent); show($("mcSendBtn"), !sent);
-      $("mcStatus").textContent = c?.status === "sending"
-        ? `Sending in warm-up chunks — ${c.sent_count ?? 0} delivered so far. Use "Continue send" in the campaign list.`
-        : (sent ? `Sent to ${c.sent_count ?? 0} on ${new Date(c.sent_at).toLocaleString()}` : "");
-      show($("mailModal"), true);
-    }
-    $("mailNewBtn")?.addEventListener("click", () => {
-      // Branding alone can create the sender row — sending still needs the
-      // from identity.
-      if (!mailSender?.from_name || !mailSender?.from_email) { alert("Save a sender profile (from name + from email) for this venue first."); return; }
-      openMailComposer(null);
-    });
-    document.querySelectorAll("[data-mcmd]").forEach((b) => b.addEventListener("click", () => {
-      const cmd = b.dataset.mcmd;
-      $("mailEditor").focus();
-      if (cmd === "link") { const u = prompt("Link URL:", "https://"); if (u) document.execCommand("createLink", false, u); }
-      else if (cmd === "h2") document.execCommand("formatBlock", false, "h2");
-      else if (cmd === "p") document.execCommand("formatBlock", false, "p");
-      else document.execCommand(cmd, false);
-    }));
-    async function saveMailDraft(quiet) {
-      const subject = $("mc_subject").value.trim();
-      if (!subject) { $("mcStatus").textContent = "Subject is required."; return null; }
-      const row = {
-        entity_id: mailUnit, subject,
-        preview_text: $("mc_preview").value.trim() || null,
-        body_html: $("mailEditor").innerHTML,
-        created_by: profile?.full_name || profile?.email || null,
-        updated_at: new Date().toISOString(),
-      };
-      if (mailEditId) {
-        const { error } = await supabase.from("mail_campaigns").update(row).eq("id", mailEditId);
-        if (error) { $("mcStatus").textContent = error.message; return null; }
-      } else {
-        const { data, error } = await supabase.from("mail_campaigns").insert(row).select().maybeSingle();
-        if (error) { $("mcStatus").textContent = error.message; return null; }
-        mailEditId = data?.id || null;
-        if (!mailEditId) { $("mcStatus").textContent = "Saved, but couldn't read the draft id — reopen it from the list."; refreshMailUnit(); return null; }
-      }
-      if (!quiet) $("mcStatus").textContent = "Draft saved ✓";
-      return mailEditId;
-    }
-    $("mcSaveBtn")?.addEventListener("click", async () => { if (await saveMailDraft(false)) refreshMailUnit(); });
-    $("mcTestBtn")?.addEventListener("click", async () => {
-      const id = await saveMailDraft(true); if (!id) return;
-      $("mcStatus").textContent = "Sending test…";
-      try {
-        const res = await fetch(cfg.SUPABASE_URL + "/functions/v1/mail-send", {
-          method: "POST", headers: await mailFnHeaders(), body: JSON.stringify({ campaign_id: id, mode: "test" }),
-        });
-        const data = await res.json();
-        if (!res.ok || data.ok === false) throw new Error(data.error || ("HTTP " + res.status));
-        $("mcStatus").textContent = `Test sent to ${data.to} ✓`;
-        refreshMailUnit();
-      } catch (e) { $("mcStatus").textContent = "Test failed: " + (e.message || e); }
-    });
-    $("mcSendBtn")?.addEventListener("click", async () => {
-      const id = await saveMailDraft(true); if (!id) return;
-      const uName = mailUnits.find((u) => u.id === mailUnit)?.name || "this venue";
-      if (!mailStats.active) { $("mcStatus").textContent = "No active subscribers — sync the mailing list first."; return; }
-      const warm = mailSender.warmup !== false
-        ? "\n\nWarm-up is on — a list bigger than today's cap goes out in daily chunks (a Continue send button appears on the campaign)." : "";
-      if (!confirm(`Send "${$("mc_subject").value.trim()}" to ${mailStats.active} subscriber${mailStats.active === 1 ? "" : "s"} of ${uName}, from ${mailSender.from_name} <${mailSender.from_email}>?${warm}`)) return;
-      $("mcStatus").textContent = `Sending to ${mailStats.active}…`;
-      try {
-        const res = await fetch(cfg.SUPABASE_URL + "/functions/v1/mail-send", {
-          method: "POST", headers: await mailFnHeaders(), body: JSON.stringify({ campaign_id: id, mode: "real" }),
-        });
-        const data = await res.json();
-        if (!res.ok || data.ok === false) throw new Error(data.error || ("HTTP " + res.status));
-        logAccess("mail_send", { unit: uName, subject: $("mc_subject").value.trim(), sent: data.sent });
-        $("mcStatus").textContent = data.complete === false
-          ? `Sent ${data.sent} now — ${data.remaining} queued by warm-up (${data.warmupCap}/day). Continue from the campaign list tomorrow.`
-          : `Sent to ${data.sent} ✓${data.failed ? ` (${data.failed} failed)` : ""}`;
-        refreshMailUnit();
-      } catch (e) { $("mcStatus").textContent = "Send failed: " + (e.message || e); }
-    });
-    $("mailModal")?.addEventListener("click", (e) => { if (e.target === $("mailModal")) show($("mailModal"), false); });
-
-    /* ---------------- Site content (admin) ---------------- */
-    function bindColor(t, p) {
-      const T = $(t), P = $(p);
-      P.addEventListener("input", () => T.value = P.value);
-      T.addEventListener("input", () => { if (/^#[0-9a-fA-F]{6}$/.test(T.value)) P.value = T.value; });
-    }
-    bindColor("s_bgColor", "s_bgColor_p"); bindColor("s_textColor", "s_textColor_p");
-    bindColor("mb_accent", "mb_accent_p"); bindColor("mb_card", "mb_card_p"); bindColor("mb_page", "mb_page_p");
-
-    async function loadSite() {
-      const { data } = await supabase.from("site_content").select("content").eq("id", 1).single();
-      const c = (data && data.content) || {};
-      $("s_brand").value = c.brand || ""; $("s_tagline").value = c.tagline || "";
-      $("s_footer").value = c.footer || "";
-      const bg = c.bgColor || "#0a192f"; $("s_bgColor").value = bg; if (/^#[0-9a-fA-F]{6}$/.test(bg)) $("s_bgColor_p").value = bg;
-      const tc = c.textColor || "#ffffff"; $("s_textColor").value = tc; if (/^#[0-9a-fA-F]{6}$/.test(tc)) $("s_textColor_p").value = tc;
-      $("s_seoTitle").value = c.seoTitle || ""; $("s_seoDescription").value = c.seoDescription || "";
-      $("siteSaveBtn")._current = c;
-    }
-    $("siteSaveBtn").addEventListener("click", async () => {
-      const st = $("siteStatus"); st.textContent = "";
-      const content = Object.assign({}, $("siteSaveBtn")._current || {}, {
-        brand: $("s_brand").value.trim(), tagline: $("s_tagline").value.trim(),
-        footer: $("s_footer").value.trim(), bgColor: $("s_bgColor").value.trim(),
-        textColor: $("s_textColor").value.trim(), seoTitle: $("s_seoTitle").value.trim(),
-        seoDescription: $("s_seoDescription").value.trim()
-      });
-      const { error } = await supabase.from("site_content").update({ content, updated_at: new Date().toISOString() }).eq("id", 1);
-      st.textContent = error ? error.message : "Saved ✓";
-      if (!error) $("siteSaveBtn")._current = content;
-    });
-
     /* ---------------- Ownership graph (admin) ---------------- */
     const gStore = window.createOwnershipStore(supabase);
     const MAX_LINKS = 4, PANE_W = 340;
@@ -4659,7 +4190,6 @@
         </div>
         <div class="field" id="pMarketingField">
           <label style="display:inline-flex;align-items:center;gap:0.45rem;margin:0;cursor:pointer;">
-            <input type="checkbox" id="pInMarketing" style="width:auto;"${e.in_marketing ? " checked" : ""}> Marketing — mailing list &amp; campaigns for this venue
           </label>
         </div>
         <div class="field" id="pAddressField"><label>Address</label><input type="text" id="pAddress" value="${escapeHtml(e.address || "")}" placeholder="123 Main St, Dallas, TX 75201"></div>
@@ -4722,7 +4252,6 @@
       const collect = () => ({
         name: $("pName").value.trim(), kind: $("pKind").value === "entity" ? "entity" : "individual",
         in_reports: $("pKind").value === "entity" && $("pInReports").checked,
-        in_marketing: $("pKind").value === "entity" && !!$("pInMarketing")?.checked,
         address: ($("pKind").value === "entity" && $("pAddress")?.value.trim()) || null,
         category: e.category || null, subcategory: e.subcategory || null,
         email: $("pEmail").value.trim() || null, notes: $("pNotes").value.trim() || null, color: e.color || null,
