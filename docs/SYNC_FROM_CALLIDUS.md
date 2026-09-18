@@ -71,5 +71,21 @@ resolved in Arca's favour.
 | — | 0037 | billing (Arca only) |
 | 0036_qbo | 0038_qbo | QuickBooks link |
 | 0037_budgets | 0039_budgets | budget maker |
+| — | 0040 | per-tenant inbound tokens (Arca only) |
+| — | 0041 | platform admin console + support mode (Arca only) |
+| 0038, 0039, 0054, 0056 | 0042_intercompany | intercompany billing (For / Paid by, settle-up, standing charges) |
+| 0040–0053, 0059 | 0043_management | Management tab (tasks, recurring, time, org chart, notes, deletion log, ICS tokens); no category seed rows |
+| 0055 | 0044_qbo_balance | balance sheet snapshots |
+| 0057, 0058 | 0057→0045_push | Web Push (subscriptions, prefs, hold queue, VAPID keys — key row inserted by hand) |
 
-Last sync: 2026-09-10, callidus `f598603` → Arca `9816b62`.
+Adaptations made in the 0042–0045 port: `ic_settlements` dropped
+`tenant_id` (payer is always an entity); `manager_org` and
+`mg_ical_tokens` are keyed by `(workspace_id, …)`; `assignable_users`,
+`team_overview`, `mg_entities`, `my_ical_token`, `restore_deleted` all
+answer for `current_workspace()`; a built-in `management` role
+("Manager") exists since callidus relies on that key; `push_*` tables
+stay per-person (emails are portal-wide) with admin reads limited to the
+workspace's own people. Edge functions `notify-task`, `daily-digest`
+(portal path), `task-feed`, `qbo-sync` (balances) filter by workspace.
+
+Last sync: 2026-09-18, callidus `e57b17f` → Arca (this merge).

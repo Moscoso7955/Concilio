@@ -3,7 +3,9 @@
 // portal's monthly figures — revenue/expenses/net plus the full line
 // detail (pnl jsonb) in the exact shape the AI importer produces, so
 // View P&L / YTD statements render identically. Notes on existing
-// months are preserved. Admin auth; Intuit refresh tokens ROTATE on
+// months are preserved. Also snapshots the balance sheet as of each
+// month's last day into qbo_balance (admin-only in the portal).
+// Admin auth; Intuit refresh tokens ROTATE on
 // every refresh and the new one is always persisted. verify_jwt = FALSE.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
@@ -255,9 +257,83 @@ Deno.serve(async (req) => {
 
   const { error } = await admin.from("financials").upsert(rows, { onConflict: "entity_id,period" });
   if (error) return json({ error: "Saving figures failed: " + error.message }, 500);
+
+  // Balance sheet: one report, one column per month — each column is the
+  // balance AS OF that month's last day (the current month: as of today).
+  // Snapshot failures never fail the P&L sync; they log and move on.
+  let balMonths = 0;
+  try {
+    balMonths = await syncBalances(conn.realm_id, tok.access_token, entityId, prof.workspace_id, start, end);
+  } catch (e) {
+    try { await admin.from("function_logs").insert({ fn: "qbo-sync", msg: "balance sheet failed", detail: { entity: entityId, error: String(e).slice(0, 300) } }); } catch (_) { /* best effort */ }
+  }
+
   await admin.from("qbo_connections").update({ last_synced_at: new Date().toISOString() }).eq("entity_id", entityId);
   try {
-    await admin.from("function_logs").insert({ fn: "qbo-sync", msg: "synced", detail: { entity: entityId, months: rows.length, from: rows[0].period, to: rows[rows.length - 1].period } });
+    await admin.from("function_logs").insert({ fn: "qbo-sync", msg: "synced", detail: { entity: entityId, months: rows.length, balances: balMonths, from: rows[0].period, to: rows[rows.length - 1].period } });
   } catch (_) { /* best effort */ }
-  return json({ ok: true, months: rows.length, from: rows[0].period, to: rows[rows.length - 1].period });
+  return json({ ok: true, months: rows.length, balances: balMonths, from: rows[0].period, to: rows[rows.length - 1].period });
 });
+
+// Flatten one month column of the balance sheet tree into renderable
+// lines: h = section header, l = account line, s = section total.
+type BalLine = { t: "h" | "l" | "s"; d: number; label: string; amount?: number };
+function flattenBal(rowsIn: Row[] | undefined, depth: number, idx: number, out: BalLine[]) {
+  for (const row of rowsIn || []) {
+    if (row.Rows?.Row || row.Header) {
+      const head = row.Header?.ColData?.[0]?.value || "";
+      if (head) out.push({ t: "h", d: depth, label: head });
+      flattenBal(row.Rows?.Row, depth + 1, idx, out);
+      const s = row.Summary?.ColData;
+      if (s?.[0]?.value) out.push({ t: "s", d: depth, label: s[0].value || "", amount: r2(num(s[idx]?.value)) });
+    } else if (row.ColData?.length) {
+      const label = row.ColData[0]?.value || "";
+      if (!label) continue;
+      const amount = r2(num(row.ColData[idx]?.value));
+      if (amount) out.push({ t: "l", d: depth, label, amount });
+    }
+  }
+}
+
+async function syncBalances(realmId: string, accessToken: string, entityId: string, workspaceId: string, start: string, end: string): Promise<number> {
+  const rep = await fetch(
+    `${API_BASE}/v3/company/${realmId}/reports/BalanceSheet?start_date=${start}&end_date=${end}&summarize_column_by=Month&minorversion=75`,
+    { headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" } },
+  );
+  if (!rep.ok) throw new Error(`BalanceSheet HTTP ${rep.status}: ${(await rep.text()).slice(0, 200)}`);
+  const report = await rep.json();
+  const cols = report?.Columns?.Column || report?.Columns?.Col || [];
+  const months: { idx: number; period: string; asOf: string }[] = [];
+  const today = end;
+  for (let i = 0; i < cols.length; i++) {
+    const c = cols[i];
+    if (i === 0 || /^total$/i.test(c?.ColTitle || "")) continue;
+    const meta = (c?.MetaData || []).find((m: { Name?: string }) => m.Name === "StartDate")?.Value;
+    const d = meta ? new Date(meta) : new Date(`1 ${c?.ColTitle || ""}`);
+    if (isNaN(d.getTime())) continue;
+    const y = d.getFullYear(), mo = d.getMonth();
+    const lastDay = new Date(Date.UTC(y, mo + 1, 0)).toISOString().slice(0, 10);
+    months.push({
+      idx: i,
+      period: `${y}-${String(mo + 1).padStart(2, "0")}-01`,
+      asOf: lastDay < today ? lastDay : today, // current month: as of the sync date
+    });
+  }
+  const grab = (lines: BalLine[], re: RegExp) =>
+    lines.find((l) => l.t === "s" && re.test(l.label))?.amount ?? null;
+  const rows = [];
+  for (const m of months) {
+    const lines: BalLine[] = [];
+    flattenBal(report?.Rows?.Row, 0, m.idx, lines);
+    const assets = grab(lines, /^total assets$/i);
+    const liabilities = grab(lines, /^total liabilities$/i);
+    const equity = grab(lines, /^total equity$/i);
+    if (!lines.some((l) => l.amount)) continue; // months before the books existed
+    rows.push({ workspace_id: workspaceId, entity_id: entityId, period: m.period, as_of: m.asOf, assets, liabilities, equity, detail: { lines }, synced_at: new Date().toISOString() });
+  }
+  if (rows.length && QBO_ENV !== "sandbox") {
+    const { error } = await admin.from("qbo_balance").upsert(rows, { onConflict: "entity_id,period" });
+    if (error) throw new Error("saving balance sheets: " + error.message);
+  }
+  return rows.length;
+}
