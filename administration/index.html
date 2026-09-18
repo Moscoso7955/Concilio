@@ -1202,7 +1202,7 @@
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.57.0 — schema migration 0057">v1.57.0</div>
+  <div class="version-tag" title="Owner Portal v1.57.1 — schema migration 0057">v1.57.1</div>
 
   <!-- Settings modal -->
   <div class="modal-overlay hidden" id="settingsModal">
@@ -5335,19 +5335,34 @@
       return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
     };
     async function pushSubscribe() {
-      const reg = await navigator.serviceWorker.register("/administration/sw.js");
-      await navigator.serviceWorker.ready;
+      // A leftover registration from the /administration/ scope (before
+      // the worker moved to the root) would never control this page —
+      // clear it so only the working one remains.
+      try {
+        for (const r of await navigator.serviceWorker.getRegistrations())
+          if (r.scope.endsWith("/administration/")) await r.unregister();
+      } catch (_) { /* best effort */ }
+      const reg = await navigator.serviceWorker.register("/sw.js", { scope: "/administration" });
+      // Wait on the registration itself, not serviceWorker.ready — ready
+      // is tied to page control and is exactly what hung here before.
+      await new Promise((res) => {
+        if (reg.active) return res();
+        const w = reg.installing || reg.waiting;
+        if (!w) return res();
+        w.addEventListener("statechange", () => { if (w.state === "activated" || w.state === "redundant") res(); });
+      });
       const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: pushB64(PUSH_PUBLIC_KEY) });
       const j = sub.toJSON();
-      await supabase.from("push_subscriptions").upsert({
+      const { error } = await supabase.from("push_subscriptions").upsert({
         endpoint: sub.endpoint, email: (currentEmail || "").toLowerCase(),
         p256dh: j.keys.p256dh, auth: j.keys.auth, ua: navigator.userAgent.slice(0, 200),
       }, { onConflict: "endpoint" });
+      if (error) throw new Error("Couldn't save the subscription: " + error.message);
       return sub;
     }
     async function pushCurrentSub() {
       try {
-        const reg = await navigator.serviceWorker.getRegistration("/administration/sw.js");
+        const reg = await navigator.serviceWorker.getRegistration("/administration");
         return reg ? await reg.pushManager.getSubscription() : null;
       } catch (_) { return null; }
     }

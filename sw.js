@@ -1,7 +1,10 @@
 // Owner Portal service worker: Web Push only — no offline caching.
-// push: draw the notification. notificationclick: focus an open portal
-// tab or open one. The payload is small ({title, body, url, tag});
-// anything bigger the app fetches when opened.
+// Lives at the site root because the portal URL has no trailing slash
+// (/administration): a worker inside /administration/ could never
+// control that page, so it registers from here with scope
+// "/administration". push: draw the notification. notificationclick:
+// focus an open portal tab or open one. The payload is small
+// ({title, body, url, tag}); anything bigger the app fetches on open.
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (e) => e.waitUntil(self.clients.claim()));
 
