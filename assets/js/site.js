@@ -62,7 +62,7 @@
     var root = document.querySelector(".coming-soon");
     if (root && c.textColor) root.style.setProperty("--text", c.textColor);
     if (bg) {
-      var oc = hexToRgb(c.overlayColor || "#0f172a");
+      var oc = hexToRgb(c.overlayColor || "#111111");
       var op = c.overlayOpacity != null ? c.overlayOpacity : 0.6;
       bg.style.setProperty("--overlay", "rgba(" + oc.r + "," + oc.g + "," + oc.b + "," + op + ")");
     }
