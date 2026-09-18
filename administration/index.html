@@ -4188,10 +4188,6 @@
             <input type="checkbox" id="pInReports" style="width:auto;"${e.in_reports ? " checked" : ""}> Show this unit in Reports
           </label>
         </div>
-        <div class="field" id="pMarketingField">
-          <label style="display:inline-flex;align-items:center;gap:0.45rem;margin:0;cursor:pointer;">
-          </label>
-        </div>
         <div class="field" id="pAddressField"><label>Address</label><input type="text" id="pAddress" value="${escapeHtml(e.address || "")}" placeholder="123 Main St, Dallas, TX 75201"></div>
         <div class="field" id="pManagedField"><label>Managed by</label>
           <select id="pManaged" class="inline-select" style="width:100%;padding:0.6rem 0.7rem;">
@@ -4314,7 +4310,6 @@
         show($("pAccessField"), !isEntity);
         show($("pLinkField"), isEntity); // units can federate with a partner portal
         show($("pReportsField"), isEntity); // only entities (units) can appear in Reports
-        show($("pMarketingField"), isEntity); // only venues can join the Marketing tab
         show($("pAddressField"), isEntity); // venue address — campaign email footers pull it from here
         show($("pManagedField"), isEntity); // units can be run by a principal
         // Portal access — grant/revoke via the allowlist, keyed on this box's email.
