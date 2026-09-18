@@ -663,6 +663,7 @@
       <div class="whoami">
         <span id="userEmail"></span>
         <span class="badge" id="roleBadge">owner</span>
+        <button class="btn btn--ghost btn--sm" id="pushBtn" title="Notifications — phone & desktop alerts" aria-label="Notifications" style="line-height:1;padding:0.42rem 0.55rem;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></button>
         <button class="btn btn--ghost btn--sm admin-only hidden" id="settingsBtn" title="Settings — users & access" aria-label="Settings" style="line-height:1;padding:0.42rem 0.55rem;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
         <button class="btn btn--ghost btn--sm hidden" id="pwaReload" title="Reload" aria-label="Reload" style="line-height:1;padding:0.42rem 0.55rem;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button>
         <button class="btn btn--ghost btn--sm" id="signOutBtn">Sign out</button>
@@ -1201,7 +1202,7 @@
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.56.1 — schema migration 0056">v1.56.1</div>
+  <div class="version-tag" title="Owner Portal v1.57.0 — schema migration 0057">v1.57.0</div>
 
   <!-- Settings modal -->
   <div class="modal-overlay hidden" id="settingsModal">
@@ -1399,6 +1400,21 @@
         <button class="btn" id="gcalGo" style="flex:0 0 auto;">Open Google Calendar</button>
         <button class="btn btn--ghost" data-closemodal="gcalModal" style="flex:0 0 auto;">Cancel</button>
       </div>
+    </div>
+  </div>
+
+  <!-- Notifications (Web Push) -->
+  <div class="modal-overlay hidden" id="pushModal">
+    <div class="modal" style="max-width:500px;">
+      <h3 style="margin-bottom:0.35rem;">Notifications</h3>
+      <p class="muted" id="pushState" style="font-size:0.88rem;margin-bottom:0.9rem;"></p>
+      <div class="row" style="align-items:center;flex-wrap:wrap;">
+        <button class="btn hidden" id="pushEnableBtn" style="flex:0 0 auto;">Turn on for this device</button>
+        <button class="btn btn--ghost hidden" id="pushTestBtn" style="flex:0 0 auto;">Send a test</button>
+        <button class="btn btn--ghost hidden" id="pushOffBtn" style="flex:0 0 auto;">Turn off on this device</button>
+        <button class="btn btn--ghost" data-closemodal="pushModal" style="flex:0 0 auto;">Close</button>
+      </div>
+      <div class="muted" id="pushHelp" style="font-size:0.82rem;line-height:1.8;margin-top:0.9rem;"></div>
     </div>
   </div>
 
@@ -1713,6 +1729,8 @@
         case "ic_net_settle": return `Net-settled <strong>${eh(d.entity || "")} → ${eh(d.payer || "")}</strong> for <strong>${money(Number(d.total) || 0)}</strong> (${+d.count || 0} items)`;
         case "ic_recur_add": return `Added standing charge <strong>${eh(d.memo || "")}</strong> — ${eh(d.entity || "")} pays ${eh(d.payer || "")} ${eh(d.amount || "")}/mo`;
         case "ic_recur_del": return `Deleted standing charge <strong>${eh(d.memo || "")}</strong>`;
+        case "push_enable": return `Turned on phone notifications for a device`;
+        case "push_disable": return `Turned off phone notifications on a device`;
         case "manager_unit": return `${d.on ? "Assigned" : "Unassigned"} <strong>${eh(d.unit || "")}</strong> ${d.on ? "to" : "from"} manager ${eh(d.manager || "")}`;
         case "recur_add": return `Added ${eh(d.cadence || "")} recurring task <strong>${eh(d.title || "")}</strong>`;
         case "recur_delete": return `Deleted recurring task <strong>${eh(d.title || "")}</strong>`;
@@ -2155,6 +2173,7 @@
         const e = $("repUnitsEmpty"); if (e) e.textContent = "You don't have ownership in any units yet — contact your administrator.";
       }
       loadGraph();
+      pushRelaunch(); // silent: re-subscribe this device if push is on
 
       // Returning from the same-window QuickBooks sign-in (?qbo=…, set
       // by the qbo-callback redirect): reopen the unit's Reports view
@@ -5301,6 +5320,108 @@
         $("mailAudience").innerHTML += ` · <span style="color:var(--text);">imported ✓ (${data.added} new, ${data.existing} already on the list)</span>`;
       } catch (e) { $("mailAudience").textContent = "Import failed: " + (e.message || e); }
     });
+    /* ---- Web Push: real phone/desktop notifications. The OS delivers
+       them via the service worker, so they arrive with the app closed.
+       Each device is its own subscription; the launch re-check makes
+       expired ones invisible. iPhone only receives push when the portal
+       is opened from a Home Screen icon (platform rule). ---- */
+    const PUSH_PUBLIC_KEY = "BAUxt80Rkg5r2okEO5S5LKK7uSIu_EPHFaO2gGJ86KIuroNMbjnrjUqsw_xE8v7VeCSgV6dVDMLqeG7ZEVW39f0";
+    const pushSupported = () => "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+    const pushIsIos = () => /iPhone|iPad|iPod/i.test(navigator.userAgent);
+    const pushStandalone = () => window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+    const pushB64 = (b64) => {
+      const pad = "=".repeat((4 - (b64.length % 4)) % 4);
+      const raw = atob((b64 + pad).replace(/-/g, "+").replace(/_/g, "/"));
+      return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
+    };
+    async function pushSubscribe() {
+      const reg = await navigator.serviceWorker.register("/administration/sw.js");
+      await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: pushB64(PUSH_PUBLIC_KEY) });
+      const j = sub.toJSON();
+      await supabase.from("push_subscriptions").upsert({
+        endpoint: sub.endpoint, email: (currentEmail || "").toLowerCase(),
+        p256dh: j.keys.p256dh, auth: j.keys.auth, ua: navigator.userAgent.slice(0, 200),
+      }, { onConflict: "endpoint" });
+      return sub;
+    }
+    async function pushCurrentSub() {
+      try {
+        const reg = await navigator.serviceWorker.getRegistration("/administration/sw.js");
+        return reg ? await reg.pushManager.getSubscription() : null;
+      } catch (_) { return null; }
+    }
+    // Silent launch re-check: permission granted → make sure browser and
+    // server both still have a live subscription for this device.
+    async function pushRelaunch() {
+      try { navigator.clearAppBadge?.(); } catch (_) { /* no badge API */ }
+      if (!pushSupported() || Notification.permission !== "granted") return;
+      try { await pushSubscribe(); } catch (_) { /* best effort */ }
+    }
+    async function pushRefreshUI() {
+      const state = $("pushState"), help = $("pushHelp");
+      const showBtns = (en, test, off) => { show($("pushEnableBtn"), en); show($("pushTestBtn"), test); show($("pushOffBtn"), off); };
+      help.innerHTML = "";
+      if (!pushSupported()) {
+        if (pushIsIos() && !pushStandalone()) {
+          state.textContent = "On iPhone, notifications only work when the portal is installed as an app.";
+          help.innerHTML = "1. Tap the <strong>Share</strong> button in the browser bar.<br>2. Choose <strong>Add to Home Screen</strong>.<br>3. Open the portal <strong>from the new icon</strong> (not a browser tab) and come back here.";
+        } else state.textContent = "This browser doesn't support push notifications.";
+        showBtns(false, false, false); return;
+      }
+      if (pushIsIos() && !pushStandalone()) {
+        state.textContent = "Almost there — iPhone only delivers notifications to the installed app.";
+        help.innerHTML = "1. Tap <strong>Share</strong> → <strong>Add to Home Screen</strong>.<br>2. Open the portal <strong>from the icon</strong>.<br>3. Come back to this screen and turn notifications on.";
+        showBtns(false, false, false); return;
+      }
+      if (Notification.permission === "denied") {
+        state.textContent = "Notifications are blocked for this site on this device.";
+        help.innerHTML = "The browser locked the earlier “Don't Allow” — it can only be undone in settings:<br>• iPhone: Settings → Notifications → Callidus → Allow.<br>• Android/desktop: the lock icon by the address bar → Notifications → Allow.<br>Then return here and turn them on.";
+        showBtns(false, false, false); return;
+      }
+      const sub = Notification.permission === "granted" ? await pushCurrentSub() : null;
+      let count = 0;
+      try { count = (await supabase.from("push_subscriptions").select("endpoint")).data?.length || 0; } catch (_) { /* count is decoration */ }
+      if (sub) {
+        state.textContent = `On for this device ✓${count ? ` · ${count} of your device${count === 1 ? "" : "s"} enabled` : ""}`;
+        showBtns(false, true, true);
+      } else {
+        state.textContent = "Get task assignments, nudges, and the morning digest on this device — even with the portal closed.";
+        showBtns(true, false, false);
+      }
+    }
+    $("pushBtn")?.addEventListener("click", () => { show($("pushModal"), true); pushRefreshUI(); });
+    $("pushModal")?.addEventListener("click", (e) => { if (e.target === $("pushModal")) show($("pushModal"), false); });
+    $("pushEnableBtn")?.addEventListener("click", async () => {
+      try {
+        const perm = await Notification.requestPermission();
+        if (perm !== "granted") { pushRefreshUI(); return; }
+        await pushSubscribe();
+        toast("Notifications are on for this device ✓ — try Send a test.");
+        logAccess("push_enable");
+      } catch (e) { toast("Couldn't enable: " + (e.message || e), "err"); }
+      pushRefreshUI();
+    });
+    $("pushOffBtn")?.addEventListener("click", async () => {
+      try {
+        const sub = await pushCurrentSub();
+        if (sub) { await supabase.from("push_subscriptions").delete().eq("endpoint", sub.endpoint); await sub.unsubscribe(); }
+        toast("Notifications are off on this device. Other devices keep working.");
+        logAccess("push_disable");
+      } catch (e) { toast("Couldn't turn off: " + (e.message || e), "err"); }
+      pushRefreshUI();
+    });
+    $("pushTestBtn")?.addEventListener("click", async () => {
+      const b = $("pushTestBtn"); b.disabled = true; b.textContent = "Sending…";
+      try {
+        const res = await fetch(cfg.SUPABASE_URL + "/functions/v1/push-send", { method: "POST", headers: await mailFnHeaders() });
+        const j = await res.json().catch(() => ({}));
+        if (res.ok && j.sent) toast(`Test sent to ${j.sent} device${j.sent === 1 ? "" : "s"} — lock the phone and watch.`);
+        else toast(res.ok ? "No live subscriptions found — turn notifications on first." : "Test failed: " + (j.error || res.status), "err");
+      } catch (e) { toast("Test failed: " + (e.message || e), "err"); }
+      b.disabled = false; b.textContent = "Send a test";
+    });
+
     $("msKeyReveal")?.addEventListener("click", () => {
       const i = $("ms_sync_key");
       i.type = i.type === "password" ? "text" : "password";

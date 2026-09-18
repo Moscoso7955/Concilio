@@ -8,6 +8,7 @@
 // Deploy with verify_jwt = FALSE; sends via RESEND_API_KEY.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { sendPush } from "../_shared/push.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -100,6 +101,12 @@ Deno.serve(async (req) => {
   if (!assignee || assignee.toLowerCase() === skipVs) return json({ ok: true, skipped: "self-assigned or unassigned" });
 
   const fromWho = await nameFor(nudge ? caller : (creator || caller));
+  // Phone push alongside the email — best-effort, never blocks the send.
+  await sendPush(admin, [assignee], {
+    title: nudge ? "Update requested" : "New task for you",
+    body: `${title}${meta.length ? " · " + meta[0] : ""} — ${fromWho}`,
+    tag: "task-" + (taskId || recurringId),
+  });
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: `Bearer ${RESEND_KEY}`, "Content-Type": "application/json" },

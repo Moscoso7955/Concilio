@@ -7,6 +7,7 @@
 // for the cron path).
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { sendPush } from "../_shared/push.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -116,6 +117,14 @@ Deno.serve(async (req) => {
       }),
     });
     if (res.ok) sent.push(email);
+    if (res.ok) {
+      // Lock-screen version of the same digest (collapses to one per day).
+      await sendPush(admin, [email], {
+        title: `Today: ${dueToday.length} task${dueToday.length === 1 ? "" : "s"}${overdue.length ? ` · ${overdue.length} overdue` : ""}`,
+        body: [...dueToday, ...overdue].slice(0, 3).map((r) => r.title).join(" · ") || "Open Management for the list.",
+        tag: "digest-" + today,
+      });
+    }
     else {
       const detail = (await res.text()).slice(0, 300);
       try { await admin.from("function_logs").insert({ fn: "daily-digest", msg: "send failed", detail: { email, detail } }); } catch (_) { /* best effort */ }
