@@ -67,7 +67,7 @@
     .brandmark { font-weight: 700; font-size: 1.15rem; }
     .brandmark span { color: var(--muted); font-weight: 400; }
     .whoami { display: flex; align-items: center; gap: 0.6rem; font-size: 0.85rem; color: var(--muted); }
-    .brand-fox { height: 30px; width: auto; opacity: 0.9; margin-right: 0.2rem; }
+    .brand-fox { height: 26px; width: auto; opacity: 0.95; margin-right: 0.2rem; }
     .auth-fox { display: block; height: 64px; width: auto; margin: 0 auto 0.7rem; opacity: 0.95; }
     .badge { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.06em; padding: 0.15rem 0.45rem;
       border-radius: 999px; background: var(--panel-2); border: 1px solid var(--border); color: var(--text); }
@@ -413,7 +413,7 @@
   <!-- Login -->
   <div class="center hidden" id="loginView">
     <div class="card auth-card">
-      <img src="/assets/images/fox.png" alt="" class="auth-fox" aria-hidden="true">
+      <img src="/assets/images/arca-mark-light.png" alt="" class="auth-fox" aria-hidden="true">
       <h1 data-brandname>Arca</h1>
       <p class="sub">Sign in, or create your workspace</p>
       <button class="btn btn--google btn--full" id="googleBtn" type="button">
@@ -436,7 +436,7 @@
   <!-- Paywall: trial over or subscription lapsed -->
   <div class="center hidden" id="paywallView">
     <div class="card auth-card">
-      <img src="/assets/images/fox.png" alt="" class="auth-fox" aria-hidden="true">
+      <img src="/assets/images/arca-mark-light.png" alt="" class="auth-fox" aria-hidden="true">
       <h1 data-brandname>Arca</h1>
       <p class="sub" id="pwTitle">Your free trial has ended</p>
       <p class="muted" id="pwMsg" style="margin-bottom:1.2rem;"></p>
@@ -462,7 +462,7 @@
     <div class="topbar">
       <div class="brandmark"><span data-brandname>Arca</span> <span>/ <span id="wsName">Owner Portal</span></span></div>
       <div class="whoami">
-        <img src="/assets/images/fox.png" alt="" class="brand-fox" aria-hidden="true">
+        <img src="/assets/images/arca-mark-light.png" alt="" class="brand-fox" aria-hidden="true">
         <span id="userEmail"></span>
         <span class="badge" id="roleBadge">owner</span>
         <span class="badge hidden" id="trialBadge" style="cursor:pointer;" title="Billing"></span>
@@ -840,7 +840,7 @@
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.40.2 — schema migration 0040">v1.40.2</div>
+  <div class="version-tag" title="Owner Portal v1.40.3 — schema migration 0040">v1.40.3</div>
 
   <!-- Settings modal -->
   <!-- Onboarding: first admin sign-in of a new workspace -->
