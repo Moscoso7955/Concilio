@@ -1186,7 +1186,7 @@
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.46.5 — schema migration 0046">v1.46.5</div>
+  <div class="version-tag" title="Owner Portal v1.47.0 — schema migration 0047">v1.47.0</div>
 
   <!-- Settings modal -->
   <!-- Onboarding: first admin sign-in of a new workspace -->
@@ -1491,6 +1491,7 @@
   <div class="modal-overlay hidden" id="confirmModal" style="z-index:380;">
     <div class="modal" style="max-width:420px;">
       <p id="confirmMsg" style="margin:0 0 1.1rem;white-space:pre-wrap;"></p>
+      <input type="text" id="confirmInput" class="hidden" autocomplete="off" style="width:100%;margin:-0.4rem 0 1.1rem;">
       <div class="row" style="align-items:center;">
         <button class="btn" id="confirmYes" style="flex:0 0 auto;">Confirm</button>
         <button class="btn btn--ghost" id="confirmNo" style="flex:0 0 auto;">Cancel</button>
@@ -1625,19 +1626,34 @@
       wrap.appendChild(el);
       setTimeout(() => { el.style.transition = "opacity 0.25s"; el.style.opacity = "0"; setTimeout(() => el.remove(), 260); }, ms);
     }
-    let confirmResolve = null;
-    function ask(msg, yesLabel = "Confirm") {
+    // In-app dialogs (never window.confirm / prompt / alert — the browser's
+    // own boxes ignore the theme). ask() resolves true/false, askInput()
+    // resolves the typed string or null, notice() just waits for OK.
+    let confirmResolve = null, confirmHasInput = false;
+    function askDialog({ msg, yesLabel = "Confirm", input = null, cancel = true }) {
       return new Promise((res) => {
-        confirmResolve = res;
+        confirmResolve = res; confirmHasInput = !!input;
         $("confirmMsg").textContent = msg;
         $("confirmYes").textContent = yesLabel;
+        const inp = $("confirmInput");
+        inp.value = input?.value || ""; inp.placeholder = input?.placeholder || "";
+        show(inp, !!input); show($("confirmNo"), cancel);
         show($("confirmModal"), true);
-        $("confirmYes").focus();
+        if (input) { inp.focus(); inp.select(); } else $("confirmYes").focus();
       });
     }
-    const confirmDone = (v) => { show($("confirmModal"), false); if (confirmResolve) { confirmResolve(v); confirmResolve = null; } };
+    const ask = (msg, yesLabel = "Confirm") => askDialog({ msg, yesLabel });
+    const askInput = (msg, { value = "", placeholder = "", yesLabel = "OK" } = {}) => askDialog({ msg, yesLabel, input: { value, placeholder } });
+    const notice = (msg, yesLabel = "OK") => askDialog({ msg, yesLabel, cancel: false });
+    const confirmDone = (v) => {
+      show($("confirmModal"), false);
+      if (!confirmResolve) return;
+      const r = confirmResolve; confirmResolve = null;
+      r(confirmHasInput ? (v ? $("confirmInput").value : null) : v);
+    };
     $("confirmYes")?.addEventListener("click", () => confirmDone(true));
     $("confirmNo")?.addEventListener("click", () => confirmDone(false));
+    $("confirmInput")?.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); confirmDone(true); } });
     $("confirmModal")?.addEventListener("click", (e) => { if (e.target === $("confirmModal")) confirmDone(false); });
     document.addEventListener("keydown", (e) => { if (e.key === "Escape" && confirmResolve) confirmDone(false); });
     const flashErr = (el) => { if (!el) return; el.classList.add("field-err"); setTimeout(() => el.classList.remove("field-err"), 1800); };
@@ -2091,9 +2107,9 @@
       box.querySelectorAll("[data-suremove]").forEach((btn) => btn.addEventListener("click", async () => {
         const i = btn.dataset.suremove;
         const email = box.querySelector(`[data-surow="${i}"]`).dataset.suemail;
-        if (!confirm(`Remove portal access for ${email}?`)) return;
+        if (!(await ask(`Remove portal access for ${email}?`))) return;
         const { error: rmErr } = await supabase.rpc("remove_member", { p_email: email });
-        if (rmErr) { alert(rmErr.message); return; }
+        if (rmErr) { toast(rmErr.message, "err"); return; }
         logAccess("user_remove", { email });
         loadSettingsUsers();
       }));
@@ -2144,7 +2160,7 @@
       }));
       box.querySelectorAll("[data-srdel]").forEach((btn) => btn.addEventListener("click", async () => {
         const key = box.querySelector(`[data-srrow="${btn.dataset.srdel}"]`).dataset.srkey;
-        if (!confirm(`Delete the "${key}" role?`)) return;
+        if (!(await ask(`Delete the "${key}" role?`))) return;
         const { error } = await supabase.from("roles").delete().eq("key", key);
         if (error) { toast(error.message, "err"); return; }
         logAccess("role_delete", { role: key });
@@ -2928,7 +2944,7 @@
       // Email everyone upstream — each partner gets only their slice.
       body.querySelectorAll("[data-notifydist]").forEach((b) => b.addEventListener("click", async () => {
         const d = repDist.find((x) => x.id === b.dataset.notifydist); if (!d) return;
-        if (d.notified_at && !confirm("Partners were already notified about this distribution. Send again?")) return;
+        if (d.notified_at && !(await ask("Partners were already notified about this distribution. Send again?", "Send again"))) return;
         b.disabled = true; b.textContent = "Sending…";
         try {
           let session = null;
@@ -2955,7 +2971,7 @@
         }
       }));
       body.querySelectorAll("[data-deldist]").forEach((b) => b.addEventListener("click", async () => {
-        if (!confirm("Delete this distribution record?")) return;
+        if (!(await ask("Delete this distribution record?"))) return;
         const d = repDist.find((x) => x.id === b.dataset.deldist);
         await supabase.from("distributions").delete().eq("id", b.dataset.deldist);
         // Unwind this record's provision payments.
@@ -3049,7 +3065,7 @@
       }));
       box.querySelectorAll("[data-delprov]").forEach((b) => b.addEventListener("click", async () => {
         const p = repProvs.find((x) => x.id === b.dataset.delprov);
-        if (!confirm(`Delete the ${p ? p.owner_name : ""} provision?${p && Number(p.repaid) > 0 ? ` ${money(p.repaid)} already repaid stays in past records.` : ""}`)) return;
+        if (!(await ask(`Delete the ${p ? p.owner_name : ""} provision?${p && Number(p.repaid) > 0 ? ` ${money(p.repaid)} already repaid stays in past records.` : ""}`))) return;
         await supabase.from("dist_provisions").delete().eq("id", b.dataset.delprov);
         logAccess("prov_delete", { owner: p?.owner_name || null });
         repProvs = repProvs.filter((x) => x.id !== b.dataset.delprov);
@@ -4775,12 +4791,12 @@
 
     // A partial-year baseline (unit opened mid-year) budgets $0 for the
     // empty months; offer to fill them from the open months' average.
-    function budFillEmptyBaseline() {
+    async function budFillEmptyBaseline() {
       const nz = budS.baseline.filter((v) => +v > 0);
       const zeros = 12 - nz.length;
       if (!zeros || zeros === 12) return false;
       const avg = Math.round(nz.reduce((a, b) => a + +b, 0) / nz.length);
-      if (!confirm(`${zeros} baseline month${zeros === 1 ? " has" : "s have"} no actuals (partial-year source). Fill ${zeros === 1 ? "it" : "them"} with the average of the ${nz.length} months on file — ${budMoney(avg)}?`)) return false;
+      if (!(await ask(`${zeros} baseline month${zeros === 1 ? " has" : "s have"} no actuals (partial-year source). Fill ${zeros === 1 ? "it" : "them"} with the average of the ${nz.length} months on file — ${budMoney(avg)}?`))) return false;
       budS.baseline = budS.baseline.map((v) => (+v > 0 ? +v : avg));
       return true;
     }
@@ -5039,9 +5055,9 @@
       root.querySelectorAll("[data-budevmonth]").forEach((sel) => sel.addEventListener("change", () => {
         budS.events[+sel.dataset.budevmonth].month = +sel.value; budApplyEngine();
       }));
-      root.querySelectorAll("[data-buddel]").forEach((b) => b.addEventListener("click", () => {
+      root.querySelectorAll("[data-buddel]").forEach((b) => b.addEventListener("click", async () => {
         const item = budS[b.dataset.buddel][+b.dataset.i];
-        if (!confirm(`Remove ${item?.label || item?.name || "this line"}?`)) return;
+        if (!(await ask(`Remove ${item?.label || item?.name || "this line"}?`))) return;
         budS[b.dataset.buddel].splice(+b.dataset.i, 1);
         if (b.dataset.buddel === "events") budApplyEngine();
         else { budSave(); budRenderPanels(); budRenderGrid(); }
@@ -5077,7 +5093,7 @@
         } catch (e) { st.textContent = "Weather: " + (e.message || e); }
         b.disabled = false;
       });
-      $("budPullBtn")?.addEventListener("click", () => {
+      $("budPullBtn")?.addEventListener("click", async () => {
         const prior = String(budYear - 1);
         const mine = repFin.filter((r) => r.entity_id === repUnit && String(r.period).startsWith(prior));
         if (!mine.length) { $("budSaveStatus").textContent = `No ${prior} months on file`; return; }
@@ -5085,7 +5101,7 @@
           const row = mine.find((r) => +String(r.period).slice(5, 7) === i + 1);
           return row ? Math.round(+row.revenue || 0) : 0;
         });
-        budFillEmptyBaseline();
+        await budFillEmptyBaseline();
         budApplyEngine();
       });
     }
@@ -5110,7 +5126,7 @@
     // events, growth aim and the year stay as set.
     $("budInformBtn")?.addEventListener("click", async () => {
       if (!repUnit || !budS) return;
-      if (!confirm("Fill this budget from the unit's actual months and its location? Mix, wages, comps, expense lines, the weather index and the city events are replaced — only your growth aim stays.")) return;
+      if (!(await ask("Fill this budget from the unit's actual months and its location? Mix, wages, comps, expense lines, the weather index and the city events are replaced — only your growth aim stays."))) return;
       const b = $("budInformBtn"), st = $("budSaveStatus");
       b.disabled = true; st.textContent = "Reading actuals…";
       try {
@@ -5136,11 +5152,11 @@
         if (g.weatherSensPct != null) budS.weatherSens = budR2(+g.weatherSensPct || 0);
         if (arr(g.events).length) budS.events = g.events.map((e) => ({
           name: e.name || "Event", month: Math.min(11, Math.max(0, +e.month || 0)), pct: +e.pct || 0 }));
-        budFillEmptyBaseline();
+        await budFillEmptyBaseline();
         budApplyEngine();
         const skipped = arr(g.notes).filter(Boolean);
         st.textContent = `Informed from ${g.sourceMonths || "?"} months ✓`;
-        if (skipped.length) alert("Informed from actuals. Skipped:\n\n" + skipped.join("\n"));
+        if (skipped.length) await notice("Informed from actuals. Skipped:\n\n" + skipped.join("\n"));
         logAccess("budget_inform", { unit: repUnits.find((x) => x.id === repUnit)?.name, year: budYear });
       } catch (e) { st.textContent = "AI: " + (e.message || e); }
       b.disabled = false;
@@ -5148,8 +5164,8 @@
 
     $("budgetBtn")?.addEventListener("click", openBudget);
     $("budYearIn")?.addEventListener("change", (e) => { budYear = +e.target.value || budYear; openBudget(); });
-    $("budResetBtn")?.addEventListener("click", () => {
-      if (!confirm("Restore the template? This replaces the current budget for this year.")) return;
+    $("budResetBtn")?.addEventListener("click", async () => {
+      if (!(await ask("Restore the template? This replaces the current budget for this year."))) return;
       budS = budClone(BUD_TEMPLATE); budApplyEngine();
     });
     $("budgetModal")?.addEventListener("click", (e) => { if (e.target === $("budgetModal")) show($("budgetModal"), false); });
@@ -5231,7 +5247,7 @@
     }
 
     async function deleteFinancial(id) {
-      if (!confirm("Delete this month's figures?")) return;
+      if (!(await ask("Delete this month's figures?"))) return;
       const r = repFin.find((x) => x.id === id);
       const { error } = await supabase.from("financials").delete().eq("id", id);
       if (!error) { logAccess("fin_delete", { unit: (repUnits.find((x) => x.id === repUnit)?.name || "unit"), period: r ? String(r.period).slice(0, 7) : null }); loadFinancials(); }
@@ -5289,7 +5305,7 @@
       await supabase.from("memos").update({ pinned: !on }).eq("id", id); loadMemos();
     }
     async function deleteMemo(id, title) {
-      if (!confirm("Delete this memo?")) return;
+      if (!(await ask("Delete this memo?"))) return;
       await supabase.from("memos").delete().eq("id", id);
       logAccess("memo_delete", { title: title || null });
       loadMemos();
@@ -5386,7 +5402,7 @@
 
     async function downloadDoc(path, title) {
       const { data, error } = await supabase.storage.from(cfg.BUCKET_DOCS || "documents").createSignedUrl(path, 120);
-      if (error || !data) { alert("Could not generate download link."); return; }
+      if (error || !data) { toast("Could not generate download link.", "err"); return; }
       logAccess("download", { title: title || path });
       window.open(data.signedUrl, "_blank", "noopener");
     }
@@ -5532,7 +5548,7 @@
     });
 
     async function deleteDoc(id, path) {
-      if (!confirm("Delete this document?")) return;
+      if (!(await ask("Delete this document?"))) return;
       const d = docRowsCache.find((x) => x.id === id);
       await supabase.storage.from("documents").remove([path]);
       await supabase.from("documents").delete().eq("id", id);
@@ -5552,7 +5568,7 @@
     }
     $("supportLeave")?.addEventListener("click", async () => {
       const { error } = await supabase.rpc("support_leave");
-      if (error) { alert(error.message); return; }
+      if (error) { toast(error.message, "err"); return; }
       location.reload();
     });
     async function loadPlatform() {
@@ -5605,33 +5621,38 @@
       const w = pfRows.find((x) => x.id === ws); if (!w || !act) return;
       let res = null;
       if (act === "enter") {
-        if (ws !== profile.workspace_id && !confirm(`Enter "${w.name}" as a temporary support admin? This is logged in that workspace's activity.`)) return;
+        if (ws !== profile.workspace_id && !(await ask(`Enter "${w.name}" as a temporary support admin? This is logged in that workspace's activity.`, "Enter workspace"))) return;
         res = await supabase.rpc("support_enter", { p_ws: ws });
         if (!res.error) { location.reload(); return; }
       } else if (act === "members") {
         const { data, error } = await supabase.rpc("platform_members", { p_ws: ws });
-        alert(error ? error.message : (data || []).map((m) => `${m.email} — ${m.role}${m.support ? " (support)" : ""} · last sign-in ${pfAgo(m.last_sign_in)}`).join("\n") || "No members.");
+        await notice(error ? error.message : (data || []).map((m) => `${m.email} — ${m.role}${m.support ? " (support)" : ""} · last sign-in ${pfAgo(m.last_sign_in)}`).join("\n") || "No members.");
         return;
       } else if (act === "trial14" || act === "trial30") {
         res = await supabase.rpc("platform_set_plan", { p_ws: ws, p_plan: "trial", p_trial_days: act === "trial14" ? 14 : 30 });
       } else if (act === "comped" || act === "active" || act === "canceled") {
-        if (!confirm(`Set "${w.name}" to ${act}?`)) return;
+        if (!(await ask(`Set "${w.name}" to ${act}?`))) return;
         res = await supabase.rpc("platform_set_plan", { p_ws: ws, p_plan: act });
       } else if (act === "rename") {
-        const name = prompt("New workspace name", w.name); if (!name || !name.trim()) return;
+        const name = await askInput("New workspace name", { value: w.name, yesLabel: "Rename" }); if (!name || !name.trim()) return;
         res = await supabase.rpc("platform_rename", { p_ws: ws, p_name: name.trim() });
       } else if (act === "delete") {
         // Irreversible: the workspace, every row in it, its files and its
         // member accounts. The operator types the name to confirm.
-        const typed = prompt(`DELETE "${w.name}"?\n\nThis permanently removes the workspace, all of its data and files, and the accounts of its ${w.members} member${w.members === 1 ? "" : "s"} (they can sign up again for a fresh trial). Platform admins are never deleted.\n\nType the workspace name to confirm:`);
+        const typed = await askInput(`Delete "${w.name}"?\n\nThis permanently removes the workspace, all of its data and files, and the accounts of its ${w.members} member${w.members === 1 ? "" : "s"} (they can sign up again for a fresh trial). Platform admins are never deleted.\n\nType the workspace name to confirm:`, { placeholder: w.name, yesLabel: "Delete workspace" });
         if (typed == null) return;
-        res = await supabase.rpc("platform_delete_workspace", { p_ws: ws, p_confirm: typed.trim() });
-        if (!res.error) {
-          const d = res.data || {};
-          toast(`Deleted "${d.name || w.name}" — ${d.users_deleted || 0} account${d.users_deleted === 1 ? "" : "s"}, ${d.files || 0} file${d.files === 1 ? "" : "s"} removed.`);
-        }
+        // Files go through the Storage API (SQL may not delete storage rows),
+        // so the whole thing runs in an edge function that then calls the
+        // platform_delete_workspace RPC as you — the database still checks.
+        const r = await fetch(cfg.SUPABASE_URL + "/functions/v1/platform-delete-workspace", {
+          method: "POST", headers: await mailFnHeaders(), body: JSON.stringify({ workspace_id: ws, confirm: typed.trim() }),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) { toast(d.error || ("HTTP " + r.status), "err"); return; }
+        toast(`Deleted "${d.name || w.name}" — ${d.users_deleted || 0} account${d.users_deleted === 1 ? "" : "s"}, ${d.files || 0} file${d.files === 1 ? "" : "s"} removed.`);
+        res = { error: null };
       }
-      if (res?.error) { alert(res.error.message); return; }
+      if (res?.error) { toast(res.error.message, "err"); return; }
       logAccess("platform_action", { ws, action: act });
       loadPlatform();
     }
@@ -5859,11 +5880,11 @@
           const el = document.elementFromPoint(m.clientX, m.clientY);
           const target = el && el.closest(".gnode");
           if (!target || target.dataset.id === e.id) return;
-          const pctStr = prompt("Ownership percentage (0–100):", "100"); if (pctStr === null) return;
+          const pctStr = await askInput("Ownership percentage (0–100):", { value: "100", yesLabel: "Link" }); if (pctStr === null) return;
           const pct = parseFloat(pctStr);
-          if (isNaN(pct) || pct <= 0 || pct > 100) return alert("Percentage must be between 0 and 100.");
+          if (isNaN(pct) || pct <= 0 || pct > 100) return toast("Percentage must be between 0 and 100.", "err");
           const res = await gStore.addEdge({ parent_id: e.id, child_id: target.dataset.id, percentage: pct });
-          if (!res.ok) return alert(res.error);
+          if (!res.ok) return toast(res.error, "err");
           gEdge.push(res.edge); render();
         };
         document.addEventListener("pointermove", mv); document.addEventListener("pointerup", up);
@@ -5925,9 +5946,9 @@
     // on top, then holding companies by ownership depth, operating units
     // below — column order refined with barycenter sweeps to reduce edge
     // crossings. Positions save exactly like manual drags.
-    function tidyLayout() {
+    async function tidyLayout() {
       if (!gEnt.length) return;
-      if (!confirm("Rearrange all boxes into a tidy layered layout? You can still drag boxes afterward.")) return;
+      if (!(await ask("Rearrange all boxes into a tidy layered layout? You can still drag boxes afterward."))) return;
       const parents = new Map(), children = new Map();
       for (const e of gEnt) { parents.set(e.id, []); children.set(e.id, []); }
       for (const ed of gEdge) if (parents.has(ed.child_id) && children.has(ed.parent_id)) {
@@ -5987,9 +6008,9 @@
       render();
       gStore.updateEntityPositions(updates);
     }
-    $("ownTidy")?.addEventListener("click", () => {
-      if (!confirm("Rearrange every box into the automatic layered layout? Current positions are overwritten.")) return;
-      tidyLayout();
+    $("ownTidy")?.addEventListener("click", async () => {
+      if (!(await ask("Rearrange every box into the automatic layered layout? Current positions are overwritten."))) return;
+      await tidyLayout();
     });
 
     // Zoom-and-scroll so the whole chart is visible. Used by the Fit
@@ -6019,11 +6040,11 @@
     async function editEdge(id) {
       if (!adminUI()) return;
       const e = gEdge.find((z) => z.id === id); if (!e) return;
-      const a = prompt(`Edit edge — new % (0–100) or "delete":`, String(e.percentage));
+      const a = await askInput(`Edit link — new % (0–100), or type "delete" to remove it:`, { value: String(e.percentage), yesLabel: "Save" });
       if (a === null) return;
       if (a.trim().toLowerCase() === "delete") { await gStore.deleteEdge(id); gEdge = gEdge.filter((z) => z.id !== id); render(); return; }
       const pct = parseFloat(a);
-      if (isNaN(pct) || pct <= 0 || pct > 100) return alert("Percentage must be between 0 and 100.");
+      if (isNaN(pct) || pct <= 0 || pct > 100) return toast("Percentage must be between 0 and 100.", "err");
       await gStore.updateEdge(id, { percentage: pct }); e.percentage = pct; render();
     }
 
@@ -6227,7 +6248,7 @@
         } catch (err) { $("pStatus").textContent = err.message; }
       });
       $("pDelete").addEventListener("click", async () => {
-        if (!confirm("Delete this box? Connected edges are also removed.")) return;
+        if (!(await ask("Delete this box? Connected edges are also removed."))) return;
         await gStore.deleteEntity(id);
         gEnt = gEnt.filter((z) => z.id !== id); gEdge = gEdge.filter((z) => z.parent_id !== id && z.child_id !== id);
         gSel = null; closePane(); render();
@@ -6240,7 +6261,7 @@
         const child = await gStore.addEntity({ name: "New box", position_x: x, position_y: y });
         gEnt.push(child);
         const res = await gStore.addEdge({ parent_id: id, child_id: child.id, percentage: 100 });
-        if (res.ok) gEdge.push(res.edge); else alert(res.error);
+        if (res.ok) gEdge.push(res.edge); else toast(res.error, "err");
         render(); openPane(child.id); focusNode(x, y);
       });
 
@@ -6329,7 +6350,7 @@
         });
       }
       $("plDel").addEventListener("click", async () => {
-        if (!confirm("Remove this partner link? Already-synced figures stay until replaced.")) return;
+        if (!(await ask("Remove this partner link? Already-synced figures stay until replaced."))) return;
         await supabase.from("unit_links").delete().eq("id", link.id);
         await loadUnitLinks(); renderPartnerLink(entityId);
       });
@@ -6355,7 +6376,7 @@
           <div class="muted" style="margin-top:0.4rem;">Tabs and roles are also managed in Settings (top right).</div>`;
         $("acUpdate").addEventListener("click", async () => {
           const { error } = await supabase.rpc("set_member_role", { p_email: email, p_role: $("acRole").value, p_tabs: null });
-          if (error) { alert(error.message); return; }
+          if (error) { toast(error.message, "err"); return; }
           logAccess("user_update", { email, role: $("acRole").value });
           renderAccess(id, email);
         });
@@ -6367,9 +6388,9 @@
           } catch (err) { $("acStatus").textContent = "Failed: " + err.message; }
         });
         $("acRevoke").addEventListener("click", async () => {
-          if (!confirm("Revoke portal access for " + email + "?")) return;
+          if (!(await ask("Revoke portal access for " + email + "?"))) return;
           const { error } = await supabase.rpc("remove_member", { p_email: email });
-          if (error) { alert(error.message); return; }
+          if (error) { toast(error.message, "err"); return; }
           renderAccess(id, email);
           logAccess("user_remove", { email });
         });
@@ -6635,7 +6656,7 @@
         .filter((s) => s.code && s.amount > 0);
       const total = row.amount == null ? null : Number(row.amount);
       const sum = clean.reduce((s, x) => s + x.amount, 0);
-      if (total != null && sum > total + 0.005) { alert(`Splits total ${money(sum)} — more than the bill's ${money(total)}.`); renderLedger(); return; }
+      if (total != null && sum > total + 0.005) { toast(`Splits total ${money(sum)} — more than the bill's ${money(total)}.`, "err"); renderLedger(); return; }
       row.splits = clean.length ? clean : null;
       renderLedger();
       const { error } = await supabase.from("invoices").update({ splits: row.splits }).eq("id", id);
@@ -6982,7 +7003,7 @@
         const s = findSett(b.dataset.icstmt); if (!s) return;
         const text = await icStatementText(s);
         try { await navigator.clipboard.writeText(text); b.textContent = "Copied ✓"; setTimeout(() => (b.textContent = "Copy"), 1500); }
-        catch (_) { alert(text); }
+        catch (_) { toast(text, "err"); }
       }));
       box.querySelectorAll("[data-icpaid]").forEach((b) => b.addEventListener("click", async () => {
         const s = findSett(b.dataset.icpaid);
@@ -7070,7 +7091,7 @@
     }
 
     async function deleteInvoice(id) {
-      if (!confirm("Delete this bill?")) return;
+      if (!(await ask("Delete this bill?"))) return;
       const { data } = await supabase.from("invoices").select("file_url").eq("id", id).single();
       if (data?.file_url?.startsWith("storage:")) await supabase.storage.from("invoices").remove([data.file_url.slice(8)]);
       await supabase.from("invoices").delete().eq("id", id);
@@ -7237,7 +7258,7 @@
         });
         if (error) throw error;
         show($("invModal"), false);
-        if (data?.duplicate) alert("Heads up: a bill with the same vendor, date, and amount already exists.");
+        if (data?.duplicate) toast("Heads up: a bill with the same vendor, date, and amount already exists.");
         loadInvoices();
       } catch (e) { st.textContent = e.message || "Save failed."; }
     });
@@ -7354,7 +7375,7 @@
         const code = cb.dataset.sub;
         if (cb.checked) {
           const parent = coaTops().find((t) => t.code !== code);
-          if (!parent) { alert("Add another top-level category first to nest under."); renderChart(); return; }
+          if (!parent) { toast("Add another top-level category first to nest under.", "err"); renderChart(); return; }
           coaUpdate(code, { parent_code: parent.code });
         } else coaUpdate(code, { parent_code: null });
       }));
@@ -7391,8 +7412,8 @@
     }
 
     async function deleteAccount(code) {
-      if (coaSubs(code).length) { alert("Remove or reassign its sub-accounts first."); return; }
-      if (!confirm("Delete account " + code + "?")) return;
+      if (coaSubs(code).length) { toast("Remove or reassign its sub-accounts first.", "err"); return; }
+      if (!(await ask("Delete account " + code + "?"))) return;
       const { error } = await supabase.from("gl_codes").delete().eq("code", code);
       if (error) { $("coaStatus").textContent = /foreign key|violates/.test(error.message || "") ? "In use by one or more invoices — reassign those first." : error.message; return; }
       coaRows = coaRows.filter((r) => r.code !== code);
