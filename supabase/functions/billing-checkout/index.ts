@@ -51,6 +51,7 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
   if (!STRIPE_KEY) return json({ error: "Billing isn't configured yet (STRIPE_SECRET_KEY)." }, 500);
+  if (!/^(sk|rk)_/.test(STRIPE_KEY)) return json({ error: "Billing is misconfigured: STRIPE_SECRET_KEY holds a publishable key. Save the secret key (sk_live_…) from Stripe → Developers → API keys." }, 500);
 
   const token = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
   const { data: { user } } = await createClient(SUPABASE_URL, ANON).auth.getUser(token);
