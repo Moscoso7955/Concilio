@@ -1,7 +1,7 @@
 {
-  "name": "Concilio Owner Portal",
-  "short_name": "Concilio",
-  "description": "Concilio — Owner Portal",
+  "name": "Arca Owner Portal",
+  "short_name": "Arca",
+  "description": "Arca — Owner Portal",
   "start_url": "/administration",
   "scope": "/administration",
   "display": "standalone",

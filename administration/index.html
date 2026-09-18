@@ -4,14 +4,14 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="robots" content="noindex, nofollow">
-  <title>Concilio — Owner Portal</title>
+  <title>Arca — Owner Portal</title>
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="icon" type="image/png" sizes="32x32" href="/assets/icons/favicon-32x32.png">
   <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png">
   <link rel="manifest" href="/administration/manifest.webmanifest">
   <meta name="theme-color" content="#111111">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-title" content="Concilio">
+  <meta name="apple-mobile-web-app-title" content="Arca">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <style>
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
@@ -405,7 +405,7 @@
     <div class="card auth-card">
       <h1>Owner Portal</h1>
       <p class="sub">Backend not connected yet</p>
-      <p class="muted">The Supabase project hasn't been wired up. Once the Concilio project is
+      <p class="muted">The Supabase project hasn't been wired up. Once the Arca project is
       created and the keys are added to <code>config.js</code>, sign-in will be enabled here.</p>
     </div>
   </div>
@@ -414,7 +414,7 @@
   <div class="center hidden" id="loginView">
     <div class="card auth-card">
       <img src="/assets/images/fox.png" alt="" class="auth-fox" aria-hidden="true">
-      <h1 data-brandname>Concilio</h1>
+      <h1 data-brandname>Arca</h1>
       <p class="sub">Sign in, or create your workspace</p>
       <button class="btn btn--google btn--full" id="googleBtn" type="button">
         <svg width="16" height="16" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.6l6.7-6.7C35.6 2.7 30.1 0 24 0 14.6 0 6.4 5.4 2.5 13.2l7.9 6.1C12.3 13.3 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.1 24.6c0-1.6-.1-3.1-.4-4.6H24v9.1h12.4c-.5 2.9-2.1 5.3-4.6 7l7.1 5.5c4.1-3.8 6.5-9.5 6.5-16z"/><path fill="#FBBC05" d="M10.4 28.7c-.5-1.5-.8-3-.8-4.7s.3-3.2.8-4.7l-7.9-6.1C.9 16.5 0 20.1 0 24s.9 7.5 2.5 10.8l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.1 0 11.3-2 15-5.5l-7.1-5.5c-2 1.4-4.6 2.2-7.9 2.2-6.3 0-11.7-3.8-13.6-9.3l-7.9 6.1C6.4 42.6 14.6 48 24 48z"/></svg>
@@ -437,7 +437,7 @@
   <div class="center hidden" id="paywallView">
     <div class="card auth-card">
       <img src="/assets/images/fox.png" alt="" class="auth-fox" aria-hidden="true">
-      <h1 data-brandname>Concilio</h1>
+      <h1 data-brandname>Arca</h1>
       <p class="sub" id="pwTitle">Your free trial has ended</p>
       <p class="muted" id="pwMsg" style="margin-bottom:1.2rem;"></p>
       <button class="btn btn--full" id="pwSubscribe" type="button">Subscribe — $50/month</button>
@@ -460,7 +460,7 @@
   <!-- App -->
   <div class="shell hidden" id="appView">
     <div class="topbar">
-      <div class="brandmark"><span data-brandname>Concilio</span> <span>/ <span id="wsName">Owner Portal</span></span></div>
+      <div class="brandmark"><span data-brandname>Arca</span> <span>/ <span id="wsName">Owner Portal</span></span></div>
       <div class="whoami">
         <img src="/assets/images/fox.png" alt="" class="brand-fox" aria-hidden="true">
         <span id="userEmail"></span>
@@ -840,14 +840,14 @@
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.40.0 — schema migration 0040">v1.40.0</div>
+  <div class="version-tag" title="Owner Portal v1.40.1 — schema migration 0040">v1.40.1</div>
 
   <!-- Settings modal -->
   <!-- Onboarding: first admin sign-in of a new workspace -->
   <div class="modal-overlay hidden" id="onboardModal">
     <div class="modal" style="max-width:560px;">
       <div class="modal-sticky-head">
-        <h3 style="margin:0;" id="obTitle">Welcome to Concilio</h3>
+        <h3 style="margin:0;" id="obTitle">Welcome to Arca</h3>
         <span class="muted" id="obStep">1 / 3</span>
       </div>
       <div id="obPane1">
@@ -855,7 +855,7 @@
         <div class="field"><label for="obName">Company or workspace name</label><input type="text" id="obName" placeholder="Acme Holdings"></div>
       </div>
       <div id="obPane2" class="hidden">
-        <p class="muted" style="margin-bottom:1rem;">Concilio maps who owns what. Start with one unit — a company, property or fund — and your stake in it. Add the rest on the Ownership tab.</p>
+        <p class="muted" style="margin-bottom:1rem;">Arca maps who owns what. Start with one unit — a company, property or fund — and your stake in it. Add the rest on the Ownership tab.</p>
         <div class="field"><label for="obUnit">First unit</label><input type="text" id="obUnit" placeholder="Main Street LLC"></div>
         <div class="row">
           <div style="flex:2;"><label for="obMe">Your name</label><input type="text" id="obMe" placeholder="Your name"></div>
@@ -1150,7 +1150,7 @@
   <script type="module">
     import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
 
-    const cfg = window.CONCILIO_CONFIG;
+    const cfg = window.ARCA_CONFIG;
     const configured = cfg && cfg.SUPABASE_URL && cfg.SUPABASE_URL.indexOf("__") !== 0;
     const $ = (id) => document.getElementById(id);
     const show = (el, on = true) => el.classList.toggle("hidden", !on);
@@ -1249,7 +1249,7 @@
       $("pwTitle").textContent = billing.plan === "trial" ? "Your free trial has ended"
         : billing.plan === "past_due" ? "Your last payment didn't go through" : "This workspace isn't subscribed";
       $("pwMsg").textContent = admin
-        ? "Concilio is $50/month per workspace. Subscribe to pick up exactly where you left off — nothing has been deleted."
+        ? "Arca is $50/month per workspace. Subscribe to pick up exactly where you left off — nothing has been deleted."
         : "Ask your workspace admin to subscribe. Your data is safe and comes back the moment they do.";
       show($("pwSubscribe"), admin);
       $("pwWho").textContent = (session.user.email || "") + (workspace?.name ? " · " + workspace.name : "");
@@ -1652,7 +1652,7 @@
     }
     // The skin: a principal's own domain shows their brand to everyone on
     // it (login page included); otherwise a signed-in principal gets
-    // their brand anywhere. Default stays Concilio.
+    // their brand anywhere. Default stays Arca.
     function applyBrand() {
       const host = location.hostname.toLowerCase();
       const p = gPrincipals.find((x) => (x.domain || "").toLowerCase() === host) || myPrincipal();
@@ -1765,8 +1765,8 @@
       if (isAdmin()) { if (profile?.platform_admin) loadSite(); loadQboStatus(); }
       // One sign-in event per browser session, not per reload.
       try {
-        if (!sessionStorage.getItem("concilio_logged_in")) {
-          sessionStorage.setItem("concilio_logged_in", "1");
+        if (!sessionStorage.getItem("arca_logged_in")) {
+          sessionStorage.setItem("arca_logged_in", "1");
           logAccess("sign_in");
         }
       } catch (_) { logAccess("sign_in"); }
@@ -1790,7 +1790,7 @@
         const qboUnit = qp.get("u"), qboComp = qp.get("c");
         try { history.replaceState(null, "", location.pathname); } catch (_) {}
         activateTab("financials");
-        try { localStorage.setItem("concilio_tab", "financials"); } catch (_) {}
+        try { localStorage.setItem("arca_tab", "financials"); } catch (_) {}
         finReady.then(async () => {
           if (isAdmin()) await loadQboStatus();
           if (qboUnit && repUnits.some((x) => x.id === qboUnit)) { repUnit = qboUnit; renderUnitView(); }
@@ -1812,7 +1812,7 @@
       obStep = n;
       [1, 2, 3, 4].forEach((i) => show($("obPane" + i), i === n));
       $("obStep").textContent = n < 4 ? `${n} / 3` : "";
-      $("obTitle").textContent = n === 1 ? "Welcome to Concilio" : n === 2 ? "Your first unit" : n === 3 ? "Invite your team" : "All set";
+      $("obTitle").textContent = n === 1 ? "Welcome to Arca" : n === 2 ? "Your first unit" : n === 3 ? "Invite your team" : "All set";
       show($("obBack"), n > 1 && n < 4);
       show($("obSkip"), n < 4);
       $("obNext").textContent = n === 3 ? "Finish" : n === 4 ? "Go to my portal" : "Next";
@@ -1851,7 +1851,7 @@
         logAccess("onboarded", { unit: unit || null, invites: emails.length });
         const b = billing || computeBilling(workspace);
         $("obTrialNote").textContent = b.plan === "trial" && b.trialEndsAt
-          ? `Your free trial runs until ${b.trialEndsAt.toLocaleDateString(undefined, { month: "long", day: "numeric" })}. After that Concilio is $50/month per workspace — subscribe any time from Settings → Billing.`
+          ? `Your free trial runs until ${b.trialEndsAt.toLocaleDateString(undefined, { month: "long", day: "numeric" })}. After that Arca is $50/month per workspace — subscribe any time from Settings → Billing.`
           : "Head to the Ownership tab to keep building your map, or Reports to add your first month.";
         st.textContent = ""; obShow(4);
         loadGraph(); loadFinancials();
@@ -1893,12 +1893,12 @@
       t.addEventListener("click", () => {
         if (!t.dataset.tab) return; // settings-modal pills wire themselves
         activateTab(t.dataset.tab);
-        try { localStorage.setItem("concilio_tab", t.dataset.tab); } catch (_) {}
+        try { localStorage.setItem("arca_tab", t.dataset.tab); } catch (_) {}
       });
     });
     function restoreTab() {
       let saved = null;
-      try { saved = localStorage.getItem("concilio_tab"); } catch (_) {}
+      try { saved = localStorage.getItem("arca_tab"); } catch (_) {}
       if (saved) activateTab(saved); // falls back to the default (Reports) if hidden/unknown
     }
 
@@ -4930,7 +4930,7 @@
     let invTenants = [], invCoSel = null; // companies (tenants) + active filter
     const tenantShort = (t) => {
       const n = (t?.name || "?").trim();
-      const stripped = n.replace(/^Concilio\s+/i, "").replace(/\s*Co\.?$/i, "").trim();
+      const stripped = n.replace(/^Arca\s+/i, "").replace(/\s*Co\.?$/i, "").trim();
       return stripped || n;
     };
     function companyPill(r) {
@@ -4998,7 +4998,7 @@
 
     async function loadEmailBar() {
       const bar = $("invEmailBar"); if (!bar) return;
-      const domain = window.CONCILIO_CONFIG && window.CONCILIO_CONFIG.INBOUND_DOMAIN;
+      const domain = window.ARCA_CONFIG && window.ARCA_CONFIG.INBOUND_DOMAIN;
       if (!domain) {
         // No verified inbound domain yet — don't show a non-working address.
         bar.innerHTML = '<span class="muted">Email-in (forward bills to auto-file) isn’t set up yet.</span>';
@@ -5134,7 +5134,7 @@
     }
 
     function wireRowControls(scope) {
-      // Company toggle: cycle the bill between tenants (Concilio ⇄ FBH).
+      // Company toggle: cycle the bill between tenants (Arca ⇄ FBH).
       scope.querySelectorAll("[data-company]").forEach((b) => b.addEventListener("click", async () => {
         const r = invRows.find((x) => x.id === b.dataset.company); if (!r || invTenants.length < 2) return;
         const i = invTenants.findIndex((t) => t.id === r.tenant_id);

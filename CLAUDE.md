@@ -1,4 +1,4 @@
-# Concilio — coming-soon site + Owner Portal
+# Arca — coming-soon site + Owner Portal
 
 Static no-build site deployed by Vercel from `main`. The Owner Portal
 lives entirely in `administration/index.html` (vanilla JS + Supabase);

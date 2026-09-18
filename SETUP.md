@@ -14,7 +14,7 @@ the fork, GitHub's "Sync fork" button pulls updates). Then set, in the
 fork's **Settings → Secrets and variables → Actions**:
 
 - Variable `SUPABASE_PROJECT_REF` — the new Supabase project ref.
-  (Workflows fall back to the Concilio ref when unset, so the
+  (Workflows fall back to the Arca ref when unset, so the
   original repo needs nothing.)
 - Secret `SUPABASE_ACCESS_TOKEN` — from the new project's account
   (Supabase dashboard → Account → Access Tokens).

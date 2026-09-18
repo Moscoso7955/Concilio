@@ -1,4 +1,4 @@
-# Concilio — integration roadmap
+# Arca — integration roadmap
 
 Parked 2026-09-02. Not started; order to be decided.
 
@@ -11,7 +11,7 @@ Parked 2026-09-02. Not started; order to be decided.
   vendors integrating with Fidelity's 401(k) recordkeeping — partner
   enrollment, not individual-investor account access. For an owner
   linking their own Fidelity brokerage/retirement account, the path is
-  an aggregator (Plaid Investments covers Fidelity) unless Concilio is
+  an aggregator (Plaid Investments covers Fidelity) unless Arca is
   acting as a plan sponsor/vendor.
 - **Schwab** and other brokerages — same, likely via an aggregator
   (Plaid Investments, Yodlee, or SnapTrade) rather than one-off APIs.

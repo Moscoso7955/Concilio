@@ -1,4 +1,4 @@
-# Concilio as a user-based product — multi-tenancy plan
+# Arca as a user-based product — multi-tenancy plan
 
 Noted 2026-09-02. **Implemented 2026-09-03** in migration
 `0036_workspaces.sql` plus portal and edge-function changes; see
@@ -72,7 +72,7 @@ multi-owner case (the reason the node system exists) keeps working.
 
 ## Open questions
 - Does the existing Callidus/FBH data migrate in as workspace #1, or
-  does Concilio start empty? (The Concilio database is empty today, so
+  does Arca start empty? (The Arca database is empty today, so
   this only matters if Callidus data is imported later.)
 - Sequencing: the workspace signup trigger replaces the allowlist
   trigger, so land it after Google OAuth + Resend are verified working
@@ -84,7 +84,7 @@ multi-owner case (the reason the node system exists) keeps working.
   (current workspace) and `profiles.platform_admin`.
 - `workspace_id` on all 20 domain tables, `not null`, defaulting to
   `current_workspace()` so client inserts need no change. Existing rows
-  landed in the bootstrap workspace `Concilio`
+  landed in the bootstrap workspace `Arca`
   (`00000000-0000-0000-0000-0000000000c0`).
 - Every existing policy on those tables was rewritten in place as
   `workspace_id = current_workspace() and (<original>)`. Helpers

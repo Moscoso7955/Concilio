@@ -1,9 +1,9 @@
 # Syncing features from callidus-coming-soon
 
-Concilio is the multi-tenant product. `Moscoso7955/callidus-coming-soon`
+Arca is the multi-tenant product. `Moscoso7955/callidus-coming-soon`
 is the single-tenant lab where features are refined first. Both repos
-share git history (Concilio was cloned from callidus on 2026-09-02, at
-commit 85eef21), so callidus `main` **merges** into Concilio `main` —
+share git history (Arca was cloned from callidus on 2026-09-02, at
+commit 85eef21), so callidus `main` **merges** into Arca `main` —
 no cherry-picking, no manual re-typing.
 
 ## How to run a sync
@@ -13,18 +13,18 @@ Ask Claude: **"sync from callidus"**. The steps it follows:
 1. `git fetch https://github.com/Moscoso7955/callidus-coming-soon main`
    and `git merge --no-commit --no-ff FETCH_HEAD`.
 2. Resolve conflicts. The version badge line always conflicts (both
-   sides bump it) — take Concilio's numbering (see Versioning in
+   sides bump it) — take Arca's numbering (see Versioning in
    CLAUDE.md). Portal (`administration/index.html`) conflicts cluster in
    `enterApp()` and the Settings modal; keep both sides' intent.
 3. Adapt everything new (checklist below), apply migrations to the
-   Concilio Supabase project, commit the merge, push to `main`. The
+   Arca Supabase project, commit the merge, push to `main`. The
    push deploys the site (Vercel) and any changed functions (workflow).
 4. Record the migration mapping below.
 
 ## Adaptation checklist (every sync)
 
-- **Migrations**: callidus numbers collide with Concilio's. Rename to
-  the next free Concilio number and add the mapping to the table. Every
+- **Migrations**: callidus numbers collide with Arca's. Rename to
+  the next free Arca number and add the mapping to the table. Every
   new table gets
   `workspace_id uuid not null default public.current_workspace() references workspaces(id) on delete cascade`
   plus an index, and every policy is wrapped with
@@ -38,9 +38,9 @@ Ask Claude: **"sync from callidus"**. The steps it follows:
   key or token are fine as-is.
 - **Domains & names**: `callidusco.com` → `conciliowealth.com`,
   `SITE_URL` defaults, `CallidusCo`/`Callidus` in copy, the
-  `callidus_*` localStorage keys → `concilio_*`, the Supabase project
+  `callidus_*` localStorage keys → `arca_*`, the Supabase project
   ref fallback `ofliuuulagqlbdjwrnjc` → `etfpxmabzhbyiqsrtsre`.
-- **Secrets**: note any new function secret the feature needs; Concilio
+- **Secrets**: note any new function secret the feature needs; Arca
   has its own Supabase secrets store.
 - **Deploy workflow**: new functions must be listed in
   `.github/workflows/deploy-functions.yml` (the merge usually brings
@@ -49,10 +49,10 @@ Ask Claude: **"sync from callidus"**. The steps it follows:
 
 ## Things that do NOT come over
 
-Concilio-only surfaces that callidus never had: workspaces & signup,
+Arca-only surfaces that callidus never had: workspaces & signup,
 billing/paywall, onboarding wizard, the public page's trial CTA, the
 fox mark. A callidus change that rewrites one of these regions is
-resolved in Concilio's favour.
+resolved in Arca's favour.
 
 ## What helps on the callidus side
 
@@ -64,12 +64,12 @@ resolved in Concilio's favour.
 
 ## Migration mapping
 
-| callidus | Concilio | feature |
+| callidus | Arca | feature |
 |---|---|---|
 | 0001–0035 | same | shared base |
-| — | 0036 | workspaces (Concilio only) |
-| — | 0037 | billing (Concilio only) |
+| — | 0036 | workspaces (Arca only) |
+| — | 0037 | billing (Arca only) |
 | 0036_qbo | 0038_qbo | QuickBooks link |
 | 0037_budgets | 0039_budgets | budget maker |
 
-Last sync: 2026-09-10, callidus `f598603` → Concilio `9816b62`.
+Last sync: 2026-09-10, callidus `f598603` → Arca `9816b62`.

@@ -5,7 +5,7 @@ Shipped 2026-09-09 (migration 0037, portal v1.37.0).
 ## Model
 - Every workspace starts on a **14-day free trial** (`workspaces.plan = 'trial'`,
   `trial_ends_at`). After that it is **$50/month per workspace** via Stripe.
-- `plan` ∈ trial · active · past_due · canceled · comped. The Concilio
+- `plan` ∈ trial · active · past_due · canceled · comped. The Arca
   workspace is `comped`.
 - `public.billing_ok()` is the single gate: active/comped → yes; trial →
   until `trial_ends_at`; past_due → 7-day grace after `current_period_end`;

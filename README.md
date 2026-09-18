@@ -1,4 +1,4 @@
-# Concilio
+# Arca
 
 The public site (`conciliowealth.com`) plus a login-gated **Owner Portal** at
 `/administration` — a reporting terminal where owners view financials, share
@@ -81,7 +81,7 @@ runs server-side (the key never reaches the browser); the model is `claude-opus-
      be done before any mail is received.
    - Route `bills-<token>@<your-domain>` to a Resend inbound webhook pointing at
      the deployed `email-inbound` function URL. The `<token>` matches
-     `tenants.inbound_token` (seeded as `concilio`).
+     `tenants.inbound_token` (seeded as `arca`).
    - Forwarded bills are AI-parsed and filed with **needs review** = true; approve
      them from the Invoices tab (requires vendor + amount + GL code).
    - Note: Resend's inbound payload field names can vary — if filing misbehaves,
@@ -102,9 +102,9 @@ in the database.
 - `supabase/migrations/0001_full_backend.sql` — the backend schema.
 - `vercel.json` — `cleanUrls` so `/administration` resolves.
 
-## Backend setup (one-time, in the Concilio Supabase project)
+## Backend setup (one-time, in the Arca Supabase project)
 
-1. **Create the Supabase project** in the `Concilio` org.
+1. **Create the Supabase project** in the `Arca` org.
 
 2. **Run the migration** — paste `supabase/migrations/0001_full_backend.sql`
    into the Supabase SQL editor (or apply via MCP/CLI). It creates all tables,

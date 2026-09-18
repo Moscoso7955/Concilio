@@ -1,7 +1,7 @@
 {
-  "name": "Concilio",
-  "short_name": "Concilio",
-  "description": "Concilio — Coming Soon",
+  "name": "Arca",
+  "short_name": "Arca",
+  "description": "Arca — Portfolio Management",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0f172a",

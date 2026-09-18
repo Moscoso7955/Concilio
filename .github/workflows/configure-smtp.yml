@@ -23,7 +23,7 @@ jobs:
             smtp_port: "465",
             smtp_user: "resend",
             smtp_pass: $pass,
-            smtp_sender_name: "Concilio",
+            smtp_sender_name: "Arca",
             rate_limit_email_sent: 60
           }' > /tmp/p.json
           code=$(curl -s -o /tmp/r.json -w "%{http_code}" -X PATCH \

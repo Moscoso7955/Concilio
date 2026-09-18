@@ -95,7 +95,7 @@ Deno.serve(async (req) => {
           currency: "usd",
           unit_amount: PRICE_CENTS,
           recurring: { interval: "month" },
-          product_data: { name: "Concilio workspace", description: "Owner portal — ownership map, reports, documents, distributions" },
+          product_data: { name: "Arca workspace", description: "Owner portal — ownership map, reports, documents, distributions" },
         },
       }],
       subscription_data: { metadata: { workspace_id: ws.id } },
