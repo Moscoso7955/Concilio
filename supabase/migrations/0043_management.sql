@@ -238,6 +238,8 @@ begin
   values ((to_jsonb(old)->>'workspace_id')::uuid, tg_argv[0], old.id, to_jsonb(old), coalesce(auth.jwt()->>'email',''));
   return old;
 end $$;
+-- Trigger-only: never callable through the REST rpc surface.
+revoke execute on function public.mg_capture_delete() from public, anon, authenticated;
 
 drop trigger if exists tasks_capture_delete on tasks;
 create trigger tasks_capture_delete before delete on tasks
