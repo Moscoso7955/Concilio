@@ -473,12 +473,19 @@
       </div>
     </div>
 
+    <div id="supportBar" class="hidden" style="display:flex;align-items:center;gap:0.8rem;flex-wrap:wrap;margin-bottom:0.8rem;padding:0.55rem 0.8rem;border:1px solid var(--accent);border-radius:10px;background:rgba(184,144,63,0.08);">
+      <strong style="color:var(--gold-soft);">Support mode</strong>
+      <span class="muted">You're inside <span id="supportWs"></span> as a temporary admin. Everything you do here is logged.</span>
+      <button class="btn btn--sm" id="supportLeave" type="button" style="margin-left:auto;">Leave workspace</button>
+    </div>
+
     <div class="tabs">
       <button class="tab active" data-tab="financials">Reports</button>
       <button class="tab" data-tab="memos">Memo Board</button>
       <button class="tab" data-tab="documents">Documents</button>
       <button class="tab" data-tab="invoices">Invoices</button>
       <button class="tab" data-tab="owners">Ownership</button>
+      <button class="tab hidden" data-tab="platform">Platform</button>
     </div>
 
     <div id="repViewAsBar" class="hidden" style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;background:rgba(124,132,147,0.12);border:1px solid var(--accent);border-radius:10px;padding:0.55rem 0.8rem;margin-bottom:0.9rem;">
@@ -705,6 +712,24 @@
     </section>
 
     <!-- Site Content (admin) -->
+    <section class="tab-panel hidden" data-panel="platform">
+      <div class="section-card">
+        <div style="display:flex;align-items:center;gap:0.8rem;flex-wrap:wrap;margin-bottom:0.8rem;">
+          <h2 style="margin:0;">Workspaces</h2>
+          <input type="search" id="pfSearch" placeholder="Search name or admin email" style="flex:1;min-width:14rem;width:auto;">
+          <button class="btn btn--ghost btn--sm" id="pfRefresh" type="button">Refresh</button>
+          <span class="muted" id="pfStatus"></span>
+        </div>
+        <div class="table-wrap"><table id="pfTable"><thead><tr>
+          <th>Workspace</th><th>Plan</th><th>Members</th><th>Admins</th><th>Last sign-in</th><th>Units · months</th><th></th>
+        </tr></thead><tbody><tr><td colspan="7" class="muted">Loading…</td></tr></tbody></table></div>
+      </div>
+      <div class="section-card" style="margin-top:1rem;">
+        <h2>Recent function activity</h2>
+        <div id="pfLogs" class="muted">Loading…</div>
+      </div>
+    </section>
+
     <section class="tab-panel hidden" data-panel="owners">
       <div class="graph-wrap">
         <div class="graph-toolbar">
@@ -731,7 +756,7 @@
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.40.6 — schema migration 0040">v1.40.6</div>
+  <div class="version-tag" title="Owner Portal v1.41.0 — schema migration 0041">v1.41.0</div>
 
   <!-- Settings modal -->
   <!-- Onboarding: first admin sign-in of a new workspace -->
@@ -743,7 +768,8 @@
       </div>
       <div id="obPane1">
         <p class="muted" style="margin-bottom:1rem;">Let's set up your workspace. Everything here can be changed later in Settings.</p>
-        <div class="field"><label for="obName">Company or workspace name</label><input type="text" id="obName" placeholder="Acme Holdings"></div>
+        <div class="field"><label for="obName">Company or workspace name</label><input type="text" id="obName" placeholder="Acme Holdings" autocomplete="organization" required></div>
+        <p class="muted" style="font-size:0.8rem;">This is what your partners see when they sign in.</p>
       </div>
       <div id="obPane2" class="hidden">
         <p class="muted" style="margin-bottom:1rem;">Arca maps who owns what. Start with one unit — a company, property or fund — and your stake in it. Add the rest on the Ownership tab.</p>
@@ -1608,7 +1634,7 @@
       }
       if (qs.has("billing")) history.replaceState(null, "", location.pathname);
       billing = computeBilling(workspace);
-      if (!billing.active) { showPaywall(session); return; }
+      if (!billing.active && !profile?.platform_admin) { showPaywall(session); return; }
       await refreshRoles();
       enterApp(session);
     }
@@ -1622,6 +1648,10 @@
       accountant: ["financials", "documents", "invoices"],
     };
     function allowedTabs() {
+      const t = allowedTabsBase();
+      return profile?.platform_admin ? [...t, "platform"] : t;
+    }
+    function allowedTabsBase() {
       if (isAdmin()) return ALL_TABS;
       const assigned = profile && Array.isArray(profile.tabs) && profile.tabs.length ? profile.tabs : null;
       const role = roleInfo(profile?.role);
@@ -1653,6 +1683,8 @@
       if (tabs.includes("documents")) loadDocuments();
       if (tabs.includes("invoices")) loadInvoices();
       if (isAdmin()) loadQboStatus();
+      if (tabs.includes("platform")) loadPlatform();
+      renderSupportBar();
       // One sign-in event per browser session, not per reload.
       try {
         if (!sessionStorage.getItem("arca_logged_in")) {
@@ -1704,12 +1736,12 @@
       $("obStep").textContent = n < 4 ? `${n} / 3` : "";
       $("obTitle").textContent = n === 1 ? "Welcome to Arca" : n === 2 ? "Your first unit" : n === 3 ? "Invite your team" : "All set";
       show($("obBack"), n > 1 && n < 4);
-      show($("obSkip"), n < 4);
+      show($("obSkip"), n > 1 && n < 4);
       $("obNext").textContent = n === 3 ? "Finish" : n === 4 ? "Go to my portal" : "Next";
     }
     function maybeOnboard() {
       if (!isAdmin() || !workspace || workspace.onboarded_at) return;
-      $("obName").value = workspace.name || "";
+      $("obName").value = "";
       $("obMe").value = profile?.full_name || (currentEmail || "").split("@")[0];
       obShow(1);
       show($("onboardModal"), true);
@@ -1758,8 +1790,9 @@
     });
     $("obBack")?.addEventListener("click", () => obShow(Math.max(1, obStep - 1)));
     $("obSkip")?.addEventListener("click", async () => {
-      const { error } = await supabase.rpc("complete_onboarding", { p_name: workspace?.name || null });
-      if (!error) workspace = { ...workspace, onboarded_at: new Date().toISOString() };
+      const name = ($("obName").value || "").trim(); if (!name) { obShow(1); return; }
+      const { error } = await supabase.rpc("complete_onboarding", { p_name: name });
+      if (!error) { workspace = { ...workspace, name, onboarded_at: new Date().toISOString() }; $("wsName").textContent = name; const wsIn = $("wsRename"); if (wsIn) wsIn.value = name; }
       show($("onboardModal"), false);
     });
 
@@ -3747,6 +3780,93 @@
       logAccess("doc_delete", { title: d?.title || null });
       loadDocuments();
     }
+
+    /* ---------------- Platform console (platform admins) ---------------- */
+    let pfRows = [];
+    const pfFmt = (d) => d ? new Date(d).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : "—";
+    const pfAgo = (d) => { if (!d) return "never"; const days = Math.floor((Date.now() - new Date(d).getTime()) / 86400000); return days === 0 ? "today" : days === 1 ? "yesterday" : `${days}d ago`; };
+    function renderSupportBar() {
+      const bar = $("supportBar"); if (!bar) return;
+      const on = !!profile?.home_workspace_id;
+      show(bar, on);
+      if (on) $("supportWs").textContent = workspace?.name || "this workspace";
+    }
+    $("supportLeave")?.addEventListener("click", async () => {
+      const { error } = await supabase.rpc("support_leave");
+      if (error) { alert(error.message); return; }
+      location.reload();
+    });
+    async function loadPlatform() {
+      const st = $("pfStatus"); if (st) st.textContent = "Loading…";
+      const [{ data, error }, { data: logs }] = await Promise.all([
+        supabase.rpc("platform_workspaces"),
+        supabase.from("function_logs").select("fn,msg,detail,created_at").order("created_at", { ascending: false }).limit(30),
+      ]);
+      if (error) { if (st) st.textContent = error.message; return; }
+      pfRows = data || []; renderPlatform();
+      if (st) st.textContent = `${pfRows.length} workspace${pfRows.length === 1 ? "" : "s"}`;
+      const lb = $("pfLogs");
+      if (lb) lb.innerHTML = (logs || []).length ? (logs || []).map((l) =>
+        `<div style="display:flex;gap:0.6rem;padding:0.3rem 0;border-bottom:1px solid var(--border);font-size:0.85rem;">
+          <span style="min-width:9rem;">${escapeHtml(pfFmt(l.created_at))} ${new Date(l.created_at).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}</span>
+          <span class="badge">${escapeHtml(l.fn)}</span><span>${escapeHtml(l.msg)}</span>
+          ${l.detail ? `<span class="muted" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:28rem;" title="${escapeHtml(JSON.stringify(l.detail))}">${escapeHtml(JSON.stringify(l.detail))}</span>` : ""}
+        </div>`).join("") : "No function activity yet.";
+    }
+    function renderPlatform() {
+      const q = ($("pfSearch")?.value || "").trim().toLowerCase();
+      const rows = pfRows.filter((w) => !q || (w.name || "").toLowerCase().includes(q) || (w.admins || "").toLowerCase().includes(q));
+      const tb = $("pfTable")?.querySelector("tbody"); if (!tb) return;
+      if (!rows.length) { tb.innerHTML = '<tr><td colspan="7" class="muted">No workspaces match.</td></tr>'; return; }
+      const planText = (w) => w.plan === "trial" ? `trial · ends ${pfFmt(w.trial_ends_at)}` : w.plan === "active" ? `active${w.current_period_end ? " · renews " + pfFmt(w.current_period_end) : ""}` : w.plan;
+      tb.innerHTML = rows.map((w) => `<tr data-ws="${w.id}">
+        <td><strong>${escapeHtml(w.name)}</strong>${w.id === profile.workspace_id ? ' <span class="badge">here</span>' : ""}<div class="muted" style="font-size:0.75rem;">${w.onboarded ? "onboarded" : "not onboarded"} · created ${pfFmt(w.created_at)}</div></td>
+        <td><span class="badge${w.plan === "active" || w.plan === "comped" ? " badge--admin" : ""}">${escapeHtml(planText(w))}</span>${w.has_stripe ? '<div class="muted" style="font-size:0.75rem;">Stripe customer</div>' : ""}</td>
+        <td>${w.members}</td>
+        <td style="max-width:16rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(w.admins || "")}">${escapeHtml(w.admins || "—")}</td>
+        <td>${pfAgo(w.last_sign_in)}</td>
+        <td>${w.units} · ${w.months}</td>
+        <td style="white-space:nowrap;">
+          <select class="inline-select" data-pfact="${w.id}" style="padding:0.35rem 0.5rem;">
+            <option value="">Actions…</option>
+            <option value="enter">${w.id === profile.workspace_id ? "Leave (back to home)" : "Enter as support"}</option>
+            <option value="members">Show members</option>
+            <option value="trial14">Extend trial 14 days</option>
+            <option value="trial30">Extend trial 30 days</option>
+            <option value="comped">Mark complimentary</option>
+            <option value="active">Mark active (paid outside Stripe)</option>
+            <option value="canceled">Mark canceled</option>
+            <option value="rename">Rename</option>
+          </select>
+        </td></tr>`).join("");
+      tb.querySelectorAll("[data-pfact]").forEach((sel) => sel.addEventListener("change", () => platformAction(sel.dataset.pfact, sel.value).finally(() => { sel.value = ""; })));
+    }
+    async function platformAction(ws, act) {
+      const w = pfRows.find((x) => x.id === ws); if (!w || !act) return;
+      let res = null;
+      if (act === "enter") {
+        if (ws !== profile.workspace_id && !confirm(`Enter "${w.name}" as a temporary support admin? This is logged in that workspace's activity.`)) return;
+        res = await supabase.rpc("support_enter", { p_ws: ws });
+        if (!res.error) { location.reload(); return; }
+      } else if (act === "members") {
+        const { data, error } = await supabase.rpc("platform_members", { p_ws: ws });
+        alert(error ? error.message : (data || []).map((m) => `${m.email} — ${m.role}${m.support ? " (support)" : ""} · last sign-in ${pfAgo(m.last_sign_in)}`).join("\n") || "No members.");
+        return;
+      } else if (act === "trial14" || act === "trial30") {
+        res = await supabase.rpc("platform_set_plan", { p_ws: ws, p_plan: "trial", p_trial_days: act === "trial14" ? 14 : 30 });
+      } else if (act === "comped" || act === "active" || act === "canceled") {
+        if (!confirm(`Set "${w.name}" to ${act}?`)) return;
+        res = await supabase.rpc("platform_set_plan", { p_ws: ws, p_plan: act });
+      } else if (act === "rename") {
+        const name = prompt("New workspace name", w.name); if (!name || !name.trim()) return;
+        res = await supabase.rpc("platform_rename", { p_ws: ws, p_name: name.trim() });
+      }
+      if (res?.error) { alert(res.error.message); return; }
+      logAccess("platform_action", { ws, action: act });
+      loadPlatform();
+    }
+    $("pfSearch")?.addEventListener("input", renderPlatform);
+    $("pfRefresh")?.addEventListener("click", loadPlatform);
 
     /* ---------------- Ownership graph (admin) ---------------- */
     const gStore = window.createOwnershipStore(supabase);
