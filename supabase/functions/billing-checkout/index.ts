@@ -14,7 +14,7 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const ANON = Deno.env.get("SUPABASE_ANON_KEY")!;
 const STRIPE_KEY = Deno.env.get("STRIPE_SECRET_KEY") || "";
-const SITE = "https://conciliowealth.com";
+const SITE = "https://arcaportfolio.com";
 const PRICE_CENTS = 5000;
 const admin = createClient(SUPABASE_URL, SERVICE, { auth: { persistSession: false } });
 

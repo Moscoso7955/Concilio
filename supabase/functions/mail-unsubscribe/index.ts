@@ -35,7 +35,7 @@ async function pushUnsubToVenue(entityId: string, email: string, reason: string)
   } catch (_) { /* best effort */ }
 }
 
-const SITE_URL = Deno.env.get("SITE_URL") || "https://conciliowealth.com";
+const SITE_URL = Deno.env.get("SITE_URL") || "https://arcaportfolio.com";
 const done = (outcome: string) =>
   new Response(null, { status: 303, headers: { Location: `${SITE_URL}/unsubscribed.html?t=${outcome}` } });
 

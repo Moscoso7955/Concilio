@@ -21,7 +21,7 @@ const QBO_ENV = (Deno.env.get("QBO_ENV") || "production").toLowerCase();
 const API_BASE = QBO_ENV === "sandbox" ? "https://sandbox-quickbooks.api.intuit.com" : "https://quickbooks.api.intuit.com";
 const admin = createClient(SUPABASE_URL, SERVICE, { auth: { persistSession: false } });
 
-const SITE_URL = Deno.env.get("SITE_URL") || "https://conciliowealth.com";
+const SITE_URL = Deno.env.get("SITE_URL") || "https://arcaportfolio.com";
 
 // qbo-connect appends the starting portal origin to the state
 // (base64url after the nonce) so the browser returns to the SAME

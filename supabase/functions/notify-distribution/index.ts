@@ -14,7 +14,7 @@ const ANON = Deno.env.get("SUPABASE_ANON_KEY")!;
 const RESEND_KEY = Deno.env.get("RESEND_API_KEY") || "";
 const admin = createClient(SUPABASE_URL, SERVICE, { auth: { persistSession: false } });
 
-const PORTAL_URL = "https://conciliowealth.com/administration";
+const PORTAL_URL = "https://arcaportfolio.com/administration";
 const FROM = "Arca <portal@conciliowealth.com>";
 
 const cors = {
@@ -38,7 +38,7 @@ function emailHtml(unitName: string, dateStr: string, headline: string, lines: {
   return `
   <div style="background:#111111;padding:40px 16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
     <div style="max-width:440px;margin:0 auto;background:#1a1a1a;border:1px solid #2f2f2f;border-radius:14px;padding:32px;text-align:center;">
-      <img src="https://conciliowealth.com/assets/images/fox.png" width="48" height="70" alt="Arca" style="display:block;margin:0 auto 10px;border:0;">
+      <img src="https://arcaportfolio.com/assets/images/fox.png" width="48" height="70" alt="Arca" style="display:block;margin:0 auto 10px;border:0;">
       <h1 style="color:#e5e7eb;font-size:20px;margin:0 0 6px;">${esc(unitName)}</h1>
       <p style="color:#8a8f98;font-size:13px;margin:0 0 20px;">Distribution · ${esc(dateStr)} · ${money(total)} total</p>
       <p style="color:#e5e7eb;font-size:15px;line-height:1.6;margin:0 0 20px;">${headline}</p>

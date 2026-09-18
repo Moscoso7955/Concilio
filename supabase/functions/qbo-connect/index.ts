@@ -11,7 +11,7 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const ANON = Deno.env.get("SUPABASE_ANON_KEY")!;
 const QBO_CLIENT_ID = Deno.env.get("QBO_CLIENT_ID") || "";
-const SITE_URL = Deno.env.get("SITE_URL") || "https://conciliowealth.com";
+const SITE_URL = Deno.env.get("SITE_URL") || "https://arcaportfolio.com";
 const admin = createClient(SUPABASE_URL, SERVICE, { auth: { persistSession: false } });
 
 // The portal origin that started the flow rides along inside the OAuth

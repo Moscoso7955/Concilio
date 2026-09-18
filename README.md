@@ -1,13 +1,13 @@
 # Arca
 
-The public site (`conciliowealth.com`) plus a login-gated **Owner Portal** at
+The public site (`arcaportfolio.com`) plus a login-gated **Owner Portal** at
 `/administration` — a reporting terminal where owners view financials, share
 memos, and (for admins) edit the public site content.
 
 ## Live Site
 
-- https://conciliowealth.com — public site
-- https://conciliowealth.com/administration — Owner Portal (magic-link login)
+- https://arcaportfolio.com — public site
+- https://arcaportfolio.com/administration — Owner Portal (magic-link login)
 
 ## How it works
 
@@ -116,8 +116,8 @@ in the database.
    - Enable the **Email** provider with **magic links** (email OTP).
    - Enable the **Google** provider and paste the OAuth **Client ID + Secret**
      from Google Cloud (see the browser checklist below).
-   - **Site URL:** `https://conciliowealth.com`
-   - **Redirect URLs:** add `https://conciliowealth.com/administration` (and
+   - **Site URL:** `https://arcaportfolio.com`
+   - **Redirect URLs:** add `https://arcaportfolio.com/administration` (and
      `http://localhost:3000/administration` if testing locally).
    - The allowlist signup trigger blocks any email that isn't pre-approved — for
      **both** magic-link and Google — so only invited people can ever sign in.

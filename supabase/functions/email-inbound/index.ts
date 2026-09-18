@@ -216,7 +216,7 @@ Deno.serve(async (req) => {
     // token never falls back to another workspace's company — the mail
     // is logged and dropped.
     if (!tenant) {
-      if (rec.includes("@bills.conciliowealth.com")) await dblog("unknown inbound token — ignored", { to: rec.slice(0, 120), token: token || null });
+      if (rec.includes("@bills.arcaportfolio.com")) await dblog("unknown inbound token — ignored", { to: rec.slice(0, 120), token: token || null });
       else console.log("not for us — ignoring:", rec.slice(0, 120));
       return new Response("ignored", { status: 200 });
     }

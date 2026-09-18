@@ -10,8 +10,8 @@ window.ARCA_CONFIG = {
   TABLE: "site_content",
   BUCKET: "site-assets",
   // Resend inbound domain (verified 2026-07-20) — the Invoices banner shows
-  // bills-<tenant token>@<this domain>. The root conciliowealth.com MX stays on
-  // Google Workspace (christian@'s real mailbox); inbound bills use this
+  // bills-<tenant token>@<this domain>. The root arcaportfolio.com carries no
+  // mailboxes; inbound bills use this
   // dedicated subdomain, whose MX points at Resend's inbound servers.
-  INBOUND_DOMAIN: "bills.conciliowealth.com"
+  INBOUND_DOMAIN: "bills.arcaportfolio.com"
 };

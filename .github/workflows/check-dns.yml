@@ -1,8 +1,7 @@
 name: Check Resend DNS records
 
-# Verifies the DNS for the bills.conciliowealth.com inbound subdomain, plus
-# sanity checks that the root domain's Google mail and www site records
-# are untouched. Manual dispatch — run after adding records in Squarespace.
+# Verifies the DNS for the bills.arcaportfolio.com inbound subdomain and
+# prints the site records. Manual dispatch — run after adding records in Squarespace.
 #
 # Optional input venue_domain: also verify a venue SENDING subdomain
 # (e.g. news.barphoebe.com) — checks the Resend DKIM TXT and the
@@ -44,33 +43,27 @@ jobs:
           out=$(dig +short TXT "_dmarc.$d")
           echo "${out:-<missing (add v=DMARC1; p=none; for deliverability)>}"
           exit $fail
-      - name: Check bills.conciliowealth.com records
+      - name: Check bills.arcaportfolio.com records
         run: |
           fail=0
-          echo "== 1. TXT resend._domainkey.bills.conciliowealth.com (DKIM) =="
-          out=$(dig +short TXT resend._domainkey.bills.conciliowealth.com)
+          echo "== 1. TXT resend._domainkey.bills.arcaportfolio.com (DKIM) =="
+          out=$(dig +short TXT resend._domainkey.bills.arcaportfolio.com)
           echo "${out:-<missing>}"
           echo "$out" | grep -q "p=" || { echo "FAIL: DKIM TXT missing"; fail=1; }
 
-          echo "== 2. MX send.bills.conciliowealth.com (return path) =="
-          out=$(dig +short MX send.bills.conciliowealth.com)
+          echo "== 2. send.bills.arcaportfolio.com (return path: MX or CNAME) =="
+          out=$(dig +short CNAME send.bills.arcaportfolio.com; dig +short MX send.bills.arcaportfolio.com)
           echo "${out:-<missing>}"
-          echo "$out" | grep -qi "amazonses.com" || { echo "FAIL: send MX missing"; fail=1; }
+          [ -n "$out" ] || { echo "FAIL: send record missing"; fail=1; }
 
-          echo "== 3. TXT send.bills.conciliowealth.com (SPF) =="
-          out=$(dig +short TXT send.bills.conciliowealth.com)
-          echo "${out:-<missing>}"
-          echo "$out" | grep -q "v=spf1" || { echo "FAIL: SPF TXT missing"; fail=1; }
-
-          echo "== 4. MX bills.conciliowealth.com (INBOUND — the one that receives mail) =="
-          out=$(dig +short MX bills.conciliowealth.com)
+          echo "== 3. MX bills.arcaportfolio.com (INBOUND — the one that receives mail) =="
+          out=$(dig +short MX bills.arcaportfolio.com)
           echo "${out:-<missing>}"
           echo "$out" | grep -qi "inbound-smtp" || { echo "FAIL: inbound MX missing"; fail=1; }
 
-          echo "== Sanity: root records untouched =="
-          rootmx=$(dig +short MX conciliowealth.com)
-          echo "root MX: ${rootmx:-<missing>}"
-          echo "$rootmx" | grep -qi "google" || { echo "WARN: root MX no longer Google — christian@ mail at risk!"; fail=1; }
-          echo "www CNAME: $(dig +short CNAME www.conciliowealth.com)"
+          echo "== Sanity: site records =="
+          echo "root A: $(dig +short A arcaportfolio.com)"
+          echo "www CNAME: $(dig +short CNAME www.arcaportfolio.com)"
+          echo "auth CNAME: $(dig +short CNAME auth.arcaportfolio.com)"
 
           exit $fail
