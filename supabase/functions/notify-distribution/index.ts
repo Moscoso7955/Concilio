@@ -15,7 +15,7 @@ const RESEND_KEY = Deno.env.get("RESEND_API_KEY") || "";
 const admin = createClient(SUPABASE_URL, SERVICE, { auth: { persistSession: false } });
 
 const PORTAL_URL = "https://arcaportfolio.com/administration";
-const FROM = "Arca <portal@conciliowealth.com>";
+const FROM = "Arca <portal@arcaportfolio.com>";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",

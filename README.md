@@ -127,7 +127,8 @@ in the database.
    Authentication → Emails so magic links deliver reliably from your domain.
 
 5. **Fill in `assets/js/config.js`** — replace `__SUPABASE_URL__` and
-   `__SUPABASE_ANON_KEY__` with the project's URL and anon (publishable) key.
+   `__SUPABASE_ANON_KEY__` with the project's URL (the custom auth domain,
+   https://auth.arcaportfolio.com) and anon (publishable) key.
 
 6. **Commit + push** so Vercel deploys. Then visit `/administration`, sign in
    with `christian@callidusco.com`, and invite the other owners.

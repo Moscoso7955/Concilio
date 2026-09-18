@@ -315,6 +315,7 @@
     /* Ownership graph */
     .graph-wrap { position: relative; display: flex; flex-direction: column; height: calc(100vh - 210px); min-height: 460px; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: #141414; }
     .graph-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 0.6rem; padding: 0.55rem 0.7rem; border-bottom: 1px solid var(--border); background: var(--panel); position: relative; z-index: 2; }
+    .graph-body { position: relative; flex: 1 1 auto; min-height: 0; display: flex; }
     .graph-viewport { position: relative; flex: 1 1 auto; min-height: 0; overflow: auto; }
     .graph-canvas {
       position: relative; width: 3200px; height: 2200px;
@@ -347,7 +348,7 @@
     .ghandle--top { top: -8px; } .ghandle--bottom { bottom: -8px; }
     .gtip { position: absolute; transform: translate(-50%, -100%); background: #141414; border: 1px solid var(--accent); border-radius: 7px; padding: 0.3rem 0.6rem; font-size: 0.78rem; color: #c4c8ce; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity 0.12s; z-index: 30; }
     .gtip.on { opacity: 1; }
-    .gpane { position: absolute; top: 48px; right: 0; bottom: 0; width: 340px; max-width: 92%; background: var(--panel); border-left: 1px solid var(--border); overflow-y: auto; padding: 1rem; box-shadow: -8px 0 24px rgba(0,0,0,0.35); }
+    .gpane { position: absolute; top: 0; right: 0; bottom: 0; width: 340px; max-width: 92%; background: var(--panel); border-left: 1px solid var(--border); overflow-y: auto; padding: 1rem; box-shadow: -8px 0 24px rgba(0,0,0,0.35); }
     .gpane .field { margin-bottom: 0.75rem; }
     .linkrow { display: flex; gap: 0.35rem; align-items: center; margin-bottom: 0.4rem; }
     .linkrow input { padding: 0.4rem 0.5rem; }
@@ -716,19 +717,21 @@
           <button class="btn btn--ghost btn--sm admin-only hidden" id="ownTidy" title="Rearrange into a layered layout" style="flex:0 0 auto;">Tidy layout</button>
           <span class="muted" id="ownHint">Click a box to edit. Drag a box's bottom handle onto another box's top to connect; click an edge to change its %. Ctrl/⌘+scroll to zoom.</span>
         </div>
-        <div class="graph-viewport" id="ownViewport">
-          <div class="graph-canvas" id="ownCanvas">
-            <svg class="graph-svg" id="ownSvg"></svg>
+        <div class="graph-body">
+          <div class="graph-viewport" id="ownViewport">
+            <div class="graph-canvas" id="ownCanvas">
+              <svg class="graph-svg" id="ownSvg"></svg>
+            </div>
           </div>
+          <aside class="gpane hidden" id="ownPane"></aside>
         </div>
-        <aside class="gpane hidden" id="ownPane"></aside>
       </div>
     </section>
   </div>
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.40.5 — schema migration 0040">v1.40.5</div>
+  <div class="version-tag" title="Owner Portal v1.40.6 — schema migration 0040">v1.40.6</div>
 
   <!-- Settings modal -->
   <!-- Onboarding: first admin sign-in of a new workspace -->
@@ -4161,7 +4164,7 @@
           ${e.notes ? `<div class="field"><label>Notes</label><div style="white-space:pre-wrap;">${escapeHtml(e.notes)}</div></div>` : ""}
           ${linkList ? `<div class="field"><label>Links</label>${linkList}</div>` : ""}
           ${!e.notes && !linkList ? `<p class="muted">No details on this box.</p>` : ""}`;
-        show(pane, true);
+        show(pane, true); pane.scrollTop = 0;
         $("paneClose").addEventListener("click", closePane);
         return;
       }
@@ -4220,7 +4223,7 @@
           <button class="btn" id="pSave" style="flex:0 0 auto;">Save</button>
           <span class="muted" id="pStatus"></span>
         </div>`;
-      show(pane, true);
+      show(pane, true); pane.scrollTop = 0;
 
       // Local editable links state
       let links = (e.links || []).map((l) => ({ ...l }));
