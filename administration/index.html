@@ -669,7 +669,6 @@
         <span id="invRangePicker"></span>
         <span class="muted" id="invBanner"></span>
       </div>
-      <div class="toolbar-row hidden" id="invCoFilter"></div>
 
       <!-- Review queue -->
       <div class="section-card review-card hidden" id="reviewCard">
@@ -756,7 +755,7 @@
 
   <!-- v<generation>.<schema>.<patch>: schema = highest applied migration,
        patch = frontend-only ships since. See CLAUDE.md for bump rules. -->
-  <div class="version-tag" title="Owner Portal v1.41.0 — schema migration 0041">v1.41.0</div>
+  <div class="version-tag" title="Owner Portal v1.41.1 — schema migration 0041">v1.41.1</div>
 
   <!-- Settings modal -->
   <!-- Onboarding: first admin sign-in of a new workspace -->
@@ -4574,29 +4573,6 @@
 
     /* ---------------- Invoices ---------------- */
     let invRows = [], glCodes = [], glCat = {};
-    let invTenants = [], invCoSel = null; // companies (tenants) + active filter
-    const tenantShort = (t) => {
-      const n = (t?.name || "?").trim();
-      const stripped = n.replace(/^Arca\s+/i, "").replace(/\s*Co\.?$/i, "").trim();
-      return stripped || n;
-    };
-    function companyPill(r) {
-      if (invTenants.length < 2) return "";
-      const t = invTenants.find((x) => x.id === r.tenant_id) || invTenants[0];
-      return `<button class="inv-co-pill" data-company="${r.id}"${adminUI() ? "" : " disabled"} title="Company this bill belongs to — click to switch">${escapeHtml(tenantShort(t))}</button>`;
-    }
-    function renderCoFilter() {
-      const bar = $("invCoFilter"); if (!bar) return;
-      show(bar, invTenants.length > 1);
-      if (invTenants.length < 2) return;
-      bar.innerHTML = `<span class="muted" style="flex:0 0 auto;">Company:</span>` +
-        [["", "All"], ...invTenants.map((t) => [t.id, tenantShort(t)])]
-          .map(([id, label]) => `<button class="btn btn--sm ${invCoSel === (id || null) ? "" : "btn--ghost"}" data-cofilter="${id}" style="flex:0 0 auto;">${escapeHtml(label)}</button>`).join("");
-      bar.querySelectorAll("[data-cofilter]").forEach((b) => b.addEventListener("click", () => {
-        invCoSel = b.dataset.cofilter || null;
-        renderCoFilter(); renderReview(); renderLedger();
-      }));
-    }
     let invSort = { key: "invoice_date", dir: "desc" };
     let invExtras = null; // splits/qbo columns exist (migration 0009) — probed on first load
 
@@ -4637,8 +4613,6 @@
         supabase.from("tenants").select("id,name,inbound_token").order("created_at"),
       ]);
       invRows = (!error && data) || [];
-      invTenants = (!tRes.error && tRes.data) || [];
-      renderCoFilter();
       renderReview();
       renderLedger();
     }
@@ -4659,8 +4633,6 @@
         return;
       }
       const el = $("invEmailAddr"); if (el) el.textContent = `bills-${token}@${domain}`;
-      const extra = $("invEmailExtra");
-      if (extra && ts[1]?.inbound_token) extra.textContent = ` · or bills-${ts[1].inbound_token}@${domain} to file straight to ${tenantShort(ts[1])}`;
     }
     $("invEmailCopy")?.addEventListener("click", async () => {
       const addr = ($("invEmailAddr").textContent || "").trim();
@@ -4718,13 +4690,13 @@
     const fileCell = (row) => row.has_file ? `<a class="filelink" data-file="${row.id}" href="#">View</a>` : "—";
 
     function renderReview() {
-      const rows = invRows.filter((r) => r.needs_review).filter((r) => !invCoSel || r.tenant_id === invCoSel);
+      const rows = invRows.filter((r) => r.needs_review);
       show($("reviewCard"), rows.length > 0);
       const body = $("reviewBody"); body.innerHTML = "";
       for (const r of rows) {
         const tr = document.createElement("tr");
         tr.innerHTML =
-          `<td>${escapeHtml(r.vendor || "")} ${companyPill(r)}</td><td>${r.invoice_date || "—"}</td><td class="num">${money(r.amount)}</td>
+          `<td>${escapeHtml(r.vendor || "")}</td><td>${r.invoice_date || "—"}</td><td class="num">${money(r.amount)}</td>
            <td>${codeSelect(r)}</td><td>${fileCell(r)}</td>
            <td class="num" style="white-space:nowrap;">${isAdmin() ? `<button class="btn btn--sm" data-approve="${r.id}">Approve</button> <button class="iconact del" data-delinv="${r.id}" title="Discard">✕</button>` : ""}</td>`;
         body.appendChild(tr);
@@ -4737,7 +4709,6 @@
     function renderLedger() {
       const [from, to] = rangeBounds();
       let rows = invRows.filter((r) => !r.needs_review)
-        .filter((r) => !invCoSel || r.tenant_id === invCoSel)
         .filter((r) =>
         !from || r.invoice_date == null || (r.invoice_date >= from && r.invoice_date <= to));
       const dir = invSort.dir === "asc" ? 1 : -1;
@@ -4759,7 +4730,7 @@
         const tr = document.createElement("tr");
         tr.innerHTML =
           `<td${dup ? ' class="dupcell"' : ""}>
-             <div class="inv-name${dup ? " dup" : ""}">${escapeHtml(invName(r))} ${companyPill(r)}${dup ? '<span class="dup-tag" title="Same vendor, date, and amount as another invoice — likely a duplicate">Dup</span>' : ""}</div>
+             <div class="inv-name${dup ? " dup" : ""}">${escapeHtml(invName(r))}${dup ? '<span class="dup-tag" title="Same vendor, date, and amount as another invoice — likely a duplicate">Dup</span>' : ""}</div>
              ${r.note ? `<div class="inv-sub" title="${escapeHtml(r.note)}">${escapeHtml(r.note)}</div>` : ""}
            </td>
            <td>${codeSelect(r)}</td>
@@ -4781,17 +4752,6 @@
     }
 
     function wireRowControls(scope) {
-      // Company toggle: cycle the bill between tenants (Arca ⇄ FBH).
-      scope.querySelectorAll("[data-company]").forEach((b) => b.addEventListener("click", async () => {
-        const r = invRows.find((x) => x.id === b.dataset.company); if (!r || invTenants.length < 2) return;
-        const i = invTenants.findIndex((t) => t.id === r.tenant_id);
-        const next = invTenants[(i + 1) % invTenants.length];
-        const { error } = await supabase.from("invoices").update({ tenant_id: next.id }).eq("id", r.id);
-        if (error) { alert("Couldn't switch company: " + error.message); return; }
-        r.tenant_id = next.id;
-        logAccess("inv_company", { vendor: r.vendor, company: next.name });
-        renderReview(); renderLedger();
-      }));
       scope.querySelectorAll("[data-code]").forEach((sel) => sel.addEventListener("change", () => inlineUpdate(sel.dataset.code, { code: sel.value || null })));
       scope.querySelectorAll("[data-status]").forEach((sel) => sel.addEventListener("change", () => {
         sel.className = "pill " + (sel.value === "Unpaid" ? "pill--unpaid" : "pill--paid");
